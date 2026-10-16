@@ -32,8 +32,9 @@ Back to the [roadmap overview](../ROADMAP.md).
 
 **Size:** L · **Depends on:** M0.6
 
-- [ ] **C API for documents** ([ADR-0003](../adr/0003-core-api-boundary-c-abi.md)), with Swift and
-      TypeScript wrappers. It covers:
+- [x] **C API for documents** ([ADR-0003](../adr/0003-core-api-boundary-c-abi.md),
+      [ADR-0011](../adr/0011-document-api-json-over-c.md)), with Swift and TypeScript wrappers.
+      It covers:
   - new, open and save;
   - edits as commands;
   - undo/redo;

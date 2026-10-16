@@ -30,3 +30,4 @@ a new ADR that supersedes the old one and set the old one's status to
 | [0007](0007-web-ui-framework-react.md) | Web UI framework: React | Accepted |
 | [0008](0008-native-file-format.md) | Native file format: a zip container with manifest, document, thumbnail and cache | Accepted |
 | [0009](0009-minimum-os-and-browser-versions.md) | Minimum versions: iPadOS/macOS 26, a feature-based browser floor | Accepted |
+| [0011](0011-document-api-json-over-c.md) | Document API: sessions with JSON edits over the C API | Accepted |

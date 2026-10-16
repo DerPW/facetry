@@ -15,6 +15,7 @@ void Session::edit(const std::function<void(Document&)>& change) {
     undo_.push_back(std::move(document_));
     document_ = std::move(next);
     redo_.clear();
+    stale_ = true;
 }
 
 bool Session::undo() {
@@ -24,6 +25,7 @@ bool Session::undo() {
     redo_.push_back(std::move(document_));
     document_ = std::move(undo_.back());
     undo_.pop_back();
+    stale_ = true;
     return true;
 }
 
@@ -34,12 +36,14 @@ bool Session::redo() {
     undo_.push_back(std::move(document_));
     document_ = std::move(redo_.back());
     redo_.pop_back();
+    stale_ = true;
     return true;
 }
 
 const Regeneration& Session::regenerate(const CancelToken& cancel,
                                         const ProgressCallback& progress) {
     regeneration_ = regenerator_.run(document_, cancel, progress);
+    stale_ = regeneration_.cancelled;
     std::vector<Feature>& timeline = document_.root.timeline;
     for (std::size_t i = 0; i < regeneration_.features.size() && i < timeline.size(); ++i) {
         const FeatureResult& result = regeneration_.features[i];

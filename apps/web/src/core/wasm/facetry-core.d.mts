@@ -8,7 +8,7 @@ export interface FacetryCoreModule {
   HEAPF32: Float32Array;
   HEAPF64: Float64Array;
   UTF8ToString(pointer: number): string;
-  addFunction(fn: (...args: number[]) => void, signature: string): number;
+  addFunction(fn: (...args: number[]) => unknown, signature: string): number;
   removeFunction(pointer: number): void;
   _malloc(size: number): number;
   _free(pointer: number): void;
@@ -68,6 +68,35 @@ export interface FacetryCoreModule {
     countOut: number,
   ): number;
   _facetry_mesh_release(context: number, mesh: number): number;
+
+  _facetry_session_create(context: number, documentJson: number, out: number): number;
+  _facetry_session_save(context: number, session: number, jsonOut: number): number;
+  _facetry_session_apply(context: number, session: number, editJson: number): number;
+  _facetry_session_undo(context: number, session: number, changedOut: number): number;
+  _facetry_session_redo(context: number, session: number, changedOut: number): number;
+  _facetry_session_regenerate(
+    context: number,
+    session: number,
+    progress: number,
+    userData: number,
+  ): number;
+  _facetry_session_state(context: number, session: number, jsonOut: number): number;
+  _facetry_session_body_shape(context: number, session: number, body: number, out: number): number;
+  _facetry_session_element_names(
+    context: number,
+    session: number,
+    body: number,
+    jsonOut: number,
+  ): number;
+  _facetry_session_make_reference(
+    context: number,
+    session: number,
+    body: number,
+    kind: number,
+    elementId: number,
+    jsonOut: number,
+  ): number;
+  _facetry_session_release(context: number, session: number): number;
 }
 
 declare function createFacetryCore(options?: Record<string, unknown>): Promise<FacetryCoreModule>;

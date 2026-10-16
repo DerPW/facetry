@@ -12,13 +12,14 @@ const ready = FacetryCore.load({
   onLog: (level, message) => post({ kind: "log", level, message }),
 });
 
-function transferables(value: unknown): Transferable[] {
-  if (value === null || typeof value !== "object") {
-    return [];
+// The buffers of every typed array in a result, e.g. the meshes of a model snapshot.
+function transferables(value: unknown, found: Transferable[] = []): Transferable[] {
+  if (ArrayBuffer.isView(value)) {
+    found.push(value.buffer as ArrayBuffer);
+  } else if (value !== null && typeof value === "object") {
+    for (const item of Object.values(value)) transferables(item, found);
   }
-  return Object.values(value)
-    .filter((item): item is ArrayBufferView => ArrayBuffer.isView(item))
-    .map((view) => view.buffer as ArrayBuffer);
+  return found;
 }
 
 self.onmessage = async (event: MessageEvent<CallRequest>) => {

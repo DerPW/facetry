@@ -13,6 +13,16 @@ export type CoreMethods = Pick<
   | "properties"
   | "tessellate"
   | "release"
+  | "openSession"
+  | "saveSession"
+  | "applyEdits"
+  | "undo"
+  | "redo"
+  | "sessionState"
+  | "elementNames"
+  | "makeReference"
+  | "releaseSession"
+  | "regenerateModel"
 >;
 export type CoreMethod = keyof CoreMethods;
 

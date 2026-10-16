@@ -56,6 +56,125 @@ struct MeshData: Sendable, Equatable {
     var triangleCount: Int { triangles.count / 3 }
 }
 
+/// An open document in a ``Core`` context: description, undo/redo and regeneration cache.
+struct SessionHandle: Hashable, Sendable {
+    let rawValue: UInt32
+}
+
+enum ElementKind: Sendable {
+    case face, edge, vertex
+
+    fileprivate var cValue: facetry_element_kind {
+        switch self {
+        case .face: FACETRY_ELEMENT_FACE
+        case .edge: FACETRY_ELEMENT_EDGE
+        case .vertex: FACETRY_ELEMENT_VERTEX
+        }
+    }
+}
+
+/// Summary of a session (facetry_session_state; the JSON is described in
+/// core/include/facetry/core/session_json.hpp).
+struct SessionState: Decodable, Sendable, Equatable {
+    struct Parameter: Decodable, Sendable, Equatable, Identifiable {
+        let name: String
+        let value: Double
+
+        var id: String { name }
+    }
+
+    struct Feature: Decodable, Sendable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let type: String
+        let suppressed: Bool
+        /// "ok", "warning", "error", "suppressed", "rolledBack" or "notRun".
+        let status: String
+        let messages: [String]
+        let brokenReferences: [Int]
+    }
+
+    struct Regeneration: Decodable, Sendable, Equatable {
+        let cancelled: Bool
+        let executed: Int
+    }
+
+    let parameters: [Parameter]
+    let rollback: Int?
+    let canUndo: Bool
+    let canRedo: Bool
+    let needsRegeneration: Bool
+    let features: [Feature]
+    let bodies: [String]
+    let regeneration: Regeneration
+}
+
+/// Persistent names of a body's elements; index i belongs to element ID i + 1.
+struct ElementNames: Decodable, Sendable, Equatable {
+    let faces: [String]
+    let edges: [String]
+    let vertices: [String]
+}
+
+/// An edit for ``Core/apply(_:_:)``. Edits that carry whole features (`addFeature`,
+/// `replaceFeature`) go through ``Core/apply(_:json:)`` with the document's JSON form.
+enum DocumentEdit: Encodable, Sendable, Equatable {
+    case setParameter(name: String, value: Double)
+    case addParameter(name: String, value: Double)
+    case deleteParameter(name: String)
+    case deleteFeature(id: String)
+    case renameFeature(id: String, name: String)
+    case suppressFeature(id: String, suppressed: Bool)
+    case setRollback(index: Int?)
+
+    private enum Key: String, CodingKey {
+        case op, name, value, id, suppressed, index
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        switch self {
+        case .setParameter(let name, let value), .addParameter(let name, let value):
+            try c.encode(self.op, forKey: .op)
+            try c.encode(name, forKey: .name)
+            try c.encode(value, forKey: .value)
+        case .deleteParameter(let name):
+            try c.encode(op, forKey: .op)
+            try c.encode(name, forKey: .name)
+        case .deleteFeature(let id):
+            try c.encode(op, forKey: .op)
+            try c.encode(id, forKey: .id)
+        case .renameFeature(let id, let name):
+            try c.encode(op, forKey: .op)
+            try c.encode(id, forKey: .id)
+            try c.encode(name, forKey: .name)
+        case .suppressFeature(let id, let suppressed):
+            try c.encode(op, forKey: .op)
+            try c.encode(id, forKey: .id)
+            try c.encode(suppressed, forKey: .suppressed)
+        case .setRollback(let index):
+            try c.encode(op, forKey: .op)
+            if let index {
+                try c.encode(index, forKey: .index)
+            } else {
+                try c.encodeNil(forKey: .index)
+            }
+        }
+    }
+
+    private var op: String {
+        switch self {
+        case .setParameter: "setParameter"
+        case .addParameter: "addParameter"
+        case .deleteParameter: "deleteParameter"
+        case .deleteFeature: "deleteFeature"
+        case .renameFeature: "renameFeature"
+        case .suppressFeature: "suppressFeature"
+        case .setRollback: "setRollback"
+        }
+    }
+}
+
 struct CoreVersions: Sendable {
     let apiMajor: UInt32
     let apiMinor: UInt32
@@ -172,6 +291,96 @@ final class Core {
         try check(facetry_shape_release(context, shape.rawValue))
     }
 
+    // MARK: - Documents
+
+    /// Opens a document from its JSON description, or an empty document.
+    func openSession(json: String? = nil) throws -> SessionHandle {
+        var handle: facetry_handle = 0
+        try check(facetry_session_create(context, json, &handle))
+        return SessionHandle(rawValue: handle)
+    }
+
+    /// The document's JSON description.
+    func save(_ session: SessionHandle) throws -> String {
+        try string { facetry_session_save(context, session.rawValue, $0) }
+    }
+
+    /// Applies edits as one undo step. A failing edit changes nothing.
+    func apply(_ session: SessionHandle, _ edits: [DocumentEdit]) throws {
+        let json = String(decoding: try JSONEncoder().encode(edits), as: UTF8.self)
+        try apply(session, json: json)
+    }
+
+    /// Applies one edit or a JSON array of edits (see core/include/facetry/core/session_json.hpp).
+    func apply(_ session: SessionHandle, json: String) throws {
+        try check(facetry_session_apply(context, session.rawValue, json))
+    }
+
+    /// Returns false if there was nothing to undo.
+    @discardableResult
+    func undo(_ session: SessionHandle) throws -> Bool {
+        var changed: Int32 = 0
+        try check(facetry_session_undo(context, session.rawValue, &changed))
+        return changed != 0
+    }
+
+    /// Returns false if there was nothing to redo.
+    @discardableResult
+    func redo(_ session: SessionHandle) throws -> Bool {
+        var changed: Int32 = 0
+        try check(facetry_session_redo(context, session.rawValue, &changed))
+        return changed != 0
+    }
+
+    /// Regenerates the document. `progress` is called after each feature with the features done
+    /// and the total; returning false cancels the rest. Feature failures do not throw; they are
+    /// reported in ``state(of:)``.
+    func regenerate(_ session: SessionHandle, progress: ((Int, Int) -> Bool)? = nil) throws {
+        guard let progress else {
+            try check(facetry_session_regenerate(context, session.rawValue, nil, nil))
+            return
+        }
+        let box = ProgressBox(progress)
+        try withExtendedLifetime(box) {
+            try check(
+                facetry_session_regenerate(
+                    context, session.rawValue,
+                    { done, total, data in
+                        guard let data else { return 0 }
+                        let box = Unmanaged<ProgressBox>.fromOpaque(data).takeUnretainedValue()
+                        return box.handler(Int(done), Int(total)) ? 0 : 1
+                    }, Unmanaged.passUnretained(box).toOpaque()))
+        }
+    }
+
+    func state(of session: SessionHandle) throws -> SessionState {
+        let json = try string { facetry_session_state(context, session.rawValue, $0) }
+        return try JSONDecoder().decode(SessionState.self, from: Data(json.utf8))
+    }
+
+    /// A new shape handle for a body of the last regeneration. Release it when done.
+    func bodyShape(_ session: SessionHandle, body: String) throws -> ShapeHandle {
+        try makeShape { facetry_session_body_shape(context, session.rawValue, body, $0) }
+    }
+
+    func elementNames(_ session: SessionHandle, body: String) throws -> ElementNames {
+        let json = try string { facetry_session_element_names(context, session.rawValue, body, $0) }
+        return try JSONDecoder().decode(ElementNames.self, from: Data(json.utf8))
+    }
+
+    /// A persistent reference to a picked element, as JSON for feature edits.
+    func reference(
+        in session: SessionHandle, body: String, kind: ElementKind, id: UInt32
+    ) throws -> String {
+        try string {
+            facetry_session_make_reference(context, session.rawValue, body, kind.cValue, id, $0)
+        }
+    }
+
+    func release(_ session: SessionHandle) throws {
+        try check(facetry_session_release(context, session.rawValue))
+    }
+
     // MARK: - Private
 
     private func makeShape(_ call: (UnsafeMutablePointer<facetry_handle>) -> facetry_status) throws
@@ -180,6 +389,15 @@ final class Core {
         var handle: facetry_handle = 0
         try check(call(&handle))
         return ShapeHandle(rawValue: handle)
+    }
+
+    /// Calls a function that returns a string owned by the context, and copies it.
+    private func string(_ call: (UnsafeMutablePointer<UnsafePointer<CChar>?>) -> facetry_status)
+        throws -> String
+    {
+        var text: UnsafePointer<CChar>?
+        try check(call(&text))
+        return text.map { String(cString: $0) } ?? ""
     }
 
     private func buffer<T>(_ mesh: facetry_handle, _ kind: facetry_mesh_buffer_kind) throws -> [T] {
@@ -213,6 +431,15 @@ final class Core {
     /// Sends core log messages to the unified log (subsystem io.github.derpw.facetry, category core).
     static func routeLogsToOSLog() {
         _ = logRouting
+    }
+}
+
+/// Carries a progress closure through the C API's `void*` user data.
+private final class ProgressBox {
+    let handler: (Int, Int) -> Bool
+
+    init(_ handler: @escaping (Int, Int) -> Bool) {
+        self.handler = handler
     }
 }
 

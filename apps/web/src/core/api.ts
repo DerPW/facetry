@@ -84,10 +84,87 @@ export interface MeshData {
   vertexIds: Uint32Array;
 }
 
+/** Element kinds for {@link FacetryCore.makeReference}. */
+export const ElementKind = { Face: 0, Edge: 1, Vertex: 2 } as const;
+export type ElementKind = (typeof ElementKind)[keyof typeof ElementKind];
+
+export type FeatureStatus = "ok" | "warning" | "error" | "suppressed" | "rolledBack" | "notRun";
+
+/** Summary of a session (the JSON is described in core/include/facetry/core/session_json.hpp). */
+export interface SessionState {
+  parameters: { name: string; value: number }[];
+  rollback: number | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** The document changed since the last complete regeneration. */
+  needsRegeneration: boolean;
+  features: {
+    id: string;
+    name: string;
+    type: string;
+    suppressed: boolean;
+    status: FeatureStatus;
+    messages: string[];
+    brokenReferences: number[];
+  }[];
+  /** Bodies of the last regeneration, by the ID of the feature that created them. */
+  bodies: string[];
+  regeneration: { cancelled: boolean; executed: number };
+}
+
+/** Persistent names of a body's elements; index i belongs to element ID i + 1. */
+export interface ElementNames {
+  faces: string[];
+  edges: string[];
+  vertices: string[];
+}
+
+/** A persistent reference to a face, edge or vertex (docs/adr/0006-persistent-naming.md). */
+export interface Reference {
+  body: string;
+  kind: "face" | "edge" | "vertex";
+  name: string;
+  shadow?: {
+    id: number;
+    type: string;
+    centroid: [number, number, number];
+    size: number;
+  };
+}
+
+/** A feature in the document's JSON form (core/include/facetry/core/document.hpp). */
+export interface FeatureJson {
+  type: string;
+  id?: string;
+  name?: string;
+  suppressed?: boolean;
+  [field: string]: unknown;
+}
+
+/** One edit to a document (core/include/facetry/core/session_json.hpp). */
+export type Edit =
+  | { op: "setParameter"; name: string; value: number }
+  | { op: "addParameter"; name: string; value: number }
+  | { op: "deleteParameter"; name: string }
+  | { op: "addFeature"; feature: FeatureJson; index?: number }
+  | { op: "replaceFeature"; feature: FeatureJson & { id: string } }
+  | { op: "deleteFeature"; id: string }
+  | { op: "renameFeature"; id: string; name: string }
+  | { op: "suppressFeature"; id: string; suppressed: boolean }
+  | { op: "setRollback"; index: number | null };
+
+/** The model after a regeneration: the session summary and a display mesh per body. */
+export interface ModelSnapshot {
+  state: SessionState;
+  meshes: Record<string, MeshData>;
+}
+
 export interface LoadOptions {
   onLog?: (level: LogLevel, message: string) => void;
   logLevel?: LogLevel;
 }
+
+const encoder = new TextEncoder();
 
 export class FacetryCore {
   readonly #m: FacetryCoreModule;
@@ -217,6 +294,123 @@ export class FacetryCore {
     this.#check(this.#m._facetry_shape_release(this.#context, shape));
   }
 
+  // ---- Documents ----------------------------------------------------------------------------
+
+  /** Opens a document from its JSON description, or an empty document. */
+  openSession(documentJson?: string): number {
+    const json = documentJson === undefined ? 0 : this.#string(documentJson);
+    try {
+      this.#check(this.#m._facetry_session_create(this.#context, json, this.#scratch));
+      return this.#u32(this.#scratch);
+    } finally {
+      if (json !== 0) this.#m._free(json);
+    }
+  }
+
+  /** The document's JSON description. */
+  saveSession(session: number): string {
+    this.#check(this.#m._facetry_session_save(this.#context, session, this.#scratch));
+    return this.#outputString();
+  }
+
+  /** Applies one edit or several as one undo step. A failing edit changes nothing. */
+  applyEdits(session: number, edits: Edit | Edit[]): void {
+    const json = this.#string(JSON.stringify(edits));
+    try {
+      this.#check(this.#m._facetry_session_apply(this.#context, session, json));
+    } finally {
+      this.#m._free(json);
+    }
+  }
+
+  /** Returns false if there was nothing to undo. */
+  undo(session: number): boolean {
+    this.#check(this.#m._facetry_session_undo(this.#context, session, this.#scratch));
+    return this.#u32(this.#scratch) !== 0;
+  }
+
+  /** Returns false if there was nothing to redo. */
+  redo(session: number): boolean {
+    this.#check(this.#m._facetry_session_redo(this.#context, session, this.#scratch));
+    return this.#u32(this.#scratch) !== 0;
+  }
+
+  /**
+   * Regenerates the document. `onProgress` is called after each feature; returning false cancels
+   * the rest, returning true continues. Feature failures do not throw; they are reported in {@link sessionState}.
+   */
+  regenerate(session: number, onProgress?: (done: number, total: number) => boolean): void {
+    const m = this.#m;
+    const callback =
+      onProgress === undefined
+        ? 0
+        : m.addFunction((done: number, total: number) => (onProgress(done, total) ? 0 : 1), "iiii");
+    try {
+      this.#check(m._facetry_session_regenerate(this.#context, session, callback, 0));
+    } finally {
+      if (callback !== 0) m.removeFunction(callback);
+    }
+  }
+
+  sessionState(session: number): SessionState {
+    this.#check(this.#m._facetry_session_state(this.#context, session, this.#scratch));
+    return JSON.parse(this.#outputString()) as SessionState;
+  }
+
+  /** A new shape handle for a body of the last regeneration. Release it when done. */
+  bodyShape(session: number, body: string): number {
+    return this.#withString(body, (text) => {
+      this.#check(this.#m._facetry_session_body_shape(this.#context, session, text, this.#scratch));
+      return this.#u32(this.#scratch);
+    });
+  }
+
+  elementNames(session: number, body: string): ElementNames {
+    return this.#withString(body, (text) => {
+      this.#check(
+        this.#m._facetry_session_element_names(this.#context, session, text, this.#scratch),
+      );
+      return JSON.parse(this.#outputString()) as ElementNames;
+    });
+  }
+
+  /** Turns a picked element (an ID from a mesh of the body) into a persistent reference. */
+  makeReference(session: number, body: string, kind: ElementKind, id: number): Reference {
+    return this.#withString(body, (text) => {
+      this.#check(
+        this.#m._facetry_session_make_reference(
+          this.#context,
+          session,
+          text,
+          kind,
+          id,
+          this.#scratch,
+        ),
+      );
+      return JSON.parse(this.#outputString()) as Reference;
+    });
+  }
+
+  releaseSession(session: number): void {
+    this.#check(this.#m._facetry_session_release(this.#context, session));
+  }
+
+  /** Regenerates and tessellates every body: what the UI needs after an edit, in one call. */
+  regenerateModel(session: number, options: TessellationOptions = {}): ModelSnapshot {
+    this.regenerate(session);
+    const state = this.sessionState(session);
+    const meshes: Record<string, MeshData> = {};
+    for (const body of state.bodies) {
+      const shape = this.bodyShape(session, body);
+      try {
+        meshes[body] = this.tessellate(shape, options);
+      } finally {
+        this.release(shape);
+      }
+    }
+    return { state, meshes };
+  }
+
   /** Releases the context and every shape it owns. The instance must not be used afterwards. */
   dispose(): void {
     const m = this.#m;
@@ -235,6 +429,29 @@ export class FacetryCore {
       onLog(level as LogLevel, m.UTF8ToString(message));
     }, "viii");
     m._facetry_set_log_callback(this.#logCallback, 0);
+  }
+
+  /** Copies a string into WebAssembly memory as UTF-8. Free it with `_free`. */
+  #string(text: string): number {
+    const bytes = encoder.encode(text);
+    const pointer = this.#m._malloc(bytes.length + 1);
+    this.#m.HEAPU8.set(bytes, pointer);
+    this.#m.HEAPU8[pointer + bytes.length] = 0;
+    return pointer;
+  }
+
+  #withString<T>(text: string, callback: (pointer: number) => T): T {
+    const pointer = this.#string(text);
+    try {
+      return callback(pointer);
+    } finally {
+      this.#m._free(pointer);
+    }
+  }
+
+  /** The string a call wrote to the scratch output pointer (owned by the context). */
+  #outputString(): string {
+    return this.#m.UTF8ToString(this.#u32(this.#scratch));
   }
 
   #check(status: number): void {

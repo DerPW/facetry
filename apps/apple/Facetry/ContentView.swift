@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @Binding var document: FacetryDocument
     @State private var viewport = ViewportModel()
-    @State private var coreStatus = "Starting the core…"
+    @State private var model: DocumentModel?
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -12,26 +12,49 @@ struct ContentView: View {
     var body: some View {
         ViewportView(model: viewport)
             .ignoresSafeArea()
-            .overlay(alignment: .topLeading) { header }
+            .overlay(alignment: .topLeading) {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    if let model, let state = model.state {
+                        ModelPanel(state: state, model: model)
+                    }
+                }
+            }
             .overlay(alignment: .topTrailing) { controls }
             .overlay(alignment: .bottomLeading) { stats }
             .overlay(alignment: .bottomTrailing) { selection }
-            .task { await loadDemoPart() }
+            .task {
+                let model = DocumentModel(viewport: viewport)
+                self.model = model
+                await model.load()
+            }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Facetry").font(.headline)
-            Text("Version \(version) · Phase 0 · document format \(document.content.formatVersion)")
-            Text(viewport.error ?? coreStatus)
+            Text("Version \(version) · tech preview")
+            Text(viewport.error ?? model?.error ?? coreStatus)
+                .foregroundStyle(model?.error != nil ? .red : .secondary)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        .frame(maxWidth: 320, alignment: .leading)
         .panel()
+    }
+
+    private var coreStatus: String {
+        guard model?.state != nil else { return "Starting the core…" }
+        let versions = CoreVersions.current
+        return "Core \(versions.core) · OpenCASCADE \(versions.kernel) · \(versions.platform)"
     }
 
     private var controls: some View {
         HStack {
+            Button("Undo") { Task { await model?.undo() } }
+                .disabled(model?.state?.canUndo != true)
+            Button("Redo") { Task { await model?.redo() } }
+                .disabled(model?.state?.canRedo != true)
             Button("Fit") { viewport.fit() }
                 .keyboardShortcut("f", modifiers: [])
             Button(viewport.orthographic ? "Perspective" : "Orthographic") {
@@ -71,37 +94,92 @@ struct ContentView: View {
         case .vertex: "Vertex \(pick.id) selected"
         }
     }
+}
 
-    /// Builds the demo part off the main thread: a plate with rounded edges, a boss on top and a
-    /// hole through both.
-    private func loadDemoPart() async {
-        let result = await Task.detached(priority: .userInitiated) {
-            () -> Result<(String, MeshData), Error> in
-            Result {
-                let versions = CoreVersions.current
-                let core = try Core()
-                let plate = try core.makeBox(40, 30, 4)
-                let rounded = try core.fillet(plate, edges: Array(1...12), radius: 1.5)
-                let boss = try core.makeCylinder(x: 20, y: 15, radius: 6, height: 12)
-                let joined = try core.boolean(.fuse, rounded, boss)
-                let hole = try core.makeCylinder(x: 20, y: 15, radius: 3, height: 12)
-                let part = try core.boolean(.cut, joined, hole)
-                // `--stress` tessellates finely (about 200k triangles) for performance checks.
-                let stress = ProcessInfo.processInfo.arguments.contains("--stress")
-                let mesh = try core.tessellate(
-                    part, linearDeflection: stress ? 0.0004 : 0.01,
-                    angularDeflection: stress ? 0.02 : 0.2)
-                let status =
-                    "Core \(versions.core) · OpenCASCADE \(versions.kernel) · \(versions.platform)"
-                return (status, mesh)
+/// Parameters and timeline of the open model.
+private struct ModelPanel: View {
+    let state: SessionState
+    let model: DocumentModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Parameters").font(.caption.bold())
+            ForEach(state.parameters) { parameter in
+                ParameterRow(parameter: parameter) { value in
+                    Task { await model.setParameter(parameter.name, to: value) }
+                }
             }
-        }.value
-        switch result {
-        case .success(let (status, mesh)):
-            coreStatus = status
-            viewport.mesh = mesh
-        case .failure(let error):
-            coreStatus = "The core failed to start: \(error)"
+            Text("Timeline").font(.caption.bold())
+            ForEach(state.features) { feature in
+                FeatureRow(feature: feature)
+            }
+            Text("Edits are not saved to the file yet (#11).")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 240, alignment: .leading)
+        .panel()
+    }
+}
+
+private struct ParameterRow: View {
+    let parameter: SessionState.Parameter
+    let onCommit: (Double) -> Void
+    @State private var value = 0.0
+
+    var body: some View {
+        HStack {
+            Text(parameter.name)
+                .font(.caption)
+                .frame(width: 60, alignment: .leading)
+            TextField(parameter.name, value: $value, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .font(.caption.monospacedDigit())
+                #if os(iOS)
+                    // Has a return key, unlike the decimal pad, so the value can be submitted.
+                    .keyboardType(.numbersAndPunctuation)
+                #endif
+                .onSubmit {
+                    if value != parameter.value { onCommit(value) }
+                }
+            Text("mm").font(.caption).foregroundStyle(.secondary)
+        }
+        .onAppear { value = parameter.value }
+        .onChange(of: parameter.value) { _, newValue in value = newValue }
+    }
+}
+
+private struct FeatureRow: View {
+    let feature: SessionState.Feature
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(feature.name, systemImage: symbol)
+                .font(.caption)
+                .foregroundStyle(color)
+            ForEach(feature.messages, id: \.self) { message in
+                Text(message).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var symbol: String {
+        switch feature.status {
+        case "ok": "checkmark.circle"
+        case "warning": "exclamationmark.triangle"
+        case "error": "xmark.octagon"
+        case "suppressed": "pause.circle"
+        case "rolledBack": "arrow.uturn.backward.circle"
+        default: "circle.dotted"
+        }
+    }
+
+    private var color: Color {
+        switch feature.status {
+        case "warning": .orange
+        case "error": .red
+        case "ok": .primary
+        default: .secondary
         }
     }
 }

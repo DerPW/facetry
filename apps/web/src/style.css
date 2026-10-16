@@ -55,9 +55,82 @@ body {
   pointer-events: auto;
 }
 
-.header {
+.sidebar {
+  position: absolute;
   top: 12px;
   left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 280px;
+}
+
+.sidebar .panel {
+  position: static;
+}
+
+.error {
+  margin: 4px 0 0;
+  color: #d70015;
+  font-size: 0.85rem;
+}
+
+.model h2 {
+  margin: 8px 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.model h2:first-child {
+  margin-top: 0;
+}
+
+.parameter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+  font-size: 0.85rem;
+}
+
+.parameter > span:first-child {
+  width: 56px;
+}
+
+.parameter input {
+  width: 72px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.feature {
+  margin: 2px 0;
+}
+
+.feature.warning {
+  color: #c93400;
+}
+
+.feature.error {
+  color: #d70015;
+}
+
+.feature.suppressed,
+.feature.rolledBack,
+.feature.notRun {
+  color: var(--muted);
 }
 
 .header h1 {
@@ -78,6 +151,11 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .controls button,
