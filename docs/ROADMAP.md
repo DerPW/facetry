@@ -14,7 +14,7 @@ Each phase has its own document with the detailed feature list:
 | [3 — Assemblies & Output](roadmap/phase-3-assemblies-and-output.md) | Multi-part designs, motion, drawings, scripting, blocks | M3.1 – M3.7 | **v1.0** |
 | [Future](roadmap/future.md) | Ideas without a schedule, and explicit non-goals | — | — |
 
-Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Building](BUILDING.md)
+Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Prior art & lessons](PRIOR-ART.md) · [Building](BUILDING.md)
 
 **Current status:** Phase 0 in progress. M0.1 and M0.2 are done; next up is M0.3 (core skeleton & API boundary).
 

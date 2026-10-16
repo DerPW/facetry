@@ -46,6 +46,7 @@ Details: [Architecture](docs/ARCHITECTURE.md) · [Platforms & distribution](docs
 | [Phase 2 — Advanced Modeling](docs/roadmap/phase-2-advanced-modeling.md) | Parameters, patterns, shell, loft, sweep, threads, … |
 | [Phase 3 — Assemblies & Output](docs/roadmap/phase-3-assemblies-and-output.md) | Joints, drawings, scripting, blocks, 1.0 |
 | [Future ideas & non-goals](docs/roadmap/future.md) | What is not scheduled, and what is out of scope |
+| [Prior art & lessons](docs/PRIOR-ART.md) | What other CAD projects solved or got wrong, and what Facetry takes from them |
 | [Architecture](docs/ARCHITECTURE.md) | Structure, rules, document model, decisions |
 | [Platforms & distribution](docs/PLATFORMS.md) | Feature matrix and how each platform is shipped |
 | [Building](docs/BUILDING.md) | Toolchain, build presets, formatting, CI |
