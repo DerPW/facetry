@@ -147,14 +147,15 @@ iPad** (frame rate and finger picking) once the app shell can be installed on a 
 - [x] Cross-origin isolation for WebAssembly threads on GitHub Pages (service-worker shim) if
       ADR-0004/0003 require threads → **not needed yet**: neither the core nor the renderer uses
       threads. It comes back when the core goes multithreaded (M2.9).
-- [ ] Checks on a real iPad: frame rate, finger picking, Pencil hover
-      ([#7](https://github.com/DerPW/facetry/issues/7))
+- [x] Checks on a real iPad: frame rate, finger picking, Pencil hover
+      ([#7](https://github.com/DerPW/facetry/issues/7); 120 Hz with 215k triangles on an iPad
+      Pro M4)
 
 **Done when:** all three platforms show the filleted box, tapping or clicking selects a face,
 and hovering highlights it with the mouse and with Pencil hover on supported iPads.
 
-**Status:** Mac, web (Chromium, Safari) and the iPad simulator do all of this. Pencil hover and
-the frame rate on a real iPad are still open in #7.
+**Status:** done. Mac, web (Chromium, Safari), the iPad simulator and a real iPad (iPad Pro M4,
+iPadOS 27) do all of this.
 
 ## M0.6 — Document model & persistent naming prototype
 

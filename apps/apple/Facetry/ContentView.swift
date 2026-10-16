@@ -33,7 +33,8 @@ struct ContentView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Facetry").font(.headline)
-            Text("Version \(version) · tech preview")
+            Text(
+                "Version \(version) · tech preview\(model?.stress == true ? " · stress test" : "")")
             Text(viewport.error ?? model?.error ?? coreStatus)
                 .foregroundStyle(model?.error != nil ? .red : .secondary)
         }
@@ -44,7 +45,7 @@ struct ContentView: View {
     }
 
     private var coreStatus: String {
-        guard model?.state != nil else { return "Starting the core…" }
+        guard model?.ready == true else { return "Starting the core…" }
         let versions = CoreVersions.current
         return "Core \(versions.core) · OpenCASCADE \(versions.kernel) · \(versions.platform)"
     }

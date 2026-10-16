@@ -44,8 +44,8 @@ because the C++ runtime it brings along is already in the core.
 ### Frame time
 
 Unchanged since M0.4 (see [Viewport](#viewport-m04)): 120 Hz in the Mac app and in Chromium,
-Safari capped at 60 Hz with 1.3 ms of GPU time for 215k triangles. **A real iPad is still
-missing** ([#7](https://github.com/DerPW/facetry/issues/7)).
+Safari capped at 60 Hz with 1.3 ms of GPU time for 215k triangles. On a real iPad (iPad Pro
+M4, 2026-10-17) the stress model also runs at 120 Hz.
 
 ### Sketch solver spike
 
@@ -119,7 +119,7 @@ Notes:
   Still well below a second, but worth watching as the core grows.
 - Over a real network, the 3.3 MB (brotli) download adds to these numbers. Browsers cache the
   compiled module afterwards.
-- On-device numbers for a real iPad come with the app shell in M0.5.
+- On-device viewport numbers for a real iPad are in [Viewport](#viewport-m04).
 
 ### Web module (M0.3)
 
@@ -155,13 +155,18 @@ triangles. 4× MSAA everywhere.
 | Chromium 152, WebGL2 | 215,482 triangles (stress) | 2048 × 1536 | — ² | 1.0 ms | — | 0.6 ms |
 | Safari 27, WebGL2 | 215,482 triangles (stress) | 3024 × 1794 | 56 fps ³ | 1.3 ms | — | 0.6–0.8 ms |
 | iPad simulator, Metal | 3,522 triangles | 2064 × 2752 | not meaningful ⁴ | — | 0.16 ms | — |
+| **iPad Pro 11" (M4), Metal** ⁵ | M0.6 example block | full screen | 120 Hz (8.33 ms) | — | 0.09–0.16 ms | — |
+| **iPad Pro 11" (M4), Metal** ⁵ | 215,482 triangles (stress) | full screen | 120 Hz (8.33 ms) | — | 0.09–0.16 ms | — |
 
 1. Average of 60 frames drawn back to back, then waiting for the GPU (`viewport.benchmark(60)`).
 2. Not measured: the built-in browser pane was hidden, which throttles `requestAnimationFrame`.
 3. Safari on macOS limits `requestAnimationFrame` to 60 Hz by default. With 1.3 ms of GPU work per
    frame, the viewport is far from being the limit.
-4. The simulator ran with heavy swapping on an 8 GB machine. **A real iPad still has to be
-   measured** (M0.5).
+4. The simulator ran with heavy swapping on an 8 GB machine, so it says nothing about speed.
+5. Measured on 2026-10-17 on iPadOS 27.0.1, Debug build, with a free personal team
+   ([#7](https://github.com/DerPW/facetry/issues/7)). The app's statistics line while orbiting
+   with a finger. Also checked: picking, orbit, pan and pinch with fingers, and Pencil hover
+   (highlights while hovering), drag and tap. The iPad holds its 120 Hz with the stress model.
 
 The web renderer module is small: `facetry-render.wasm` is 0.14 MB raw and 0.04 MB brotli.
 

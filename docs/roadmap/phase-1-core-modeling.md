@@ -90,8 +90,8 @@ Back to the [roadmap overview](../ROADMAP.md).
   - [ ] multi-select (Shift/Cmd on Mac, toggle mode on iPad)
   - [ ] window and crossing box selection
   - [ ] cycling through overlapping candidates; magnifier for precise touch picks
-- [x] Hover pre-highlight with mouse and with Pencil hover (M0.5; on a real iPad still to be
-      checked in [#7](https://github.com/DerPW/facetry/issues/7))
+- [x] Hover pre-highlight with mouse and with Pencil hover (M0.5; checked on a real iPad in
+      [#7](https://github.com/DerPW/facetry/issues/7))
 
 **Done when:** any edge of the benchmark models can be selected with a finger, with the Pencil
 and with a mouse on the first or second attempt.
