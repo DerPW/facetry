@@ -18,6 +18,14 @@ the WebAssembly build. All of Facetry is open source, and the build scripts in
 OpenCASCADE. The full license texts ship with every OpenCASCADE artifact (`licenses/`) and in
 the app.
 
+### sokol_gfx
+
+- Source: <https://github.com/floooh/sokol> (`sokol_gfx.h`, `sokol_log.h`, commit `5e94d1291fea`)
+- License: zlib/libpng
+- Copyright © Andre Weissflog
+
+Used by the viewport renderer (`render/`) on all platforms.
+
 ## Development and test only
 
 These components are used to build or test Facetry. They are not part of the shipped app.
@@ -27,6 +35,7 @@ These components are used to build or test Facetry. They are not part of the shi
 | [doctest](https://github.com/doctest/doctest) | 2.5.3 | MIT | C++ unit tests |
 | [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | JSON model descriptions in `facetry-cli` and the golden tests (not linked into the apps) |
 | [Vitest](https://vitest.dev/) | 5.x | MIT | Web app tests |
+| [sokol-shdc](https://github.com/floooh/sokol-tools) | `b975d5642093` | MIT | Compiling the viewport shaders (the generated header is checked in) |
 | [Vite](https://vite.dev/) | 8.x | MIT | Web app build |
 | [TypeScript](https://www.typescriptlang.org/) | 6.0.x | Apache-2.0 | Web app type checking |
 | [ESLint](https://eslint.org/), [typescript-eslint](https://typescript-eslint.io/) | 10.x, 8.x | MIT | Web app linting |

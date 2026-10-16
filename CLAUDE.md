@@ -19,9 +19,12 @@ Run the checks for the parts you touched (CI runs all of them and they are requi
 - Apple app: `apps/apple/scripts/build-core.sh`, `cd apps/apple && xcodegen generate`, then
   `xcodebuild … build` for the iPadOS simulator, `xcodebuild … test` on macOS (see
   docs/BUILDING.md), and `swift format lint --strict --recursive apps/apple`
-- Web app: build the core module (`cmake --build --preset wasm-release --target
-  facetry-core-web`), then `cd apps/web && npm run lint && npm run format:check && npm test && npm run build`
+- Web app: build the web modules (`cmake --build --preset wasm-release --target
+  facetry-core-web facetry-render-web`), then `cd apps/web && npm run lint && npm run format:check && npm test && npm run build`
 - Golden models: `build/macos-debug/tools/cli/facetry-cli check tests/models`
+- Shaders: after editing `render/shaders/viewport.glsl`, run `render/shaders/generate.sh`
+- Viewport changes: check the web app in a browser (`npm run dev`, `/?stress&bench` for numbers)
+  and the Mac app (Metal) before pushing; rendering has no automated image tests yet
 - C API changes: update `facetry_core.h`, both shell wrappers (Swift `Core.swift`, TypeScript
   `api.ts` + `wasm/facetry-core.d.mts`) and bump `FACETRY_API_VERSION_*` as described in ADR-0003
 

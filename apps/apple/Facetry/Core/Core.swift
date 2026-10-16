@@ -42,7 +42,7 @@ struct ShapeProperties: Sendable {
 }
 
 /// Display mesh, laid out for direct GPU upload (see facetry_mesh_buffer_kind).
-struct MeshData: Sendable {
+struct MeshData: Sendable, Equatable {
     var positions: [Float] = []
     var normals: [Float] = []
     var triangles: [UInt32] = []

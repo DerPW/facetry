@@ -1,3 +1,4 @@
 dist
 package-lock.json
 src/core/wasm/*.mjs
+src/render/wasm/*.mjs

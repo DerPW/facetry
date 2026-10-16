@@ -39,6 +39,7 @@ if(FACETRY_BUILD_TESTS)
 endif()
 
 add_subdirectory(core)
+add_subdirectory(render)
 
 # The command-line tool runs on the development machine only.
 if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")

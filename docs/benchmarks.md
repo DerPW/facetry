@@ -91,3 +91,31 @@ Combined with `-fwasm-exceptions`, Emscripten 6.0.12 produced invalid WebAssembl
 `ShapeUpgrade_ShapeDivide::Perform` ("br_table: label arity inconsistent"). The module failed to
 compile in Node and browsers. The WebAssembly build therefore uses `-UOCC_CONVERT_SIGNALS`.
 WebAssembly has no signals to convert, so no behavior is lost. Native builds are unaffected.
+
+## Viewport (M0.4)
+
+Measured on 2026-10-16 on the same MacBook Pro (Apple M3, 120 Hz ProMotion display). Demo part:
+the plate with rounded edges, boss and hole. **Stress** tessellates it finely to 215,482
+triangles. 4× MSAA everywhere.
+
+| Platform | Model | Framebuffer | Presented frame rate | GPU time per frame¹ | Draw call (CPU) | Pick (18 pt radius) |
+|---|---|---|---|---|---|---|
+| macOS app, Metal | 3,522 triangles | window | 120 Hz (8.33 ms) | — | 0.05–0.4 ms | — |
+| macOS app, Metal | 215,482 triangles (stress) | window | 120 Hz (8.33 ms) | — | 0.1–0.4 ms | — |
+| Chromium 152, WebGL2 | 3,522 triangles | 2048 × 1536 | 119 fps | — | 0.10 ms | — |
+| Chromium 152, WebGL2 | 215,482 triangles (stress) | 2048 × 1536 | — ² | 1.0 ms | — | 0.6 ms |
+| Safari 27, WebGL2 | 215,482 triangles (stress) | 3024 × 1794 | 56 fps ³ | 1.3 ms | — | 0.6–0.8 ms |
+| iPad simulator, Metal | 3,522 triangles | 2064 × 2752 | not meaningful ⁴ | — | 0.16 ms | — |
+
+1. Average of 60 frames drawn back to back, then waiting for the GPU (`viewport.benchmark(60)`).
+2. Not measured: the built-in browser pane was hidden, which throttles `requestAnimationFrame`.
+3. Safari on macOS limits `requestAnimationFrame` to 60 Hz by default. With 1.3 ms of GPU work per
+   frame, the viewport is far from being the limit.
+4. The simulator ran with heavy swapping on an 8 GB machine. **A real iPad still has to be
+   measured** (M0.5).
+
+The web renderer module is small: `facetry-render.wasm` is 0.14 MB raw and 0.04 MB brotli.
+
+CPU picking (ADR-0004) costs well under a millisecond per pointer move at 215k triangles.
+The linear scan over edge segments dominates. A screen-space grid is the next step if larger
+models need it.

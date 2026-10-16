@@ -102,21 +102,30 @@ buffers they can render.
 
 **Size:** M · **Depends on:** M0.3
 
-- [ ] Decide the renderer approach (ADR-0004): one shared C++ renderer on a thin graphics
+- [x] Decide the renderer approach (ADR-0004): one shared C++ renderer on a thin graphics
       abstraction (Metal and WebGPU/WebGL2), or a native Metal renderer plus a separate web
-      renderer
-- [ ] Shaded faces with simple, CAD-style lighting (hemisphere light plus a key light)
-- [ ] Crisp edges with constant screen-space width, and vertex dots
-- [ ] Camera: perspective and orthographic, orbit around the point under the cursor or finger,
+      renderer → **shared C++ renderer on sokol_gfx**
+      ([ADR-0004](../adr/0004-viewport-renderer-shared-cpp-sokol.md))
+- [x] Shaded faces with simple, CAD-style lighting (hemisphere light plus a key light)
+- [x] Crisp edges with constant screen-space width, and vertex dots
+- [x] Camera: perspective and orthographic, orbit around the point under the cursor or finger,
       pan, zoom to the cursor
-- [ ] GPU picking via an ID buffer for faces, edges and vertices, with a configurable pick
-      radius for touch
-- [ ] Hover and selection highlight
-- [ ] MSAA, high-DPI and 120 Hz ProMotion support
-- [ ] Frame-time overlay for debugging
+- [x] Picking for faces, edges and vertices with a configurable pick radius for touch —
+      **on the CPU** (BVH ray cast plus screen-space distance) instead of a GPU ID buffer, see
+      ADR-0004
+- [x] Hover and selection highlight
+- [x] MSAA, high-DPI and 120 Hz ProMotion support
+- [x] Frame-time overlay for debugging
+- [x] Viewport hosted in both apps: `ViewportView` (MTKView) on iPadOS/macOS, a WebGL2 canvas in
+      the web app
 
 **Done when:** a 100k-triangle model renders at the display refresh rate on the reference iPad,
 on the Mac and in current Safari and Chrome, and edges can be picked reliably with a finger.
+
+**Status:** a 215k-triangle model runs at 120 Hz on the Mac (Metal) and in Chromium, and is far
+inside the frame budget in Safari, which caps at 60 Hz (see [benchmarks](../benchmarks.md)).
+Finger picking uses an 18-point radius and is covered by unit tests. **Still to verify on a real
+iPad** (frame rate and finger picking) once the app shell can be installed on a device (M0.5).
 
 ## M0.5 — App shells
 
@@ -124,10 +133,10 @@ on the Mac and in current Safari and Chrome, and edges can be picked reliably wi
 
 - [ ] **Apple:** SwiftUI multiplatform app (iPadOS + macOS)
   - [ ] document-based app skeleton (opens and saves an empty `.facetry` document)
-  - [ ] Metal view hosting the viewport
+  - [x] Metal view hosting the viewport (done in M0.4)
   - [ ] input routing that tells Pencil, finger, mouse, trackpad and keyboard apart
 - [ ] **Web:** Vite + TypeScript app (UI framework decided in ADR-0007)
-  - [ ] core in a Web Worker, viewport on a canvas
+  - [x] core in a Web Worker, viewport on a canvas (done in M0.3/M0.4)
   - [ ] Pointer Events with `pointerType` (pen, touch, mouse) routed the same way as on Apple
   - [ ] PWA manifest and service worker for offline use
 - [ ] Web build deployed from `main` to GitHub Pages

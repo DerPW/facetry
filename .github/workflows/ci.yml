@@ -154,17 +154,19 @@ jobs:
           kind: wasm
       - name: Configure
         run: cmake --preset wasm-release -DFACETRY_WARNINGS_AS_ERRORS=ON
-      - name: Build (tests and web module)
+      - name: Build (tests and web modules)
         run: cmake --build --preset wasm-release
       - name: Test (Node)
         run: ctest --preset wasm-release
-      - name: Keep the web module for the web app
+      - name: Keep the web modules for the web app
         uses: actions/upload-artifact@v7
         with:
-          name: facetry-core-web
+          name: facetry-web-modules
           path: |
             apps/web/src/core/wasm/facetry-core.mjs
             apps/web/src/core/wasm/facetry-core.wasm
+            apps/web/src/render/wasm/facetry-render.mjs
+            apps/web/src/render/wasm/facetry-render.wasm
           retention-days: 7
 
   # Publishes newly built OpenCASCADE artifacts once all core tests passed with them.
@@ -247,11 +249,11 @@ jobs:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
-      - name: Get the core web module
+      - name: Get the core and renderer web modules
         uses: actions/download-artifact@v8
         with:
-          name: facetry-core-web
-          path: apps/web/src/core/wasm
+          name: facetry-web-modules
+          path: apps/web/src
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -272,6 +274,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Check the generated shader header
+        run: render/shaders/generate.sh --check
       - name: Check C++ formatting (clang-format ${{ env.CLANG_FORMAT_VERSION }})
         run: >-
           git ls-files -- '*.cpp' '*.hpp' '*.h' |
