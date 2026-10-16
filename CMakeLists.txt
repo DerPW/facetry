@@ -25,14 +25,22 @@ if(EMSCRIPTEN)
     # Must match the OpenCASCADE build (third_party/occt/build.sh): OCCT reports failures with
     # C++ exceptions, so native WebAssembly exceptions are on everywhere, and SIMD is enabled.
     add_compile_options(-fwasm-exceptions -msimd128)
-    add_link_options(-fwasm-exceptions -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=2MB)
+    # 8 MB stack like other OCCT WebAssembly builds (see docs/PRIOR-ART.md): booleans and
+    # fillets recurse deeply.
+    add_link_options(-fwasm-exceptions -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=8MB)
 endif()
 
 include(cmake/FacetryWarnings.cmake)
 include(cmake/FacetryOCCT.cmake)
+include(cmake/FacetryDependencies.cmake)
 
 if(FACETRY_BUILD_TESTS)
     enable_testing()
 endif()
 
 add_subdirectory(core)
+
+# The command-line tool runs on the development machine only.
+if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_subdirectory(tools/cli)
+endif()

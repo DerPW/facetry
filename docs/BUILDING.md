@@ -73,9 +73,24 @@ source ~/emsdk/emsdk_env.sh
 cmake --preset wasm-debug && cmake --build --preset wasm-debug && ctest --preset wasm-debug
 ```
 
+The `wasm-*` builds also produce the web app's core module (`facetry-core.mjs` and `.wasm`) and
+copy it into `apps/web/src/core/wasm/`. Use the release preset for the web app:
+
+```bash
+cmake --preset wasm-release && cmake --build --preset wasm-release --target facetry-core-web
+```
+
 The `wasm-*` presets find the toolchain through the `EMSDK` environment variable.
 
 ## Apple app
+
+The app links the core as `CFacetryCore.xcframework` (static library plus the C API as a Clang
+module) and embeds `OCCT.xcframework`. Both are built into `apps/apple/Frameworks/` (not checked
+in) by a script; run it again after changing core code:
+
+```bash
+apps/apple/scripts/build-core.sh
+```
 
 The Xcode project is generated from `apps/apple/project.yml` and is not checked in. Generate it
 again after pulling changes that touch `project.yml` or add files:
@@ -84,23 +99,33 @@ again after pulling changes that touch `project.yml` or add files:
 cd apps/apple && xcodegen generate && open Facetry.xcodeproj
 ```
 
-The app target supports iPad (iPadOS 26+) and native macOS (macOS 26+, Apple silicon). To build
-without signing, as CI does:
+The app target supports iPad (iPadOS 26+) and native macOS (macOS 26+), Apple silicon only. To
+build and test without a signing identity, as CI does:
 
 ```bash
 xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
+```bash
+xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry -destination 'platform=macOS,arch=arm64' CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test
+```
+
 ## Web app
+
+The web app needs the core module first (see [WebAssembly](#webassembly)). Then:
 
 ```bash
 cd apps/web && npm install && npm run dev
 ```
 
+The core runs in a Web Worker (`src/core/core.worker.ts`). The UI thread talks to it through
+`CoreClient` (`src/core/client.ts`).
+
 | Script | Purpose |
 |---|---|
 | `npm run dev` | Development server |
 | `npm run build` | Type-check and production build into `dist/` |
+| `npm test` | Vitest: the TypeScript core API against the real WebAssembly module, in Node |
 | `npm run lint` | ESLint |
 | `npm run format` / `format:check` | Prettier |
 
@@ -119,11 +144,11 @@ cd apps/web && npm install && npm run dev
 | Check | Runner | What it does |
 |---|---|---|
 | `OpenCASCADE (Apple)`, `OpenCASCADE (WebAssembly)` | macOS 26, Ubuntu 24.04 | Provide the OCCT artifact: from the cache, from the release, or built from source when a new revision has no release yet |
-| `core (macOS)` | macOS 26 | Build and test the core natively |
+| `core (macOS)` | macOS 26 | Build and test the core natively, check the golden models with `facetry-cli` |
 | `core (iOS)` | macOS 26 | Build the core for the iOS simulator and device; run the tests in the simulator |
-| `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten and run its tests in Node |
-| `Apple app` | macOS 26 | Generate the Xcode project, build for the iPadOS simulator and macOS, lint Swift |
-| `web app` | Ubuntu 24.04 | Lint, format check, type-check and build the web app |
+| `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten, run its tests in Node, build the web module |
+| `Apple app` | macOS 26 | Build the core frameworks and the app, run the Swift tests on macOS, lint Swift |
+| `web app` | Ubuntu 24.04 | Lint, format check, test against the core module, type-check and build |
 | `format (C++)` | Ubuntu 24.04 | clang-format check |
 
 All checks above are required to merge into `main`. A seventh job, `Publish OpenCASCADE

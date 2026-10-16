@@ -1,6 +1,11 @@
 # facetry-cli
 
-Headless command-line tool for building models from a JSON description, printing statistics
-and exporting. It is used by tests and for debugging.
+Headless command-line tool: builds models from JSON descriptions
+([format](../../tests/models/README.md)), prints their properties, exports STL and checks the
+golden models. Built with the `macos-*` presets.
 
-Planned in milestone [M0.3](../../docs/roadmap/phase-0-foundation.md).
+```bash
+build/macos-debug/tools/cli/facetry-cli version
+build/macos-debug/tools/cli/facetry-cli info tests/models/box-cut-cylinder.json --stl plate.stl
+build/macos-debug/tools/cli/facetry-cli check tests/models
+```

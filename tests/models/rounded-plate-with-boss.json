@@ -1,0 +1,57 @@
+{
+  "description": "Rounded plate with a cylindrical boss joined on top and a hole through both.",
+  "operations": [
+    {
+      "id": "plate",
+      "op": "box",
+      "size": [40, 30, 4]
+    },
+    {
+      "id": "rounded",
+      "op": "fillet",
+      "shape": "plate",
+      "edges": {
+        "parallelTo": [0, 0, 1]
+      },
+      "radius": 5
+    },
+    {
+      "id": "boss",
+      "op": "cylinder",
+      "center": [20, 15],
+      "radius": 6,
+      "height": 12
+    },
+    {
+      "id": "joined",
+      "op": "fuse",
+      "shape": "rounded",
+      "tool": "boss"
+    },
+    {
+      "id": "hole",
+      "op": "cylinder",
+      "center": [20, 15],
+      "radius": 3,
+      "height": 12
+    },
+    {
+      "id": "result",
+      "op": "cut",
+      "shape": "joined",
+      "tool": "hole"
+    }
+  ],
+  "result": "result",
+  "expected": {
+    "tolerance": 1e-06,
+    "volume": 5279.645943005,
+    "area": 3353.982236862,
+    "bbox": [[0, 0, 0], [40, 30, 12]],
+    "solids": 1,
+    "faces": 14,
+    "edges": 31,
+    "vertices": 21,
+    "notes": "volume computed by hand; area taken from the first regeneration"
+  }
+}

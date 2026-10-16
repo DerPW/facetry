@@ -16,7 +16,7 @@ iPadOS/macOS and TypeScript for the web, render panels and forward input.
 │ iPadOS + macOS               │   │ PWA on GitHub Pages          │
 │ panels, menus, Pencil input  │   │ panels, menus, Pointer Events│
 └──────────────┬───────────────┘   └──────────────┬───────────────┘
-               │      core API (C ABI or bindings, ADR-0003)       │
+               │   core API: facetry_core.h, C ABI (ADR-0003)      │
 ┌──────────────┴───────────────────────────────────┴───────────────┐
 │ facetry-core (C++20) — native on Apple, WebAssembly in a Worker  │
 │                                                                  │
@@ -89,11 +89,15 @@ Set up in M0.1. How to build each part: [Building](BUILDING.md).
 ```
 CMakeLists.txt    root CMake project; CMakePresets.json defines all core targets
 cmake/            shared CMake helpers (warnings, …)
-core/             facetry-core (C++20): document, features, kernel adapter, solver, io, …
+core/include/     facetry_core.h (the C API for the shells) and facetry/core/*.hpp (C++ API)
+core/src/         facetry-core (C++20); src/kernel/ is the only place that uses OpenCASCADE
+core/src/script/  JSON model descriptions (CLI and golden tests only)
+core/wasm/        the WebAssembly module for the web app
 core/tests/       unit tests and golden-model tests
-apps/apple/       SwiftUI app for iPadOS and macOS (XcodeGen spec: project.yml)
-apps/web/         Vite + TypeScript app
-tools/cli/        facetry-cli: headless regeneration, inspection, export
+apps/apple/       SwiftUI app for iPadOS and macOS (XcodeGen spec: project.yml);
+                  Facetry/Core/ wraps the C API, scripts/build-core.sh builds its frameworks
+apps/web/         Vite + TypeScript app; src/core/ wraps the C API and runs it in a Web Worker
+tools/cli/        facetry-cli: build models from JSON, print stats, export STL, check goldens
 tests/models/     benchmark models (.facetry) with expected results
 third_party/      build scripts and pins for OpenCASCADE, PlaneGCS, …
 docs/             roadmap, architecture, ADRs, benchmarks
@@ -131,7 +135,7 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 |---|---|---|---|
 | [0001](adr/0001-geometry-kernel-opencascade.md) | Geometry kernel: OpenCASCADE | Accepted | M0.1 |
 | [0002](adr/0002-shared-core-with-native-and-web-shells.md) | Shared C++ core with native (SwiftUI) and web (TypeScript) shells | Accepted | M0.1 |
-| 0003 | Core API boundary: C ABI vs. Swift C++ interop + Embind | Open | M0.3 |
+| [0003](adr/0003-core-api-boundary-c-abi.md) | Core API boundary: a C ABI with handles | Accepted | M0.3 |
 | 0004 | Viewport renderer: shared C++ renderer vs. one renderer per platform | Open | M0.4 |
 | 0005 | Sketch constraint solver: PlaneGCS (proposed) | Open | M0.7 |
 | 0006 | Persistent naming scheme | Open | M0.6 |

@@ -72,6 +72,18 @@ Notes:
   compiled module afterwards.
 - On-device numbers for a real iPad come with the app shell in M0.5.
 
+### Web module (M0.3)
+
+The core module the web app loads (`facetry-core.wasm`, release build). It contains the C API,
+modeling (box, cylinder, booleans, fillet), tessellation and logging. STEP is not linked in yet.
+
+| Raw | gzip -9 | brotli 11 |
+|---|---|---|
+| 10.11 MB | 3.77 MB | 2.63 MB |
+
+In the browser the module loads in the core Web Worker. Box → fillet → tessellate, sent from the
+UI thread through the worker, completes right after start-up (Chromium, local dev server).
+
 ### Known issue: setjmp/longjmp and WebAssembly exceptions
 
 OCCT normally defines `OCC_CONVERT_SIGNALS`, which wraps error handlers in `setjmp`/`longjmp`.

@@ -1,0 +1,31 @@
+{
+  "description": "20 x 10 x 5 box with all four vertical edges rounded (r = 2).",
+  "operations": [
+    {
+      "id": "box",
+      "op": "box",
+      "size": [20, 10, 5]
+    },
+    {
+      "id": "rounded",
+      "op": "fillet",
+      "shape": "box",
+      "edges": {
+        "parallelTo": [0, 0, 1]
+      },
+      "radius": 2
+    }
+  ],
+  "result": "rounded",
+  "expected": {
+    "tolerance": 1e-06,
+    "volume": 982.831853072,
+    "area": 675.964594301,
+    "bbox": [[0, 0, 0], [20, 10, 5]],
+    "solids": 1,
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "notes": "volume and area computed by hand: each fillet removes (1 - pi/4) r^2 per unit length"
+  }
+}
