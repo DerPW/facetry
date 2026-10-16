@@ -104,9 +104,6 @@ make_framework() {
         -Wl,-all_load "${libs[@]}" "${system_libs[@]}" \
         -o "$binary"
     xcrun strip -x "$binary"
-    # Stripping invalidates the linker's ad-hoc signature, which arm64 requires. Apps re-sign the
-    # framework with their own identity when embedding it.
-    xcrun codesign --force --sign - "$binary"
     write_framework_plist "$plist_dir/Info.plist" "$platform" "$min_os_key"
 
     if [[ "$target" == macos ]]; then
@@ -114,6 +111,11 @@ make_framework() {
         ln -s Versions/Current/OCCT "$fw/OCCT"
         ln -s Versions/Current/Resources "$fw/Resources"
     fi
+    # Stripping invalidates the linker's ad-hoc signature, which arm64 requires. Sign the whole
+    # bundle with its bundle ID as identifier: devices refuse frameworks whose identifier differs,
+    # and apps keep the identifier when they re-sign the framework with their own identity.
+    # (Artifacts up to r1 lack this; apps/apple/scripts/build-core.sh fixes them.)
+    xcrun codesign --force --sign - --identifier io.github.derpw.facetry.occt "$fw"
 }
 
 case "$kind" in

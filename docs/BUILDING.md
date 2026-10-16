@@ -131,8 +131,9 @@ cd apps/apple && xcodegen generate && open Facetry.xcodeproj
 ```
 
 The app is document-based: it opens and saves `.facetry` documents (type
-`io.github.derpw.facetry.document`, declared in `project.yml`). Until the file format is decided
-(ADR-0008, M0.7) a document is a small JSON file with a format version.
+`io.github.derpw.facetry.document`, declared in `project.yml`). Until the native file format
+([ADR-0008](adr/0008-native-file-format.md)) is implemented (#11), a document is a small JSON file
+with a format version.
 
 The app target supports iPad (iPadOS 26+) and native macOS (macOS 26+), Apple silicon only. To
 build and test without a signing identity, as CI does:
@@ -144,6 +145,43 @@ xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry -destination 'g
 ```bash
 xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry -destination 'platform=macOS,arch=arm64' CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test
 ```
+
+### Running on your own iPad
+
+A free Apple account is enough. Apps signed with it run for seven days; then build and install
+again.
+
+1. **Xcode:** add your Apple account under Settings → Accounts. It creates a "Personal Team".
+2. **iPad:** iPadOS 26 or newer. Connect it to the Mac once by cable and trust the Mac. Turn on
+   Settings → Privacy & Security → Developer Mode, which needs a restart.
+3. **Your team ID:** put it into `apps/apple/Local.xcconfig`, which is not checked in. Xcode shows
+   the ID when you pick the team under Signing & Capabilities. The file contains one line:
+
+   ```
+   DEVELOPMENT_TEAM = ABCDE12345
+   ```
+
+   `project.yml` includes it through `Signing.xcconfig`, so it survives `xcodegen generate`. A
+   team picked only in Xcode's Signing tab is lost the next time the project is generated.
+4. **Build and run:** run `build-core.sh` and `xcodegen generate` as above. Then pick the iPad as
+   the run destination in Xcode and run.
+5. **First start with a free account:** the iPad may refuse to open the app until you trust the
+   developer under Settings → General → VPN & Device Management.
+
+Without Xcode's UI, the same in the terminal (replace the device ID; `xcrun devicectl list
+devices` lists them):
+
+```bash
+xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry -destination 'id=<device-id>' -allowProvisioningUpdates build
+```
+
+```bash
+xcrun devicectl device install app --device <device-id> ~/Library/Developer/Xcode/DerivedData/Facetry-*/Build/Products/Debug-iphoneos/Facetry.app
+```
+
+If installing fails with *"Code signing identifier … does not match bundle identifier"* for
+`OCCT.framework`, run `build-core.sh` again. It signs the framework with its bundle ID, which
+devices require.
 
 ## Web app
 

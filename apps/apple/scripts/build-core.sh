@@ -46,4 +46,14 @@ for preset in "${presets[@]}"; do
 done
 xcodebuild -create-xcframework "${args[@]}" -output "$out/CFacetryCore.xcframework" >/dev/null
 ditto "$occt" "$out/OCCT.xcframework"
+
+# Devices only install frameworks whose code signing identifier matches their bundle ID, and Xcode
+# keeps a framework's identifier when it re-signs it for the app. The OCCT artifact (up to r1) is
+# signed with a generated identifier, so sign each slice with its bundle ID here.
+for framework in "$out"/OCCT.xcframework/*/OCCT.framework; do
+    plist="$framework/Info.plist"
+    [[ -f "$plist" ]] || plist="$framework/Resources/Info.plist" # macOS: versioned bundle
+    identifier="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist")"
+    xcrun codesign --force --sign - --identifier "$identifier" "$framework"
+done
 echo "== Frameworks ready in $out"
