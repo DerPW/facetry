@@ -59,8 +59,8 @@ milestone says so and the web app explains why the feature is missing.
 
 ### Web: GitHub Pages
 
-- Deployed automatically from `main` by the CI workflow, so the web app at
-  GitHub Pages always shows the latest merged state.
+- Deployed automatically from `main` by the CI workflow, so the deployed web app always shows
+  the latest merged state.
 - Installable as a PWA (`manifest.webmanifest`, icons) and usable offline after the first visit:
   a generated service worker precaches every file of the build.
 - GitHub Pages cannot set custom HTTP headers. WebAssembly threads would need cross-origin

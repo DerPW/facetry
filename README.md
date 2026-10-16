@@ -5,10 +5,9 @@ interface.
 
 > **Status: v0.0.1 tech preview.** Phase 0, the technical foundation, is done.
 >
-> **Try it in the browser:** a demo part rendered by the
-> real core, with orbit, zoom and selection. It works offline once loaded. The Mac and iPad
-> apps build from source ([Building](docs/BUILDING.md)). There are no modeling tools in the
-> apps yet; the core already regenerates parametric models with stable references. See the
+> The web app, the Mac app and the iPad app build from source ([Building](docs/BUILDING.md)).
+> They open an example model whose parameters you can edit; the core regenerates it with stable
+> references. There are no sketching or modeling tools in the apps yet. See the
 > [roadmap](docs/ROADMAP.md) for what comes next.
 
 ## What Facetry wants to be
