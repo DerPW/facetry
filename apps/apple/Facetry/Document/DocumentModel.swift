@@ -33,6 +33,12 @@ actor DocumentEngine {
         try core.redo(session)
     }
 
+    /// A reference to an edge of a body, as JSON for a feature definition.
+    func reference(body: String, edge: UInt32) throws -> JSONValue {
+        let json = try core.reference(in: session, body: body, kind: .edge, id: edge)
+        return try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+    }
+
     /// The document as a .facetry file.
     func saveFile() throws -> Data {
         try core.saveFile(session)
@@ -105,7 +111,37 @@ final class DocumentModel {
     }
 
     func setParameter(_ name: String, to value: Double) async {
-        await run { try await $0.apply([.setParameter(name: name, value: value)]) }
+        await edit([.setParameter(name: name, value: value)])
+    }
+
+    /// Applies edits as one undo step.
+    func edit(_ edits: [DocumentEdit]) async {
+        await run { try await $0.apply(edits) }
+    }
+
+    /// A broken reference waiting for the user to pick its replacement in the viewport (ADR-0006).
+    struct Repair: Equatable {
+        let feature: String
+        let index: Int
+    }
+
+    var repair: Repair?
+
+    /// Replaces the broken reference ``repair`` with the picked edge.
+    func completeRepair(with pick: Pick) async {
+        guard let repair, pick.kind == .edge, let state, let body = state.bodies.first,
+            let feature = state.features.first(where: { $0.id == repair.feature }),
+            case .array(let edges)? = feature.definition["edges"],
+            edges.indices.contains(repair.index)
+        else { return }
+        self.repair = nil
+        await run { engine in
+            var replaced = edges
+            replaced[repair.index] = try await engine.reference(body: body, edge: pick.id)
+            var definition = feature.definition
+            definition["edges"] = .array(replaced)
+            try await engine.apply([.replaceFeature(definition)])
+        }
     }
 
     func undo() async {

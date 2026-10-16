@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// The M0.6 example document, opened on start until documents can be opened and saved (#11).
+// The M0.6 example document: what the app shows until a file is opened.
 import exampleDocument from "../../../tests/documents/corner-fillet.json?raw";
 import { ModelPanel } from "./components/ModelPanel";
+import { Timeline, type Repair } from "./components/Timeline";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import {
   BooleanOp,
+  ElementKind,
   type Edit,
   type MeshData,
   type ModelSnapshot,
+  type Reference,
   type SessionState,
 } from "./core/api";
 import { CoreClient } from "./core/client";
@@ -72,6 +75,7 @@ export function App() {
   const [model, setModel] = useState<SessionState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [fileName, setFileName] = useState("Untitled.facetry");
+  const [repair, setRepair] = useState<Repair | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
@@ -99,7 +103,7 @@ export function App() {
   // Open the example document in the core worker and show it.
   useEffect(() => {
     if (!viewport) return;
-    viewport.setListeners({ onSelectionChange: setSelection, onStats: setStats });
+    viewport.setListeners({ onStats: setStats });
     let cancelled = false;
     const core = new CoreClient();
     void (async () => {
@@ -162,6 +166,47 @@ export function App() {
       void change(({ core, handle }) => core.call("applyEdits", handle, edits)),
     [change],
   );
+
+  // Repairing a broken reference: the next edge the user selects replaces it (ADR-0006). Refs, so
+  // that the viewport's selection callback sees the current values.
+  const repairRef = useRef<Repair | null>(null);
+  const modelRef = useRef<SessionState | null>(null);
+  useEffect(() => {
+    repairRef.current = repair;
+    modelRef.current = model;
+  }, [repair, model]);
+
+  const onPick = useCallback(
+    (pick: Pick) => {
+      setSelection(pick);
+      const pending = repairRef.current;
+      const body = modelRef.current?.bodies[0];
+      const feature = modelRef.current?.features.find((f) => f.id === pending?.feature);
+      if (!pending || !body || !feature || pick.kind !== PickKind.Edge) return;
+      repairRef.current = null;
+      setRepair(null);
+      void change(async ({ core, handle }) => {
+        const reference: Reference = await core.call(
+          "makeReference",
+          handle,
+          body,
+          ElementKind.Edge,
+          pick.id,
+        );
+        const edges = [...((feature.definition.edges as Reference[] | undefined) ?? [])];
+        edges[pending.index] = reference;
+        await core.call("applyEdits", handle, {
+          op: "replaceFeature",
+          feature: { ...feature.definition, edges },
+        });
+      });
+    },
+    [change],
+  );
+
+  useEffect(() => {
+    viewport?.setListeners({ onSelectionChange: onPick });
+  }, [viewport, onPick]);
 
   // Opens a .facetry file in place of the current document. Saving and opening with the File
   // System Access API, and autosave, come with M1.9 and #17.
@@ -294,6 +339,10 @@ export function App() {
           </button>
           <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
         </div>
+        {model && <Timeline state={model} onEdit={edit} repair={repair} onRepair={setRepair} />}
+        {repair && (
+          <p className="panel hint">Select the edge that should replace the missing one.</p>
+        )}
         <p className="panel stats">{stats ? formatStats(stats) : ""}</p>
         <p className="panel selection">{describe(selection)}</p>
       </div>

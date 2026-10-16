@@ -48,6 +48,20 @@ struct SessionTests {
         try core.release(session)
     }
 
+    @Test func definitionsGoBackUnchangedOrEdited() throws {
+        let core = try Core()
+        let session = try openExample(core)
+        try core.regenerate(session)
+        let features = try core.state(of: session).features
+        #expect(features[0].dependents == ["f2", "f5"])
+        // The fillet's definition carries references with shadows (integer IDs, coordinates).
+        try core.apply(session, [.replaceFeature(features[2].definition)])
+        var extrude = features[1].definition
+        extrude["distance"] = .number(7)
+        try core.apply(session, [.replaceFeature(extrude)])
+        #expect(try core.state(of: session).features[1].definition["distance"] == .number(7))
+    }
+
     @Test func progressCanCancel() throws {
         let core = try Core()
         let session = try openExample(core)

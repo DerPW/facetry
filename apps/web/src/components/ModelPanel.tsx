@@ -1,20 +1,11 @@
 import type { SessionState } from "../core/api";
 
-const statusSymbol: Record<string, string> = {
-  ok: "✓",
-  warning: "⚠",
-  error: "✕",
-  suppressed: "⏸",
-  rolledBack: "↶",
-  notRun: "○",
-};
-
 interface Props {
   state: SessionState;
   onSetParameter: (name: string, value: number) => void;
 }
 
-/** Parameters and timeline of the open model. */
+/** The parameters of the open model. */
 export function ModelPanel({ state, onSetParameter }: Props) {
   const commit = (name: string, current: number, input: HTMLInputElement) => {
     const value = input.valueAsNumber;
@@ -23,7 +14,7 @@ export function ModelPanel({ state, onSetParameter }: Props) {
   };
 
   return (
-    <section className="panel model" aria-label="Model">
+    <section className="panel model" aria-label="Parameters">
       <h2>Parameters</h2>
       {state.parameters.map(({ name, value }) => (
         <label key={name} className="parameter">
@@ -42,22 +33,6 @@ export function ModelPanel({ state, onSetParameter }: Props) {
           <span className="muted">mm</span>
         </label>
       ))}
-      <h2>Timeline</h2>
-      <ol className="timeline">
-        {state.features.map((feature) => (
-          <li key={feature.id} className={`feature ${feature.status}`}>
-            <span aria-label={feature.status} title={feature.status}>
-              {statusSymbol[feature.status] ?? "?"}
-            </span>{" "}
-            {feature.name}
-            {feature.messages.map((message) => (
-              <p key={message} className="muted">
-                {message}
-              </p>
-            ))}
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }

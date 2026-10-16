@@ -105,7 +105,12 @@ export interface SessionState {
     suppressed: boolean;
     status: FeatureStatus;
     messages: string[];
+    /** Indices into the feature's references (a fillet's `edges`) that could not be resolved. */
     brokenReferences: number[];
+    /** Later features that use this one, directly or through others. */
+    dependents: string[];
+    /** The feature in the document's JSON form, to change and send back with `replaceFeature`. */
+    definition: FeatureJson & { id: string };
   }[];
   /** Bodies of the last regeneration, by the ID of the feature that created them. */
   bodies: string[];

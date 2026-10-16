@@ -109,6 +109,14 @@ TEST_CASE("a failing edit in an array leaves the document unchanged") {
     CHECK_FALSE(session.canUndo());
 }
 
+TEST_CASE("a definition from the summary can be edited and sent back") {
+    Session session = cornerFilletSession();
+    json definition = json::parse(sessionStateJson(session))["features"][1]["definition"];
+    definition["distance"] = 7;
+    applyJson(session, json({{"op", "replaceFeature"}, {"feature", definition}}).dump());
+    CHECK(std::get<Extrude>(session.document().findFeature("f2")->data).distance == Value(7.0));
+}
+
 TEST_CASE("the session summary reflects document and regeneration") {
     Session session = cornerFilletSession();
     json state = json::parse(sessionStateJson(session));
@@ -120,13 +128,21 @@ TEST_CASE("the session summary reflects document and regeneration") {
     state = json::parse(sessionStateJson(session));
     CHECK(state["needsRegeneration"] == false);
     CHECK(state["bodies"] == json::array({"f2"}));
-    CHECK(state["features"][2] == json({{"id", kFillet},
-                                        {"name", "Fillet 1"},
-                                        {"type", "fillet"},
-                                        {"suppressed", false},
-                                        {"status", "ok"},
-                                        {"messages", json::array()},
-                                        {"brokenReferences", json::array()}}));
+    json fillet = state["features"][2];
+    CHECK(fillet["definition"]["radius"] == "radius");
+    CHECK(fillet["definition"]["id"] == kFillet);
+    fillet.erase("definition");
+    CHECK(fillet == json({{"id", kFillet},
+                          {"name", "Fillet 1"},
+                          {"type", "fillet"},
+                          {"suppressed", false},
+                          {"status", "ok"},
+                          {"messages", json::array()},
+                          {"brokenReferences", json::array()},
+                          {"dependents", json::array()}}));
+    // The sketch feeds the extrude, which the fillet changes: deleting the sketch breaks both.
+    CHECK(state["features"][0]["dependents"] == json::array({"f2", kFillet}));
+    CHECK(state["features"][1]["dependents"] == json::array({kFillet}));
 
     const json names = json::parse(elementNamesJson(*session.regeneration().model.bodies.at("f2")));
     CHECK(names["faces"].size() == 7);
