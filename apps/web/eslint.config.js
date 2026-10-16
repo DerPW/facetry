@@ -4,7 +4,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "src/core/wasm/*.mjs"] },
   js.configs.recommended,
   tseslint.configs.strict,
   {

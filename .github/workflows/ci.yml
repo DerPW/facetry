@@ -153,11 +153,19 @@ jobs:
         with:
           kind: wasm
       - name: Configure
-        run: cmake --preset wasm-debug -DFACETRY_WARNINGS_AS_ERRORS=ON
-      - name: Build
-        run: cmake --build --preset wasm-debug
+        run: cmake --preset wasm-release -DFACETRY_WARNINGS_AS_ERRORS=ON
+      - name: Build (tests and web module)
+        run: cmake --build --preset wasm-release
       - name: Test (Node)
-        run: ctest --preset wasm-debug
+        run: ctest --preset wasm-release
+      - name: Keep the web module for the web app
+        uses: actions/upload-artifact@v7
+        with:
+          name: facetry-core-web
+          path: |
+            apps/web/src/core/wasm/facetry-core.mjs
+            apps/web/src/core/wasm/facetry-core.wasm
+          retention-days: 7
 
   # Publishes newly built OpenCASCADE artifacts once all core tests passed with them.
   # Release assets are never replaced: a changed build needs a new OCCT_BUILD_REV.
@@ -202,11 +210,17 @@ jobs:
 
   apple-app:
     name: Apple app
+    needs: occt-apple
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/occt
+        with:
+          kind: apple
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Build core frameworks
+        run: apps/apple/scripts/build-core.sh
       - name: Generate Xcode project
         working-directory: apps/apple
         run: xcodegen generate
@@ -215,22 +229,29 @@ jobs:
           xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath build/apple CODE_SIGNING_ALLOWED=NO -quiet build
-      - name: Build for macOS
+      - name: Test on macOS (Swift wrapper against the real core)
         run: >-
           xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry
-          -destination 'generic/platform=macOS'
-          -derivedDataPath build/apple CODE_SIGNING_ALLOWED=NO -quiet build
+          -destination 'platform=macOS,arch=arm64'
+          -derivedDataPath build/apple
+          CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -quiet test
       - name: Lint Swift (swift-format)
         run: swift format lint --strict --recursive apps/apple
 
   web:
     name: web app
+    needs: core-wasm
     runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
+      - name: Get the core web module
+        uses: actions/download-artifact@v8
+        with:
+          name: facetry-core-web
+          path: apps/web/src/core/wasm
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -241,6 +262,8 @@ jobs:
         run: npm run lint
       - name: Check formatting
         run: npm run format:check
+      - name: Test (TypeScript API against the real core)
+        run: npm test
       - name: Type-check and build
         run: npm run build
 

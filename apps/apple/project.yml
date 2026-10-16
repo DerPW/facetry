@@ -1,6 +1,7 @@
 # XcodeGen spec for the Facetry Apple app (iPadOS + macOS).
 # Generate the Xcode project with `xcodegen generate` in this directory.
 # The generated Facetry.xcodeproj is not checked in.
+# Run scripts/build-core.sh first: it builds the frameworks in Frameworks/.
 name: Facetry
 
 options:
@@ -22,6 +23,13 @@ targets:
     supportedDestinations: [iOS, macOS]
     sources:
       - path: Facetry
+    dependencies:
+      # The core (static library + C API module CFacetryCore) and OpenCASCADE, which it needs.
+      - framework: Frameworks/CFacetryCore.xcframework
+        embed: false
+      - framework: Frameworks/OCCT.xcframework
+        embed: true
+        codeSign: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.derpw.facetry
@@ -33,6 +41,8 @@ targets:
         # for Apple silicon only.
         TARGETED_DEVICE_FAMILY: "2"
         "ARCHS[sdk=macosx*]": arm64
+        # The core and OpenCASCADE are built for Apple silicon simulators only.
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: >-
           UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown
           UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
@@ -40,6 +50,32 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         ENABLE_APP_SANDBOX: YES
         ENABLE_USER_SELECTED_FILES: readwrite
-        ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
-    scheme: {}
+        # The core is C++.
+        OTHER_LDFLAGS: -lc++
+      configs:
+        # Hardened runtime is needed for notarized releases. Debug builds (and tests) run
+        # ad-hoc signed, which library validation would reject.
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
+    scheme:
+      testTargets:
+        - FacetryTests
+
+  FacetryTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: FacetryTests
+    dependencies:
+      - target: Facetry
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.derpw.facetry.tests
+        # Tests run inside the app. macOS apps keep their executable in Contents/MacOS.
+        "TEST_HOST[sdk=macosx*]": $(BUILT_PRODUCTS_DIR)/Facetry.app/Contents/MacOS/Facetry
+        "BUNDLE_LOADER[sdk=macosx*]": $(TEST_HOST)
+        TARGETED_DEVICE_FAMILY: "2"
+        "ARCHS[sdk=macosx*]": arm64
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64

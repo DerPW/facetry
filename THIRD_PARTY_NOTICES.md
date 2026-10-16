@@ -25,6 +25,8 @@ These components are used to build or test Facetry. They are not part of the shi
 | Component | Version | License | Used for |
 |---|---|---|---|
 | [doctest](https://github.com/doctest/doctest) | 2.5.3 | MIT | C++ unit tests |
+| [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | JSON model descriptions in `facetry-cli` and the golden tests (not linked into the apps) |
+| [Vitest](https://vitest.dev/) | 5.x | MIT | Web app tests |
 | [Vite](https://vite.dev/) | 8.x | MIT | Web app build |
 | [TypeScript](https://www.typescriptlang.org/) | 6.0.x | Apache-2.0 | Web app type checking |
 | [ESLint](https://eslint.org/), [typescript-eslint](https://typescript-eslint.io/) | 10.x, 8.x | MIT | Web app linting |

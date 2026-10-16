@@ -42,3 +42,14 @@ p {
   margin: 0.5rem 0 0;
   color: var(--muted);
 }
+
+.status {
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.detail {
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}

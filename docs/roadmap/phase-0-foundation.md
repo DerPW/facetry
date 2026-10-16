@@ -74,23 +74,26 @@ passes on macOS, in the iPadOS simulator and in Node (WebAssembly).
 
 **Size:** M · **Depends on:** M0.2
 
-- [ ] `facetry-core` C++20 library with a kernel adapter. OCCT types never leave the adapter.
-- [ ] Decide the API boundary (ADR-0003): a plain C ABI used by Swift and WebAssembly, or Swift
-      C++ interop on Apple plus Embind on the web
-- [ ] Error model: no exceptions cross the boundary; every call returns a status plus a
+- [x] `facetry-core` C++20 library with a kernel adapter. OCCT types never leave the adapter.
+- [x] Decide the API boundary (ADR-0003): a plain C ABI used by Swift and WebAssembly, or Swift
+      C++ interop on Apple plus Embind on the web → **C ABI with handles**
+      ([ADR-0003](../adr/0003-core-api-boundary-c-abi.md))
+- [x] Error model: no exceptions cross the boundary; every call returns a status plus a
       structured error
-- [ ] Logging with levels, routed to the platform log (OSLog, browser console)
-- [ ] API versioning, so the shells can detect a mismatched core
-- [ ] Tessellation output designed for direct GPU upload:
-  - [ ] triangle buffers (positions, normals) with a face ID per triangle
-  - [ ] edge polylines with edge IDs
-  - [ ] vertex positions with vertex IDs
-  - [ ] tessellation quality settings (linear and angular deflection)
-- [ ] `facetry-cli`: build a model from a JSON description, print stats, export STL. Used for
+- [x] Logging with levels, routed to the platform log (OSLog, browser console)
+- [x] API versioning, so the shells can detect a mismatched core
+- [x] Tessellation output designed for direct GPU upload:
+  - [x] triangle buffers (positions, normals) with a face ID per triangle
+  - [x] edge polylines with edge IDs
+  - [x] vertex positions with vertex IDs
+  - [x] tessellation quality settings (linear and angular deflection)
+- [x] `facetry-cli`: build a model from a JSON description, print stats, export STL. Used for
       tests and debugging.
-- [ ] Test framework (doctest or Catch2) and the first golden test: volume, area, bounding box
-      and face/edge/vertex counts within tolerance
-- [ ] WebAssembly build runs the core in a Web Worker, never on the main thread
+- [x] Test framework (doctest or Catch2) and the first golden test: volume, area, bounding box
+      and face/edge/vertex counts within tolerance (three models in `tests/models/`)
+- [x] Shell wrappers: Swift (`apps/apple/Facetry/Core/`) and TypeScript (`apps/web/src/core/`),
+      each tested against the real core
+- [x] WebAssembly build runs the core in a Web Worker, never on the main thread
 
 **Done when:** Swift and TypeScript can both call `makeBox → fillet → tessellate` and receive
 buffers they can render.
