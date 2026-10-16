@@ -111,6 +111,21 @@ describe("FacetryCore (WebAssembly)", () => {
       core.releaseSession(session);
     });
 
+    it("saves and opens .facetry files", () => {
+      const session = core.openSession(example);
+      core.applyEdits(session, { op: "setParameter", name: "width", value: 12 });
+      const file = core.saveSessionFile(session);
+      expect(String.fromCharCode(file[0] ?? 0, file[1] ?? 0)).toBe("PK");
+      const reopened = core.openSessionFile(file);
+      expect(core.sessionState(reopened).parameters[0]).toEqual({ name: "width", value: 12 });
+      expect(core.saveSessionFile(reopened)).toEqual(file);
+      const checkedIn = readFileSync(
+        new URL("../../../../tests/documents/corner-fillet.facetry", import.meta.url),
+      );
+      expect(core.sessionState(core.openSessionFile(checkedIn)).features).toHaveLength(3);
+      expect(() => core.openSessionFile(new TextEncoder().encode("junk"))).toThrow(CoreError);
+    });
+
     it("cancels from the progress callback", () => {
       const session = core.openSession(example);
       const calls: number[] = [];

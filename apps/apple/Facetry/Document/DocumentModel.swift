@@ -1,6 +1,5 @@
 // The open model: a core session that runs off the main thread, and the state the UI shows.
-// Until the native file format arrives (#11), every window opens the M0.6 example document and
-// edits are not written to the file.
+// After every change the model hands the file's new bytes to the document, which SwiftUI saves.
 
 import Foundation
 import Observation
@@ -17,9 +16,9 @@ actor DocumentEngine {
     private let core: Core
     private let session: SessionHandle
 
-    init(json: String?) throws {
+    init(fileData: Data) throws {
         core = try Core()
-        session = try core.openSession(json: json)
+        session = try core.openSession(fileData: fileData)
     }
 
     func apply(_ edits: [DocumentEdit]) throws {
@@ -34,8 +33,9 @@ actor DocumentEngine {
         try core.redo(session)
     }
 
-    func save() throws -> String {
-        try core.save(session)
+    /// The document as a .facetry file.
+    func saveFile() throws -> Data {
+        try core.saveFile(session)
     }
 
     /// Regenerates and tessellates the first body.
@@ -80,18 +80,18 @@ final class DocumentModel {
 
     private let viewport: ViewportModel
     private var engine: DocumentEngine?
+    /// Receives the file's bytes after every change.
+    private let onSave: (Data) -> Void
 
-    init(viewport: ViewportModel) {
+    init(viewport: ViewportModel, onSave: @escaping (Data) -> Void) {
         self.viewport = viewport
+        self.onSave = onSave
     }
 
-    /// Opens the example document and shows it (or the stress part, see ``stress``).
-    func load() async {
+    /// Opens a .facetry file and shows it (or the stress part, see ``stress``).
+    func load(_ fileData: Data) async {
         do {
-            let url = Bundle.main.url(forResource: "corner-fillet", withExtension: "json")
-            guard let url else { throw CocoaError(.fileNoSuchFile) }
-            let json = try String(contentsOf: url, encoding: .utf8)
-            let engine = try DocumentEngine(json: json)
+            let engine = try DocumentEngine(fileData: fileData)
             self.engine = engine
             if stress {
                 viewport.mesh = try await engine.stressMesh()
@@ -126,6 +126,11 @@ final class DocumentModel {
             return
         }
         await regenerate()
+        do {
+            onSave(try await engine.saveFile())
+        } catch {
+            self.error = "Could not save: \(error)"
+        }
     }
 
     private func regenerate() async {

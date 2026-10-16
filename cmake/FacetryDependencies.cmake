@@ -12,6 +12,17 @@ add_library(facetry-json INTERFACE)
 target_include_directories(facetry-json SYSTEM INTERFACE
     "${nlohmann_json_SOURCE_DIR}" "${nlohmann_json_SOURCE_DIR}/include")
 
+# miniz: zip container of the native file format (docs/adr/0008-native-file-format.md).
+FetchContent_Declare(miniz
+    URL https://github.com/richgel999/miniz/releases/download/3.1.2/miniz-3.1.2.zip
+    URL_HASH SHA256=f0446d863f9c19926ad9483c523fdc42e42b8d4a6a431d27e09d49c79a140d9a
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(miniz)
+add_library(facetry-miniz STATIC "${miniz_SOURCE_DIR}/miniz.c")
+target_include_directories(facetry-miniz SYSTEM PUBLIC "${miniz_SOURCE_DIR}")
+# No clock (entries get a fixed time, so saved files are reproducible) and no stdio (memory only).
+target_compile_definitions(facetry-miniz PUBLIC MINIZ_NO_TIME MINIZ_NO_STDIO)
+
 # sokol_gfx: the viewport's graphics abstraction (docs/adr/0004-viewport-renderer-shared-cpp-sokol.md).
 set(FACETRY_SOKOL_COMMIT 5e94d1291fea)
 FetchContent_Declare(sokol_gfx

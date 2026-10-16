@@ -71,6 +71,15 @@ export interface FacetryCoreModule {
 
   _facetry_session_create(context: number, documentJson: number, out: number): number;
   _facetry_session_save(context: number, session: number, jsonOut: number): number;
+  _facetry_session_open_file(context: number, data: number, size: number, out: number): number;
+  _facetry_session_save_file(
+    context: number,
+    session: number,
+    thumbnail: number,
+    thumbnailSize: number,
+    dataOut: number,
+    sizeOut: number,
+  ): number;
   _facetry_session_apply(context: number, session: number, editJson: number): number;
   _facetry_session_undo(context: number, session: number, changedOut: number): number;
   _facetry_session_redo(context: number, session: number, changedOut: number): number;

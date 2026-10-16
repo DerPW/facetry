@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the frameworks the Apple app links, into apps/apple/Frameworks (not checked in):
-#   CFacetryCore.xcframework  the core and the viewport renderer as one static library, plus
+#   CFacetryCore.xcframework  the core (with miniz) and the viewport renderer as one static library, plus
 #                             their C APIs (facetry_core.h, facetry_render.h) as a Clang module
 #   OCCT.xcframework          OpenCASCADE, copied from third_party/_install (embedded in the app)
 #
@@ -21,9 +21,11 @@ presets=(macos-release ios-device ios-simulator)
 for preset in "${presets[@]}"; do
     echo "== Building facetry-core ($preset)"
     cmake --preset "$preset" >/dev/null
-    cmake --build --preset "$preset" --target facetry-core facetry-render
+    cmake --build --preset "$preset" --target facetry-core facetry-render facetry-miniz
+    # One static library for the app: the core with its private dependencies, and the renderer.
     libtool -static -o "$root/build/$preset/libfacetry-apple.a" \
-        "$root/build/$preset/core/libfacetry-core.a" "$root/build/$preset/render/libfacetry-render.a"
+        "$root/build/$preset/core/libfacetry-core.a" "$root/build/$preset/libfacetry-miniz.a" \
+        "$root/build/$preset/render/libfacetry-render.a"
 done
 
 # Swift imports the C API as the module CFacetryCore.

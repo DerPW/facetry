@@ -98,7 +98,8 @@ node build/wasm-release/tools/cli/facetry-cli.js bench tests/documents/corner-fi
 
 `check` compares the golden models with their expected values (also part of `ctest`), `info`
 prints a model's properties and can write an STL, and `bench` times the regeneration of a
-document ([benchmarks](benchmarks.md#regeneration)).
+document ([benchmarks](benchmarks.md#regeneration)). `unpack` prints the `document.json` inside
+a `.facetry` file (to diff it or keep it as text), and `pack` turns it back into a file.
 
 ## Viewport renderer
 

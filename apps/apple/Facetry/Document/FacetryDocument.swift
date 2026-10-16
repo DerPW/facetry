@@ -1,6 +1,5 @@
-// The .facetry document. For now a document is a small JSON file with a format marker and
-// version 0. The native file format (docs/adr/0008-native-file-format.md), a zip container
-// written by the core, and the model itself arrive with M1.1.
+// The .facetry document (docs/adr/0008-native-file-format.md). The file's bytes are read and
+// written by the core; this type only carries them between SwiftUI and the model.
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -13,42 +12,38 @@ extension UTType {
 struct FacetryDocument: FileDocument {
     static let readableContentTypes: [UTType] = [.facetryDocument]
 
-    /// Provisional on-disk content (format version 0 = before ADR-0008).
-    struct Content: Codable, Equatable {
-        var format = "facetry"
-        var formatVersion = 0
-        var createdWith =
-            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-            as? String ?? "?"
+    /// The file as the core writes it.
+    var data: Data
+
+    /// A new document. Until there are modeling tools (M1.3–M1.5) it starts as the example model.
+    init() {
+        data = Self.example
     }
-
-    var content = Content()
-
-    init() {}
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        content = try Self.decode(data)
+        try Self.validate(data)
+        self.data = data
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: try Self.encode(content))
+        FileWrapper(regularFileWithContents: data)
     }
 
-    static func decode(_ data: Data) throws -> Content {
-        let content = try JSONDecoder().decode(Content.self, from: data)
-        guard content.format == "facetry" else { throw CocoaError(.fileReadCorruptFile) }
-        guard content.formatVersion <= Content().formatVersion else {
-            throw CocoaError(.fileReadUnsupportedScheme)
-        }
-        return content
+    /// Throws if the core cannot open `data`, so the system reports a broken or newer file
+    /// instead of opening an empty window.
+    static func validate(_ data: Data) throws {
+        let core = try Core()
+        try core.release(try core.openSession(fileData: data))
     }
 
-    static func encode(_ content: Content) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(content)
+    /// The bundled example (tests/documents/corner-fillet.facetry).
+    static var example: Data {
+        guard let url = Bundle.main.url(forResource: "corner-fillet", withExtension: "facetry"),
+            let data = try? Data(contentsOf: url)
+        else { return Data() }
+        return data
     }
 }

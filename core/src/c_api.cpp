@@ -1,6 +1,7 @@
 // Implementation of facetry_core.h on top of facetry::core. Every entry point catches all
 // exceptions and reports them as a status plus message on the context.
 #include "facetry/core/error.hpp"
+#include "facetry/core/file_format.hpp"
 #include "facetry/core/log.hpp"
 #include "facetry/core/mesh.hpp"
 #include "facetry/core/modeling.hpp"
@@ -50,8 +51,9 @@ struct facetry_context {
     facetry_handle nextHandle = 1;
     facetry_status lastStatus = FACETRY_OK;
     std::string lastError;
-    // Backs strings returned through `const char**` until the next call.
+    // Back strings and bytes returned through output pointers until the next call.
     std::string output;
+    std::vector<std::uint8_t> outputBytes;
 
     const char* setOutput(std::string text) {
         output = std::move(text);
@@ -364,6 +366,35 @@ facetry_status facetry_session_save(facetry_context* context, facetry_handle ses
     return run(context, [&](facetry_context& ctx) {
         auto& out = requireOut(out_json, "out_json");
         out = ctx.setOutput(ctx.get<std::unique_ptr<Session>>(session, "session")->save());
+    });
+}
+
+facetry_status facetry_session_open_file(facetry_context* context, const uint8_t* data, size_t size,
+                                         facetry_handle* out_session) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_session, "out_session");
+        if (data == nullptr && size > 0) {
+            throw Error(ErrorCode::InvalidArgument, "data must not be null");
+        }
+        auto contents = facetry::core::readFile(std::span<const uint8_t>(data, size));
+        out = ctx.add(std::make_unique<Session>(std::move(contents.document)));
+    });
+}
+
+facetry_status facetry_session_save_file(facetry_context* context, facetry_handle session,
+                                         const uint8_t* thumbnail_png, size_t thumbnail_size,
+                                         const uint8_t** out_data, size_t* out_size) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& data = requireOut(out_data, "out_data");
+        auto& size = requireOut(out_size, "out_size");
+        if (thumbnail_png == nullptr && thumbnail_size > 0) {
+            throw Error(ErrorCode::InvalidArgument, "thumbnail_png must not be null");
+        }
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        ctx.outputBytes = facetry::core::writeFile(
+            source.document(), std::span<const uint8_t>(thumbnail_png, thumbnail_size));
+        data = ctx.outputBytes.data();
+        size = ctx.outputBytes.size();
     });
 }
 

@@ -58,7 +58,6 @@ export function ModelPanel({ state, onSetParameter }: Props) {
           </li>
         ))}
       </ol>
-      <p className="muted">Edits are not saved yet (#11).</p>
     </section>
   );
 }

@@ -305,6 +305,31 @@ final class Core {
         try string { facetry_session_save(context, session.rawValue, $0) }
     }
 
+    /// Opens a .facetry file (or a bare document.json, or a provisional M0.5 file).
+    func openSession(fileData: Data) throws -> SessionHandle {
+        var handle: facetry_handle = 0
+        try fileData.withUnsafeBytes { bytes in
+            try check(
+                facetry_session_open_file(
+                    context, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, &handle))
+        }
+        return SessionHandle(rawValue: handle)
+    }
+
+    /// The document as a .facetry file, with an optional PNG thumbnail.
+    func saveFile(_ session: SessionHandle, thumbnail: Data? = nil) throws -> Data {
+        var data: UnsafePointer<UInt8>?
+        var size = 0
+        try (thumbnail ?? Data()).withUnsafeBytes { png in
+            try check(
+                facetry_session_save_file(
+                    context, session.rawValue, png.bindMemory(to: UInt8.self).baseAddress,
+                    png.count, &data, &size))
+        }
+        guard let data else { return Data() }
+        return Data(bytes: data, count: size)
+    }
+
     /// Applies edits as one undo step. A failing edit changes nothing.
     func apply(_ session: SessionHandle, _ edits: [DocumentEdit]) throws {
         let json = String(decoding: try JSONEncoder().encode(edits), as: UTF8.self)

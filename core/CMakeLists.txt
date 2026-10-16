@@ -9,6 +9,7 @@ add_library(facetry-core STATIC
     src/version.cpp
     src/document/document.cpp
     src/document/document_json.cpp
+    src/document/file_format.cpp
     src/document/regeneration.cpp
     src/document/session.cpp
     src/document/session_json.cpp
@@ -27,8 +28,8 @@ target_include_directories(facetry-core
         "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # OpenCASCADE is private: OCCT types and headers never leave the kernel adapter (src/kernel/).
-# nlohmann/json reads and writes documents (src/document/).
-target_link_libraries(facetry-core PRIVATE facetry::occt facetry-json)
+# nlohmann/json and miniz read and write documents and files (src/document/).
+target_link_libraries(facetry-core PRIVATE facetry::occt facetry-json facetry-miniz)
 
 facetry_set_warnings(facetry-core)
 

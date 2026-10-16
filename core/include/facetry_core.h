@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 2
+#define FACETRY_API_VERSION_MINOR 3
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -187,6 +187,19 @@ FACETRY_API facetry_status facetry_session_create(facetry_context* context,
 /* The document's JSON description. */
 FACETRY_API facetry_status facetry_session_save(facetry_context* context, facetry_handle session,
                                                 const char** out_json);
+
+/* Opens a .facetry file (docs/adr/0008-native-file-format.md). Also accepts a bare document.json
+ * and the provisional files of the M0.5 Apple app, which open as an empty document. */
+FACETRY_API facetry_status facetry_session_open_file(facetry_context* context, const uint8_t* data,
+                                                     size_t size, facetry_handle* out_session);
+
+/* The document as a .facetry file. `thumbnail_png` (may be NULL) is stored as its thumbnail. The
+ * bytes are owned by the context and valid until the next call on it. */
+FACETRY_API facetry_status facetry_session_save_file(facetry_context* context,
+                                                     facetry_handle session,
+                                                     const uint8_t* thumbnail_png,
+                                                     size_t thumbnail_size,
+                                                     const uint8_t** out_data, size_t* out_size);
 
 /* Applies one edit, or a JSON array of edits, as one undo step. An edit that fails changes
  * nothing. */

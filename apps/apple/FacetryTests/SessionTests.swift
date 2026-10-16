@@ -5,9 +5,8 @@ import Testing
 
 /// The document part of the core API, with the M0.6 example document bundled in the app.
 struct SessionTests {
-    private func example() throws -> String {
-        let url = try #require(Bundle.main.url(forResource: "corner-fillet", withExtension: "json"))
-        return try String(contentsOf: url, encoding: .utf8)
+    private func openExample(_ core: Core) throws -> SessionHandle {
+        try core.openSession(fileData: FacetryDocument.example)
     }
 
     /// 10 × 6 × 4 block with one vertical edge rounded by r = 1.5.
@@ -17,7 +16,7 @@ struct SessionTests {
 
     @Test func opensRegeneratesAndEdits() throws {
         let core = try Core()
-        let session = try core.openSession(json: try example())
+        let session = try openExample(core)
         #expect(try core.state(of: session).needsRegeneration)
 
         try core.regenerate(session)
@@ -51,7 +50,7 @@ struct SessionTests {
 
     @Test func progressCanCancel() throws {
         let core = try Core()
-        let session = try core.openSession(json: try example())
+        let session = try openExample(core)
         var calls = 0
         try core.regenerate(session) { done, total in
             calls += 1
@@ -66,7 +65,7 @@ struct SessionTests {
 
     @Test func failingEditsThrowAndChangeNothing() throws {
         let core = try Core()
-        let session = try core.openSession(json: try example())
+        let session = try openExample(core)
         let before = try core.save(session)
         #expect(throws: CoreError.self) {
             try core.apply(session, [.setParameter(name: "missing", value: 1)])

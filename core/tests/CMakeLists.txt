@@ -3,6 +3,7 @@ add_executable(facetry-core-tests
     c_api_session_test.cpp
     c_api_test.cpp
     document_test.cpp
+    file_format_test.cpp
     golden_test.cpp
     kernel_test.cpp
     naming_scenarios_test.cpp
@@ -13,7 +14,7 @@ add_executable(facetry-core-tests
 
 # The OCCT smoke tests use OpenCASCADE directly, so the test binary links it explicitly.
 target_link_libraries(facetry-core-tests PRIVATE
-    facetry::script facetry::occt facetry-doctest facetry-json)
+    facetry::script facetry::occt facetry-doctest facetry-json $<COMPILE_ONLY:facetry-miniz>)
 facetry_set_warnings(facetry-core-tests)
 
 # Each test binary checks that it was built for the platform the build targets.

@@ -83,6 +83,13 @@ A `.facetry` file is a **zip archive**:
 
 ## Consequences
 
+- **Implemented in M1.1** ([#11](https://github.com/DerPW/facetry/issues/11)):
+  `core/include/facetry/core/file_format.hpp`, `facetry_session_open_file` /
+  `facetry_session_save_file` in the C API, and `facetry-cli pack` / `unpack`. Entries have a
+  fixed time, so the same document always gives the same bytes. Thumbnails can be stored, but the
+  apps do not render them yet (M1.9). The geometry cache is not written yet; it comes when large
+  models need it.
+
 - **M1.1 implements format v1:**
   - container code and miniz in the core;
   - a migration hook;
