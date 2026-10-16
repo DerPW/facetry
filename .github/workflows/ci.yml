@@ -274,7 +274,7 @@ jobs:
         with:
           path: apps/web/dist
 
-  # Publishes the web app from main: https://derpw.github.io/facetry/
+  # Publishes the web app from main to GitHub Pages.
   pages:
     name: Deploy web app to GitHub Pages
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -59,11 +59,10 @@ milestone says so and the web app explains why the feature is missing.
 
 ### Web: GitHub Pages
 
-- Deployed automatically from `main` by the CI workflow, so the web app at
-  <https://derpw.github.io/facetry/> always shows the latest merged state.
+- Deployed automatically from `main` by the CI workflow, so the deployed web app always shows
+  the latest merged state.
 - Installable as a PWA (`manifest.webmanifest`, icons) and usable offline after the first visit:
   a generated service worker precaches every file of the build.
-- The repository owner's GitHub Pages use a custom domain, so the URL above redirects there.
 - GitHub Pages cannot set custom HTTP headers. WebAssembly threads would need cross-origin
   isolation (COOP/COEP headers). Neither the core nor the renderer uses threads yet, so this is
   not needed. When multithreading comes (M2.9), a service-worker shim can provide the headers;

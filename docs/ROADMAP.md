@@ -16,7 +16,7 @@ Each phase has its own document with the detailed feature list:
 
 Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Prior art & lessons](PRIOR-ART.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview. The checks on a real iPad from M0.5 are still open ([#7](https://github.com/DerPW/facetry/issues/7)). Phase 1 has started with M1.1 (document, timeline & undo): the apps open documents through the core's C API. The web app runs at <https://derpw.github.io/facetry/>.
+**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview. The checks on a real iPad from M0.5 are still open ([#7](https://github.com/DerPW/facetry/issues/7)). Phase 1 has started with M1.1 (document, timeline & undo): the apps open documents through the core's C API.
 
 ---
 

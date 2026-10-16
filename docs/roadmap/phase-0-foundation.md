@@ -143,7 +143,7 @@ iPad** (frame rate and finger picking) once the app shell can be installed on a 
   - [x] core in a Web Worker, viewport on a canvas (done in M0.3/M0.4)
   - [x] Pointer Events with `pointerType` (pen, touch, mouse) routed the same way as on Apple
   - [x] PWA manifest and service worker for offline use (checked offline in headless Chrome)
-- [x] Web build deployed from `main` to GitHub Pages (<https://derpw.github.io/facetry/>)
+- [x] Web build deployed from `main` to GitHub Pages
 - [x] Cross-origin isolation for WebAssembly threads on GitHub Pages (service-worker shim) if
       ADR-0004/0003 require threads → **not needed yet**: neither the core nor the renderer uses
       threads. It comes back when the core goes multithreaded (M2.9).

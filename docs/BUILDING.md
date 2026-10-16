@@ -170,8 +170,7 @@ The Apple app takes `--stress` as a launch argument for the same fine tessellati
 
 The UI is React ([ADR-0007](adr/0007-web-ui-framework-react.md)). Production builds include a
 generated service worker (`vite/service-worker.ts`) that precaches the whole app for offline use;
-development builds never register it. CI deploys every build of `main` to GitHub Pages:
-<https://derpw.github.io/facetry/>.
+development builds never register it. CI deploys every build of `main` to GitHub Pages.
 
 | Script | Purpose |
 |---|---|
