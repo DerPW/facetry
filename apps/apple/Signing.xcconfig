@@ -1,0 +1,8 @@
+// Signing for running on your own iPad or Mac. Put your Apple team ID into Local.xcconfig next to
+// this file (not checked in), for example:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//
+// A free Apple account works: its "Personal Team" ID is shown in Xcode under Settings → Accounts,
+// or in the project's Signing & Capabilities tab after picking the team once.
+#include? "Local.xcconfig"

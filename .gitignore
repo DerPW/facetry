@@ -46,3 +46,6 @@ apps/web/src/render/wasm/*.wasm
 
 # Frameworks for the Apple app, built by apps/apple/scripts/build-core.sh
 apps/apple/Frameworks/
+
+# Personal signing settings (team ID) for the Apple app
+apps/apple/Local.xcconfig

@@ -11,6 +11,11 @@ options:
     macOS: "26.0"
   createIntermediateGroups: true
 
+# Signing.xcconfig includes the untracked Local.xcconfig with your team ID (see docs/BUILDING.md).
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
