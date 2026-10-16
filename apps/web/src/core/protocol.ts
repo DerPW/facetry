@@ -15,6 +15,8 @@ export type CoreMethods = Pick<
   | "release"
   | "openSession"
   | "saveSession"
+  | "openSessionFile"
+  | "saveSessionFile"
   | "applyEdits"
   | "undo"
   | "redo"

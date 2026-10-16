@@ -60,10 +60,10 @@ Back to the [roadmap overview](../ROADMAP.md).
   - [x] a failed feature does not block independent later features (core, M0.6)
 - [ ] Command system with unlimited undo/redo per session; a tool session is one undo step
       (replaces the M0.6 document snapshots)
-- [ ] Native file format v1 (`.facetry`, [ADR-0008](../adr/0008-native-file-format.md)): a zip
+- [x] Native file format v1 (`.facetry`, [ADR-0008](../adr/0008-native-file-format.md)): a zip
       container written by the core (miniz) with manifest, versioned document, migration hook,
-      optional geometry cache and thumbnail; opens the provisional M0.5 files as empty
-      documents
+      optional thumbnail; opens the provisional M0.5 files as empty documents. Thumbnails are
+      rendered by the apps with M1.9; the optional geometry cache follows when models need it
 - [ ] Autosave and crash recovery
 - [ ] Document units (mm, cm, m, in); internal unit is mm
 

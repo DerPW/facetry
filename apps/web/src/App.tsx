@@ -71,6 +71,8 @@ export function App() {
   const [orthographic, setOrthographic] = useState(false);
   const [model, setModel] = useState<SessionState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("Untitled.facetry");
+  const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
   const onError = useCallback((message: string) => {
@@ -161,6 +163,45 @@ export function App() {
     [change],
   );
 
+  // Opens a .facetry file in place of the current document. Saving and opening with the File
+  // System Access API, and autosave, come with M1.9 and #17.
+  const openFile = useCallback(
+    async (file: File) => {
+      const current = session.current;
+      if (!current || !viewport) return;
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const handle = await current.core.call("openSessionFile", bytes);
+        await current.core.call("releaseSession", current.handle);
+        current.handle = handle;
+        show(await current.core.call("regenerateModel", handle, tessellation));
+        viewport.fit();
+        setFileName(file.name.endsWith(".facetry") ? file.name : `${file.name}.facetry`);
+        setEditError(null);
+      } catch (error) {
+        setEditError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [show, viewport],
+  );
+
+  // Saves by downloading the file.
+  const saveFile = useCallback(async () => {
+    const current = session.current;
+    if (!current) return;
+    try {
+      const bytes = await current.core.call("saveSessionFile", current.handle);
+      const url = URL.createObjectURL(
+        new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" }),
+      );
+      const link = Object.assign(document.createElement("a"), { href: url, download: fileName });
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : String(error));
+    }
+  }, [fileName]);
+
   useEffect(() => {
     viewport?.setOrthographic(orthographic);
   }, [viewport, orthographic]);
@@ -198,6 +239,7 @@ export function App() {
             <p className="muted">
               Version {__APP_VERSION__} · tech preview{stress ? " · stress test" : ""}
             </p>
+            {model && <p className="muted">{fileName}</p>}
             <p className="muted">{status}</p>
             {editError && <p className="error">{editError}</p>}
           </header>
@@ -209,6 +251,23 @@ export function App() {
           )}
         </div>
         <div className="panel controls">
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".facetry,.json"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) void openFile(file);
+            }}
+          />
+          <button type="button" disabled={!model} onClick={() => fileInput.current?.click()}>
+            Open…
+          </button>
+          <button type="button" disabled={!model} onClick={() => void saveFile()}>
+            Save
+          </button>
           <button
             type="button"
             disabled={!model?.canUndo}

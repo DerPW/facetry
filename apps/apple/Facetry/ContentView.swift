@@ -24,9 +24,12 @@ struct ContentView: View {
             .overlay(alignment: .bottomLeading) { stats }
             .overlay(alignment: .bottomTrailing) { selection }
             .task {
-                let model = DocumentModel(viewport: viewport)
+                let model = DocumentModel(viewport: viewport) { data in
+                    // Marks the document as edited; SwiftUI saves it.
+                    document.data = data
+                }
                 self.model = model
-                await model.load()
+                await model.load(document.data)
             }
     }
 
@@ -114,9 +117,6 @@ private struct ModelPanel: View {
             ForEach(state.features) { feature in
                 FeatureRow(feature: feature)
             }
-            Text("Edits are not saved to the file yet (#11).")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
         }
         .frame(width: 240, alignment: .leading)
         .panel()

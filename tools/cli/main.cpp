@@ -1,5 +1,6 @@
 // facetry-cli: builds models from JSON descriptions without any UI. Used for tests and debugging.
 #include "facetry/core/error.hpp"
+#include "facetry/core/file_format.hpp"
 #include "facetry/core/mesh.hpp"
 #include "facetry/core/session.hpp"
 #include "facetry/core/stl.hpp"
@@ -10,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -35,16 +37,20 @@ constexpr std::string_view kUsage = R"(Usage:
   facetry-cli info <model.json> [--stl <out.stl>] [--deflection <mm>]
   facetry-cli check <model.json | directory>...
   facetry-cli bench <document.json> [--runs <n>]
+  facetry-cli unpack <file.facetry>
+  facetry-cli pack <document.json> <file.facetry>
 
   info   Builds the model and prints its properties and mesh statistics as JSON.
   check  Builds each model and compares it with its "expected" section. Exits with 1 on any
          mismatch.
   bench  Loads a document (tests/documents) and times regeneration: from scratch, after a
          change to the first parameter, and with everything cached. Prints JSON.
+  unpack Prints the document.json inside a .facetry file, e.g. to diff or version it as text.
+  pack   Writes a document (document.json or any file `unpack` accepts) as a .facetry file.
 )";
 
 std::string readFile(const fs::path& path) {
-    std::ifstream in(path);
+    std::ifstream in(path, std::ios::binary);
     if (!in) {
         throw Error(facetry::core::ErrorCode::Io, "Cannot read " + path.string());
     }
@@ -148,6 +154,38 @@ int check(const std::vector<std::string_view>& args) {
         }
     }
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+std::vector<std::uint8_t> readBytes(const fs::path& path) {
+    const std::string text = readFile(path);
+    return {text.begin(), text.end()};
+}
+
+int unpack(const std::vector<std::string_view>& args) {
+    if (args.size() != 1) {
+        std::cerr << kUsage;
+        return 2;
+    }
+    const auto contents = facetry::core::readFile(readBytes(std::string(args[0])));
+    std::cout << facetry::core::toJson(contents.document);
+    return EXIT_SUCCESS;
+}
+
+int pack(const std::vector<std::string_view>& args) {
+    if (args.size() != 2) {
+        std::cerr << kUsage;
+        return 2;
+    }
+    const auto contents = facetry::core::readFile(readBytes(std::string(args[0])));
+    const auto bytes = facetry::core::writeFile(contents.document, contents.thumbnail);
+    std::ofstream out(std::string(args[1]), std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    if (!out) {
+        throw Error(facetry::core::ErrorCode::Io, "Cannot write " + std::string(args[1]));
+    }
+    std::cerr << "Wrote " << args[1] << " (" << bytes.size() << " bytes)\n";
+    return EXIT_SUCCESS;
 }
 
 double millisecondsSince(std::chrono::steady_clock::time_point start) {
@@ -266,6 +304,12 @@ int main(int argc, char** argv) {
         }
         if (args[0] == "bench") {
             return bench(rest);
+        }
+        if (args[0] == "unpack") {
+            return unpack(rest);
+        }
+        if (args[0] == "pack") {
+            return pack(rest);
         }
         std::cerr << kUsage;
         return 2;

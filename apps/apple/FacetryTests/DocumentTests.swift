@@ -4,23 +4,32 @@ import Testing
 @testable import Facetry
 
 struct DocumentTests {
-    @Test func roundTripsThroughJSON() throws {
-        let content = FacetryDocument.Content()
-        let data = try FacetryDocument.encode(content)
-        #expect(try FacetryDocument.decode(data) == content)
-        let text = try #require(String(data: data, encoding: .utf8))
-        #expect(text.contains("\"format\" : \"facetry\""))
+    @Test func newDocumentsStartFromTheExample() throws {
+        let document = FacetryDocument()
+        #expect(document.data.starts(with: Array("PK".utf8)))
+        try FacetryDocument.validate(document.data)
     }
 
-    @Test func rejectsOtherFiles() {
-        let other = Data(
-            #"{"format": "something-else", "formatVersion": 0, "createdWith": "1"}"#.utf8)
-        #expect(throws: (any Error).self) { try FacetryDocument.decode(other) }
-        #expect(throws: (any Error).self) { try FacetryDocument.decode(Data("not json".utf8)) }
+    @Test func savedFilesOpenAgain() throws {
+        let core = try Core()
+        let session = try core.openSession(fileData: FacetryDocument.example)
+        try core.apply(session, [.setParameter(name: "width", value: 12)])
+        let saved = try core.saveFile(session)
+        let reopened = try core.openSession(fileData: saved)
+        #expect(try core.state(of: reopened).parameters.first?.value == 12)
     }
 
-    @Test func rejectsNewerFormatVersions() {
-        let newer = Data(#"{"format": "facetry", "formatVersion": 99, "createdWith": "9.0"}"#.utf8)
-        #expect(throws: (any Error).self) { try FacetryDocument.decode(newer) }
+    @Test func provisionalFilesOpenAsEmptyDocuments() throws {
+        let provisional = Data(
+            #"{"createdWith": "0.0.0", "format": "facetry", "formatVersion": 0}"#.utf8)
+        try FacetryDocument.validate(provisional)
+        let core = try Core()
+        #expect(try core.state(of: core.openSession(fileData: provisional)).features.isEmpty)
+    }
+
+    @Test func rejectsOtherAndNewerFiles() {
+        #expect(throws: (any Error).self) { try FacetryDocument.validate(Data("not json".utf8)) }
+        let newer = Data(#"{"format": "facetry", "formatVersion": 99}"#.utf8)
+        #expect(throws: (any Error).self) { try FacetryDocument.validate(newer) }
     }
 }

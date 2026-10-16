@@ -313,6 +313,42 @@ export class FacetryCore {
     return this.#outputString();
   }
 
+  /** Opens a .facetry file (or a bare document.json, or a provisional M0.5 file). */
+  openSessionFile(bytes: Uint8Array): number {
+    const m = this.#m;
+    const data = m._malloc(Math.max(1, bytes.length));
+    try {
+      m.HEAPU8.set(bytes, data);
+      this.#check(m._facetry_session_open_file(this.#context, data, bytes.length, this.#scratch));
+      return this.#u32(this.#scratch);
+    } finally {
+      m._free(data);
+    }
+  }
+
+  /** The document as a .facetry file, with an optional PNG thumbnail. */
+  saveSessionFile(session: number, thumbnail?: Uint8Array): Uint8Array {
+    const m = this.#m;
+    const png = thumbnail && thumbnail.length > 0 ? m._malloc(thumbnail.length) : 0;
+    try {
+      if (thumbnail && png !== 0) m.HEAPU8.set(thumbnail, png);
+      this.#check(
+        m._facetry_session_save_file(
+          this.#context,
+          session,
+          png,
+          png === 0 ? 0 : (thumbnail?.length ?? 0),
+          this.#scratch,
+          this.#scratch + 4,
+        ),
+      );
+      const pointer = this.#u32(this.#scratch);
+      return m.HEAPU8.slice(pointer, pointer + this.#u32(this.#scratch + 4));
+    } finally {
+      if (png !== 0) m._free(png);
+    }
+  }
+
   /** Applies one edit or several as one undo step. A failing edit changes nothing. */
   applyEdits(session: number, edits: Edit | Edit[]): void {
     const json = this.#string(JSON.stringify(edits));
