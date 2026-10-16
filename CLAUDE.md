@@ -5,6 +5,8 @@ the web, built on one shared C++ core over OpenCASCADE.
 
 Start here: [docs/ROADMAP.md](docs/ROADMAP.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/PLATFORMS.md](docs/PLATFORMS.md), [docs/BUILDING.md](docs/BUILDING.md).
+Before designing a subsystem, check [docs/PRIOR-ART.md](docs/PRIOR-ART.md) for how other
+projects solved it.
 
 ## Verify before pushing
 
