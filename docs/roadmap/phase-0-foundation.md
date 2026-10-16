@@ -187,9 +187,12 @@ stable across edits, parametric modeling does not work. FreeCAD struggled with t
 
 **Size:** S · **Depends on:** M0.1 – M0.6
 
-- [ ] Benchmarks recorded in `docs/benchmarks.md`: WebAssembly size, memory, regeneration time,
+- [x] Benchmarks recorded in `docs/benchmarks.md`: WebAssembly size, memory, regeneration time,
       frame time per platform
-- [ ] Remaining ADRs decided: sketch solver (ADR-0005), web UI framework (ADR-0007), native
-      file format (ADR-0008), minimum OS and browser versions (ADR-0009)
-- [ ] Phase 1 milestones refined from what Phase 0 taught; sizes recalibrated; issues created
-- [ ] Tag **v0.0.1** and link the web tech preview from the README
+- [x] Remaining ADRs decided: sketch solver
+      ([ADR-0005](../adr/0005-sketch-solver-planegcs.md)), web UI framework
+      ([ADR-0007](../adr/0007-web-ui-framework-react.md)), native file format
+      ([ADR-0008](../adr/0008-native-file-format.md)), minimum OS and browser versions
+      ([ADR-0009](../adr/0009-minimum-os-and-browser-versions.md))
+- [x] Phase 1 milestones refined from what Phase 0 taught; sizes recalibrated; issues created
+- [x] Tag **v0.0.1** and link the web tech preview from the README

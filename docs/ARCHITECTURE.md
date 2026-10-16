@@ -143,7 +143,10 @@ docs/             roadmap, architecture, ADRs, benchmarks
 | Component | Purpose | License |
 |---|---|---|
 | [OpenCASCADE](https://dev.opencascade.org/) 8.0.1 | B-Rep geometry kernel (prebuilt, see [`third_party/occt`](../third_party/occt/README.md)) | LGPL-2.1 with OCCT exception |
-| PlaneGCS (from [FreeCAD](https://github.com/FreeCAD/FreeCAD)) | 2D sketch constraint solver (proposed) | LGPL-2.1-or-later |
+| PlaneGCS (from [FreeCAD](https://github.com/FreeCAD/FreeCAD) 1.1.4) | 2D sketch constraint solver (M1.4, [ADR-0005](adr/0005-sketch-solver-planegcs.md)) | LGPL-2.1-or-later |
+| [Eigen](https://eigen.tuxfamily.org/) 3.4 | Linear algebra for PlaneGCS (M1.4) | MPL-2.0 |
+| [nlohmann/json](https://github.com/nlohmann/json) 3.12 | Document and model JSON | MIT |
+| [miniz](https://github.com/richgel999/miniz) | Zip container of the file format (M1.1, [ADR-0008](adr/0008-native-file-format.md)) | MIT |
 | [sokol_gfx](https://github.com/floooh/sokol) | Graphics abstraction for the viewport (Metal, WebGL2) | zlib |
 | [Blockly](https://github.com/google/blockly) | Block editor (M3.6) | Apache-2.0 |
 | [QuickJS](https://bellard.org/quickjs/) | Script engine (proposed, M3.5) | MIT |
@@ -162,9 +165,9 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0002](adr/0002-shared-core-with-native-and-web-shells.md) | Shared C++ core with native (SwiftUI) and web (TypeScript) shells | Accepted | M0.1 |
 | [0003](adr/0003-core-api-boundary-c-abi.md) | Core API boundary: a C ABI with handles | Accepted | M0.3 |
 | [0004](adr/0004-viewport-renderer-shared-cpp-sokol.md) | Viewport renderer: one shared C++ renderer on sokol_gfx, CPU picking | Accepted | M0.4 |
-| 0005 | Sketch constraint solver: PlaneGCS (proposed) | Open | M0.7 |
+| [0005](adr/0005-sketch-solver-planegcs.md) | Sketch constraint solver: PlaneGCS, vendored C++ | Accepted | M0.7 |
 | [0006](adr/0006-persistent-naming.md) | Persistent naming: names from feature history, edges by neighbors, geometric fallback with a warning | Accepted | M0.6 |
 | [0007](adr/0007-web-ui-framework-react.md) | Web UI framework: React | Accepted | M0.5 |
-| 0008 | Native file format | Open | M0.7 |
-| 0009 | Minimum OS and browser versions | Open | M0.7 |
+| [0008](adr/0008-native-file-format.md) | Native file format: a zip container with manifest, document, thumbnail and cache | Accepted | M0.7 |
+| [0009](adr/0009-minimum-os-and-browser-versions.md) | Minimum versions: iPadOS/macOS 26, a feature-based browser floor | Accepted | M0.7 |
 | 0010 | Script engine: embedded QuickJS (proposed) vs. platform JS engines | Open | M3.5 |
