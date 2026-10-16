@@ -4,7 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import exampleDocument from "../../../tests/documents/corner-fillet.json?raw";
 import { ModelPanel } from "./components/ModelPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
-import type { Edit, ModelSnapshot, SessionState } from "./core/api";
+import {
+  BooleanOp,
+  type Edit,
+  type MeshData,
+  type ModelSnapshot,
+  type SessionState,
+} from "./core/api";
 import { CoreClient } from "./core/client";
 import { postBenchmark } from "./dev/bench";
 import { PickKind, type FrameStats, type Pick, type Viewport } from "./render/viewport";
@@ -33,12 +39,21 @@ function formatStats(stats: FrameStats): string {
 }
 
 const params = new URLSearchParams(location.search);
-// ?stress tessellates finely (hundreds of thousands of triangles) for performance checks.
+// ?stress shows the M0.4 demo part, finely tessellated to about 215k triangles, instead of the
+// document, so the numbers in docs/benchmarks.md stay comparable.
 const stress = params.has("stress");
-const tessellation = {
-  linearDeflection: stress ? 0.0004 : 0.01,
-  angularDeflection: stress ? 0.02 : 0.2,
-};
+const tessellation = { linearDeflection: 0.01, angularDeflection: 0.2 };
+
+/** The M0.4 demo part: a plate with rounded edges, a boss on top and a hole through both. */
+async function stressMesh(core: CoreClient): Promise<MeshData> {
+  const plate = await core.call("makeBox", 40, 30, 4);
+  const rounded = await core.call("fillet", plate, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 1.5);
+  const boss = await core.call("makeCylinder", 20, 15, 6, 12);
+  const joined = await core.call("boolean", BooleanOp.Fuse, rounded, boss);
+  const hole = await core.call("makeCylinder", 20, 15, 3, 12);
+  const part = await core.call("boolean", BooleanOp.Cut, joined, hole);
+  return core.call("tessellate", part, { linearDeflection: 0.0004, angularDeflection: 0.02 });
+}
 
 /** The open model in the core worker. */
 interface Session {
@@ -88,11 +103,19 @@ export function App() {
     void (async () => {
       try {
         const versions = await core.call("versions");
-        const handle = await core.call("openSession", exampleDocument);
-        const snapshot = await core.call("regenerateModel", handle, tessellation);
-        if (cancelled) return;
-        session.current = { core, handle };
-        const mesh = show(snapshot);
+        let mesh: MeshData | undefined;
+        let handle: number | undefined;
+        if (stress) {
+          mesh = await stressMesh(core);
+          if (cancelled) return;
+          viewport.setMesh(mesh);
+        } else {
+          handle = await core.call("openSession", exampleDocument);
+          const snapshot = await core.call("regenerateModel", handle, tessellation);
+          if (cancelled) return;
+          session.current = { core, handle };
+          mesh = show(snapshot);
+        }
         viewport.fit();
         setStatus(`Core ${versions.core} · OpenCASCADE ${versions.kernel} · ${versions.platform}`);
         setReady(true);
@@ -172,7 +195,9 @@ export function App() {
         <div className="sidebar">
           <header className="panel header">
             <h1>Facetry</h1>
-            <p className="muted">Version {__APP_VERSION__} · tech preview</p>
+            <p className="muted">
+              Version {__APP_VERSION__} · tech preview{stress ? " · stress test" : ""}
+            </p>
             <p className="muted">{status}</p>
             {editError && <p className="error">{editError}</p>}
           </header>

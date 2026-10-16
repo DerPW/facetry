@@ -16,12 +16,10 @@ struct ModelSnapshot: Sendable {
 actor DocumentEngine {
     private let core: Core
     private let session: SessionHandle
-    private let fineMesh: Bool
 
-    init(json: String?, fineMesh: Bool = false) throws {
+    init(json: String?) throws {
         core = try Core()
         session = try core.openSession(json: json)
-        self.fineMesh = fineMesh
     }
 
     func apply(_ edits: [DocumentEdit]) throws {
@@ -49,10 +47,21 @@ actor DocumentEngine {
         }
         let shape = try core.bodyShape(session, body: body)
         defer { try? core.release(shape) }
-        let mesh = try core.tessellate(
-            shape, linearDeflection: fineMesh ? 0.0004 : 0.01,
-            angularDeflection: fineMesh ? 0.02 : 0.2)
+        let mesh = try core.tessellate(shape, linearDeflection: 0.01, angularDeflection: 0.2)
         return ModelSnapshot(state: state, mesh: mesh)
+    }
+
+    /// The M0.4 demo part (a plate with rounded edges, a boss and a hole), tessellated finely to
+    /// about 215k triangles. Used by `--stress`, so the numbers in docs/benchmarks.md stay
+    /// comparable.
+    func stressMesh() throws -> MeshData {
+        let plate = try core.makeBox(40, 30, 4)
+        let rounded = try core.fillet(plate, edges: Array(1...12), radius: 1.5)
+        let boss = try core.makeCylinder(x: 20, y: 15, radius: 6, height: 12)
+        let joined = try core.boolean(.fuse, rounded, boss)
+        let hole = try core.makeCylinder(x: 20, y: 15, radius: 3, height: 12)
+        let part = try core.boolean(.cut, joined, hole)
+        return try core.tessellate(part, linearDeflection: 0.0004, angularDeflection: 0.02)
     }
 }
 
@@ -63,7 +72,11 @@ final class DocumentModel {
     private(set) var state: SessionState?
     /// Number of regenerations running or waiting.
     private(set) var pending = 0
+    /// The core is running and the viewport shows something.
+    private(set) var ready = false
     var error: String?
+    /// `--stress` shows the finely tessellated M0.4 demo part instead of the document.
+    let stress = ProcessInfo.processInfo.arguments.contains("--stress")
 
     private let viewport: ViewportModel
     private var engine: DocumentEngine?
@@ -72,15 +85,19 @@ final class DocumentModel {
         self.viewport = viewport
     }
 
-    /// Opens the example document and shows it.
+    /// Opens the example document and shows it (or the stress part, see ``stress``).
     func load() async {
         do {
             let url = Bundle.main.url(forResource: "corner-fillet", withExtension: "json")
             guard let url else { throw CocoaError(.fileNoSuchFile) }
             let json = try String(contentsOf: url, encoding: .utf8)
-            // `--stress` tessellates finely for performance checks.
-            let fine = ProcessInfo.processInfo.arguments.contains("--stress")
-            engine = try DocumentEngine(json: json, fineMesh: fine)
+            let engine = try DocumentEngine(json: json)
+            self.engine = engine
+            if stress {
+                viewport.mesh = try await engine.stressMesh()
+                ready = true
+                return
+            }
             await regenerate()
         } catch {
             self.error = "Could not open the document: \(error)"
@@ -118,6 +135,7 @@ final class DocumentModel {
         do {
             let snapshot = try await engine.regenerate()
             state = snapshot.state
+            ready = true
             if let mesh = snapshot.mesh {
                 // Element IDs change with the geometry, so an old selection would point elsewhere.
                 viewport.selection = .none

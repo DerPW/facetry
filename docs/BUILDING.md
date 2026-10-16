@@ -198,13 +198,14 @@ Development URLs:
 
 | URL | Purpose |
 |---|---|
-| `/?stress` | Tessellates the demo part finely (about 215k triangles) |
+| `/?stress` | Shows the M0.4 demo part (a plate with a boss and a hole) instead of the document, finely tessellated to about 215k triangles |
 | `/?stress&bench` | Also measures draw and pick times and prints them in the dev server's log (`[bench]`). Useful in browsers that cannot be scripted, such as Safari |
 
 In development builds the browser console has `window.facetry.viewport` (e.g.
 `facetry.viewport.benchmark(60)`) and `window.facetry.core`.
 
-The Apple app takes `--stress` as a launch argument for the same fine tessellation.
+The Apple app takes `--stress` as a launch argument for the same stress model. On a connected
+iPad: `xcrun devicectl device process launch --device <device-id> io.github.derpw.facetry --stress`.
 
 The UI is React ([ADR-0007](adr/0007-web-ui-framework-react.md)). Production builds include a
 generated service worker (`vite/service-worker.ts`) that precaches the whole app for offline use;
