@@ -45,13 +45,14 @@ Back to the [roadmap overview](../ROADMAP.md).
 - [ ] Document structure: root component with origin (XY/XZ/YZ planes, X/Y/Z axes, origin
       point), bodies, sketches, construction geometry
 - [ ] **Browser** panel (tree): show/hide, rename, select, isolate, delete
-- [ ] **Timeline** bar, Fusion-style:
-  - [ ] one icon per feature, in order
-  - [ ] drag the rollback marker to view and edit the model at an earlier state
-  - [ ] edit a feature (reopens its tool with the stored values)
-  - [ ] suppress / unsuppress, rename, delete with a dependency warning
-  - [ ] error and warning badges with an explanation
-  - [ ] broken references ([ADR-0006](../adr/0006-persistent-naming.md)): list each with its last
+- [x] **Timeline** bar, Fusion-style ([#14](https://github.com/DerPW/facetry/issues/14)):
+  - [x] one icon per feature, in order
+  - [x] drag the rollback marker to view and edit the model at an earlier state
+  - [x] edit a feature: its values in the feature details for now; reopening its tool comes
+        with the tools (M1.3–M1.5)
+  - [x] suppress / unsuppress, rename, delete with a dependency warning
+  - [x] error and warning badges with an explanation
+  - [x] broken references ([ADR-0006](../adr/0006-persistent-naming.md)): list each with its last
         known place, pick a replacement as one undo step
 - [ ] Regeneration engine (from the M0.6 prototype):
   - [x] incremental: regenerate from the first changed feature (core, M0.6)

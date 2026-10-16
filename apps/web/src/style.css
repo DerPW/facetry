@@ -108,29 +108,141 @@ body {
   padding: 2px 6px;
 }
 
-.timeline {
+.timeline-area {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+}
+
+.timeline-area .panel {
+  position: static;
+}
+
+.timeline-bar {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.chips {
+  position: relative;
+  display: flex;
+  gap: 4px;
   margin: 0;
-  padding: 0;
+  padding: 0 4px;
   list-style: none;
-  font-size: 0.85rem;
 }
 
-.feature {
-  margin: 2px 0;
+.chip {
+  width: 120px;
+  overflow: hidden;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
 }
 
-.feature.warning {
+.chip.selected {
+  border-color: #0a84ff;
+}
+
+.chip.warning {
   color: #c93400;
 }
 
-.feature.error {
+.chip.error {
   color: #d70015;
 }
 
-.feature.suppressed,
-.feature.rolledBack,
-.feature.notRun {
-  color: var(--muted);
+.chip.suppressed,
+.chip.after-marker {
+  opacity: 0.45;
+}
+
+.chip .badge {
+  float: right;
+  font-weight: 700;
+}
+
+.marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 8px;
+  border-radius: 4px;
+  background: #0a84ff;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.feature-details {
+  width: 300px;
+  font-size: 0.85rem;
+}
+
+.feature-details header {
+  display: flex;
+  gap: 8px;
+}
+
+.feature-details header input {
+  flex: 1;
+}
+
+.feature-details input,
+.feature-details button {
+  font: inherit;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.feature-details .status.warning {
+  color: #c93400;
+}
+
+.feature-details .status.error {
+  color: #d70015;
+}
+
+.feature-details .actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.feature-details .danger {
+  color: #d70015;
+}
+
+.broken {
+  margin: 6px 0;
+  color: #d70015;
+}
+
+.broken p {
+  margin: 0 0 4px;
+}
+
+.hint {
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.85rem;
 }
 
 .header h1 {

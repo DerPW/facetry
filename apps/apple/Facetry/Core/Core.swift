@@ -91,7 +91,13 @@ struct SessionState: Decodable, Sendable, Equatable {
         /// "ok", "warning", "error", "suppressed", "rolledBack" or "notRun".
         let status: String
         let messages: [String]
+        /// Indices into the feature's references (a fillet's `edges`) that could not be resolved.
         let brokenReferences: [Int]
+        /// Later features that use this one, directly or through others.
+        let dependents: [String]
+        /// The feature in the document's JSON form, to change and send back with
+        /// ``DocumentEdit/replaceFeature(_:)``.
+        let definition: JSONValue
     }
 
     struct Regeneration: Decodable, Sendable, Equatable {
@@ -116,8 +122,72 @@ struct ElementNames: Decodable, Sendable, Equatable {
     let vertices: [String]
 }
 
-/// An edit for ``Core/apply(_:_:)``. Edits that carry whole features (`addFeature`,
-/// `replaceFeature`) go through ``Core/apply(_:json:)`` with the document's JSON form.
+/// Any JSON value. Feature definitions pass through the app in this form until the app has its own
+/// feature types.
+enum JSONValue: Codable, Sendable, Equatable {
+    case null
+    case bool(Bool)
+    case number(Double)
+    case string(String)
+    case array([JSONValue])
+    case object([String: JSONValue])
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() {
+            self = .null
+        } else if let value = try? c.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? c.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? c.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? c.decode([JSONValue].self) {
+            self = .array(value)
+        } else {
+            self = .object(try c.decode([String: JSONValue].self))
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let value): try c.encode(value)
+        case .number(let value): try c.encode(value)
+        case .string(let value): try c.encode(value)
+        case .array(let value): try c.encode(value)
+        case .object(let value): try c.encode(value)
+        }
+    }
+
+    subscript(key: String) -> JSONValue? {
+        get {
+            guard case .object(let object) = self else { return nil }
+            return object[key]
+        }
+        set {
+            guard case .object(var object) = self else { return }
+            object[key] = newValue
+            self = .object(object)
+        }
+    }
+
+    subscript(index: Int) -> JSONValue? {
+        guard case .array(let array) = self, array.indices.contains(index) else { return nil }
+        return array[index]
+    }
+
+    var number: Double? {
+        if case .number(let value) = self { value } else { nil }
+    }
+
+    var string: String? {
+        if case .string(let value) = self { value } else { nil }
+    }
+}
+
+/// An edit for ``Core/apply(_:_:)`` (the JSON forms are in core/include/facetry/core/session_json.hpp).
 enum DocumentEdit: Encodable, Sendable, Equatable {
     case setParameter(name: String, value: Double)
     case addParameter(name: String, value: Double)
@@ -126,9 +196,11 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case renameFeature(id: String, name: String)
     case suppressFeature(id: String, suppressed: Bool)
     case setRollback(index: Int?)
+    /// Replaces the feature with the same `id` (a changed ``SessionState/Feature/definition``).
+    case replaceFeature(JSONValue)
 
     private enum Key: String, CodingKey {
-        case op, name, value, id, suppressed, index
+        case op, name, value, id, suppressed, index, feature
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -159,6 +231,9 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
             } else {
                 try c.encodeNil(forKey: .index)
             }
+        case .replaceFeature(let definition):
+            try c.encode(op, forKey: .op)
+            try c.encode(definition, forKey: .feature)
         }
     }
 
@@ -171,6 +246,7 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .renameFeature: "renameFeature"
         case .suppressFeature: "suppressFeature"
         case .setRollback: "setRollback"
+        case .replaceFeature: "replaceFeature"
         }
     }
 }

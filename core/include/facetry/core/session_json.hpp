@@ -39,12 +39,16 @@ void applyEdits(Document& document, std::string_view json);
 //   {"parameters": [{"name": "width", "value": 10}],
 //    "rollback": null, "canUndo": true, "canRedo": false, "needsRegeneration": false,
 //    "features": [{"id": "f5", "name": "Fillet 1", "type": "fillet", "suppressed": false,
-//                  "status": "ok", "messages": [], "brokenReferences": []}],
+//                  "status": "ok", "messages": [], "brokenReferences": [],
+//                  "dependents": [], "definition": {…}}],
 //    "bodies": ["f2"],
 //    "regeneration": {"cancelled": false, "executed": 1}}
 //
 // "status" is "ok", "warning", "error", "suppressed", "rolledBack" or "notRun"; it comes from the
-// last regeneration and is "notRun" for features added since.
+// last regeneration and is "notRun" for features added since. "dependents" lists the later
+// features that use this one, directly or through others (what deleting it would break).
+// "definition" is the feature in the document's JSON form, ready to be changed and sent back with
+// "replaceFeature".
 [[nodiscard]] std::string sessionStateJson(const Session& session);
 
 // Persistent names of a body's elements: {"faces": [...], "edges": [...], "vertices": [...]}.

@@ -6,7 +6,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
+#include <set>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -164,6 +167,66 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
     invalidEdit(path + " has the unknown op \"" + op + "\"");
 }
 
+// IDs that look like feature IDs inside a reference name, e.g. "f2" in "edge{f2:side[f1/l2]}":
+// an identifier followed by ':' (a feature's role) or '/' (a sketch element).
+void collectIds(std::string_view name, std::set<std::string>& ids) {
+    std::size_t start = std::string_view::npos;
+    for (std::size_t i = 0; i <= name.size(); ++i) {
+        const char c = i < name.size() ? name[i] : '\0';
+        if (std::isalnum(static_cast<unsigned char>(c)) != 0) {
+            if (start == std::string_view::npos) {
+                start = i;
+            }
+            continue;
+        }
+        if (start != std::string_view::npos && (c == ':' || c == '/')) {
+            ids.insert(std::string(name.substr(start, i - start)));
+        }
+        start = std::string_view::npos;
+    }
+}
+
+// The features a feature uses directly: its profile, the bodies it changes, and the features
+// whose results its references name.
+std::set<std::string> dependenciesOf(const Feature& feature) {
+    std::set<std::string> ids;
+    if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
+        ids.insert(extrude->profile);
+    }
+    if (const auto* references = feature.references()) {
+        for (const Reference& reference : *references) {
+            ids.insert(reference.body);
+            collectIds(reference.name, ids);
+        }
+    }
+    ids.erase(feature.id);
+    return ids;
+}
+
+// For each feature, the later features that depend on it, directly or through others: what
+// breaks when it is deleted.
+std::map<std::string, std::vector<std::string>> dependents(const std::vector<Feature>& timeline) {
+    std::map<std::string, std::vector<std::string>> result;
+    std::vector<std::set<std::string>> dependencies;
+    for (const Feature& feature : timeline) {
+        dependencies.push_back(dependenciesOf(feature));
+    }
+    for (std::size_t i = 0; i < timeline.size(); ++i) {
+        std::set<std::string> affected{timeline[i].id};
+        auto& list = result[timeline[i].id];
+        for (std::size_t j = i + 1; j < timeline.size(); ++j) {
+            const bool depends =
+                std::any_of(dependencies[j].begin(), dependencies[j].end(),
+                            [&](const std::string& id) { return affected.contains(id); });
+            if (depends) {
+                affected.insert(timeline[j].id);
+                list.push_back(timeline[j].id);
+            }
+        }
+    }
+    return result;
+}
+
 const char* statusName(FeatureStatus status) {
     switch (status) {
         case FeatureStatus::Ok:
@@ -209,6 +272,7 @@ std::string sessionStateJson(const Session& session) {
         parameters.push_back({{"name", parameter.name}, {"value", parameter.value}});
     }
     Json features = Json::array();
+    const auto dependentsById = dependents(document.root.timeline);
     for (const Feature& feature : document.root.timeline) {
         Json entry = {{"id", feature.id},
                       {"name", feature.name},
@@ -219,6 +283,8 @@ std::string sessionStateJson(const Session& session) {
         entry["messages"] = result != nullptr ? result->messages : std::vector<std::string>{};
         entry["brokenReferences"] =
             result != nullptr ? result->brokenReferences : std::vector<std::size_t>{};
+        entry["dependents"] = dependentsById.at(feature.id);
+        entry["definition"] = json::featureToJson(feature);
         features.push_back(std::move(entry));
     }
     Json bodies = Json::array();

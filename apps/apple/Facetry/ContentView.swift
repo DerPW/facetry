@@ -21,6 +21,21 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .topTrailing) { controls }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 8) {
+                    if model?.repair != nil {
+                        Text("Select the edge that should replace the missing one.")
+                            .font(.caption).panel()
+                    }
+                    if let model, let state = model.state {
+                        TimelineBar(state: state, model: model)
+                    }
+                }
+                .padding(.bottom, 56)
+            }
+            .onChange(of: viewport.selection) { _, pick in
+                Task { await model?.completeRepair(with: pick) }
+            }
             .overlay(alignment: .bottomLeading) { stats }
             .overlay(alignment: .bottomTrailing) { selection }
             .task {
@@ -100,7 +115,7 @@ struct ContentView: View {
     }
 }
 
-/// Parameters and timeline of the open model.
+/// The parameters of the open model.
 private struct ModelPanel: View {
     let state: SessionState
     let model: DocumentModel
@@ -112,10 +127,6 @@ private struct ModelPanel: View {
                 ParameterRow(parameter: parameter) { value in
                     Task { await model.setParameter(parameter.name, to: value) }
                 }
-            }
-            Text("Timeline").font(.caption.bold())
-            ForEach(state.features) { feature in
-                FeatureRow(feature: feature)
             }
         }
         .frame(width: 240, alignment: .leading)
@@ -147,41 +158,6 @@ private struct ParameterRow: View {
         }
         .onAppear { value = parameter.value }
         .onChange(of: parameter.value) { _, newValue in value = newValue }
-    }
-}
-
-private struct FeatureRow: View {
-    let feature: SessionState.Feature
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Label(feature.name, systemImage: symbol)
-                .font(.caption)
-                .foregroundStyle(color)
-            ForEach(feature.messages, id: \.self) { message in
-                Text(message).font(.caption2).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var symbol: String {
-        switch feature.status {
-        case "ok": "checkmark.circle"
-        case "warning": "exclamationmark.triangle"
-        case "error": "xmark.octagon"
-        case "suppressed": "pause.circle"
-        case "rolledBack": "arrow.uturn.backward.circle"
-        default: "circle.dotted"
-        }
-    }
-
-    private var color: Color {
-        switch feature.status {
-        case "warning": .orange
-        case "error": .red
-        case "ok": .primary
-        default: .secondary
-        }
     }
 }
 
