@@ -140,6 +140,20 @@ export class Viewport {
     return this.#selection;
   }
 
+  /** Sets the selection and statistics callbacks. */
+  setListeners(listeners: {
+    onSelectionChange?: (selection: Pick) => void;
+    onStats?: (stats: FrameStats) => void;
+  }): void {
+    if (listeners.onSelectionChange) this.onSelectionChange = listeners.onSelectionChange;
+    if (listeners.onStats) this.onStats = listeners.onStats;
+  }
+
+  /** Clears the selection (Esc). */
+  clearSelection(): void {
+    this.#setSelection({ kind: PickKind.None, id: 0 });
+  }
+
   fit(): void {
     this.#m._facetry_camera_fit(this.#renderer);
   }
@@ -294,10 +308,16 @@ export class Viewport {
   #wheel(e: WheelEvent): void {
     e.preventDefault();
     const { x, y } = this.#local(e);
-    // Trackpad pinch arrives as wheel events with ctrlKey; scale it up a little.
+    const toPixels = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+    if (e.shiftKey) {
+      // Shift + wheel or two-finger trackpad scroll pans (docs/INPUT.md). Some browsers report
+      // Shift + vertical wheel as horizontal scrolling.
+      this.#m._facetry_camera_pan(this.#renderer, -e.deltaX * toPixels, -e.deltaY * toPixels);
+      return;
+    }
+    // Wheel zooms toward the pointer; trackpad pinch arrives as wheel events with ctrlKey.
     const speed = e.ctrlKey ? 0.01 : 0.0015;
-    const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 16 : e.deltaY;
-    this.#m._facetry_camera_zoom(this.#renderer, Math.exp(delta * speed), x, y);
+    this.#m._facetry_camera_zoom(this.#renderer, Math.exp(e.deltaY * toPixels * speed), x, y);
   }
 
   #setHover(pick: Pick): void {

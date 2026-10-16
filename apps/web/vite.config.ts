@@ -1,5 +1,8 @@
+import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
+
+import { serviceWorker } from "./vite/service-worker";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
   version: string;
@@ -24,7 +27,7 @@ const benchLog: Plugin = {
 };
 
 export default defineConfig({
-  plugins: [benchLog],
+  plugins: [react(), serviceWorker(), benchLog],
   // Relative base so the build works under any path, e.g. GitHub Pages at /facetry/.
   base: "./",
   define: {

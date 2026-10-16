@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Binding var document: FacetryDocument
     @State private var viewport = ViewportModel()
     @State private var coreStatus = "Starting the core…"
 
@@ -21,7 +22,7 @@ struct ContentView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Facetry").font(.headline)
-            Text("Version \(version) · Phase 0")
+            Text("Version \(version) · Phase 0 · document format \(document.content.formatVersion)")
             Text(viewport.error ?? coreStatus)
         }
         .font(.caption)
@@ -32,9 +33,16 @@ struct ContentView: View {
     private var controls: some View {
         HStack {
             Button("Fit") { viewport.fit() }
+                .keyboardShortcut("f", modifiers: [])
             Button(viewport.orthographic ? "Perspective" : "Orthographic") {
                 viewport.orthographic.toggle()
             }
+            .keyboardShortcut("o", modifiers: [])
+            // Esc clears the selection (docs/INPUT.md).
+            Button("Clear selection") { viewport.selection = .none }
+                .keyboardShortcut(.escape, modifiers: [])
+                .hidden()
+                .frame(width: 0, height: 0)
         }
         .panel()
     }
@@ -108,5 +116,5 @@ extension View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(document: .constant(FacetryDocument()))
 }

@@ -113,6 +113,10 @@ again after pulling changes that touch `project.yml` or add files:
 cd apps/apple && xcodegen generate && open Facetry.xcodeproj
 ```
 
+The app is document-based: it opens and saves `.facetry` documents (type
+`io.github.derpw.facetry.document`, declared in `project.yml`). Until the file format is decided
+(ADR-0008, M0.7) a document is a small JSON file with a format version.
+
 The app target supports iPad (iPadOS 26+) and native macOS (macOS 26+), Apple silicon only. To
 build and test without a signing identity, as CI does:
 
@@ -147,6 +151,11 @@ In development builds the browser console has `window.facetry.viewport` (e.g.
 
 The Apple app takes `--stress` as a launch argument for the same fine tessellation.
 
+The UI is React ([ADR-0007](adr/0007-web-ui-framework-react.md)). Production builds include a
+generated service worker (`vite/service-worker.ts`) that precaches the whole app for offline use;
+development builds never register it. CI deploys every build of `main` to GitHub Pages:
+<https://derpw.github.io/facetry/>.
+
 | Script | Purpose |
 |---|---|
 | `npm run dev` | Development server |
@@ -154,6 +163,17 @@ The Apple app takes `--stress` as a launch argument for the same fine tessellati
 | `npm test` | Vitest: the TypeScript core API against the real WebAssembly module, in Node |
 | `npm run lint` | ESLint |
 | `npm run format` / `format:check` | Prettier |
+
+## App icon
+
+The icon is drawn in code, so it stays reproducible. After changing the design, run on macOS:
+
+```bash
+swift tools/icons/render-icons.swift
+```
+
+It writes the web icons (`apps/web/public/icons/`) and the Apple app icon set
+(`apps/apple/Facetry/Assets.xcassets/`), which are checked in.
 
 ## Formatting
 
@@ -175,6 +195,7 @@ The Apple app takes `--stress` as a launch argument for the same fine tessellati
 | `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten, run its tests in Node, build the web module |
 | `Apple app` | macOS 26 | Build the core frameworks and the app, run the Swift tests on macOS, lint Swift |
 | `web app` | Ubuntu 24.04 | Lint, format check, test against the core module, type-check and build |
+| `Deploy web app to GitHub Pages` | Ubuntu 24.04 | `main` only: publishes the web build |
 | `format (C++)` | Ubuntu 24.04 | clang-format check; checks that the generated shader header is up to date |
 
 All checks above are required to merge into `main`. A seventh job, `Publish OpenCASCADE
