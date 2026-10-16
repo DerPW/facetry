@@ -24,6 +24,9 @@ namespace facetry::core {
 //   {"op": "renameFeature", "id": "f5", "name": "Corner round"}
 //   {"op": "suppressFeature", "id": "f5", "suppressed": true}
 //   {"op": "setRollback", "index": 2}        (null: no rollback marker)
+//   {"op": "renameBody", "id": "f2", "name": "Plate"}   ("" restores the default name)
+//   {"op": "setBodyVisible", "id": "f2", "visible": false}
+//   {"op": "setOriginVisible", "id": "xy", "visible": true}
 //
 // Features use the document's JSON form. In "addFeature", "id", "name", "suppressed" and
 // "namingVersion" may be left out: the feature gets a fresh ID and a default name. Without an
@@ -41,7 +44,8 @@ void applyEdits(Document& document, std::string_view json);
 //    "features": [{"id": "f5", "name": "Fillet 1", "type": "fillet", "suppressed": false,
 //                  "status": "ok", "messages": [], "brokenReferences": [],
 //                  "dependents": [], "definition": {…}}],
-//    "bodies": ["f2"],
+//    "bodies": [{"id": "f2", "name": "Body 1", "visible": true}],
+//    "origin": [{"id": "xy", "name": "XY plane", "kind": "plane", "visible": false}, …],
 //    "regeneration": {"cancelled": false, "executed": 1}}
 //
 // "status" is "ok", "warning", "error", "suppressed", "rolledBack" or "notRun"; it comes from the

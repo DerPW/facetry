@@ -189,15 +189,25 @@ std::string toJson(const Document& document) {
     for (const Feature& feature : document.root.timeline) {
         timeline.push_back(json::featureToJson(feature));
     }
+    Json component = {
+        {"id", document.root.id}, {"name", document.root.name}, {"timeline", std::move(timeline)}};
+    // Optional settings are only written when set, so documents without them stay unchanged.
+    if (!document.root.bodies.empty()) {
+        Json bodies = Json::array();
+        for (const BodySettings& body : document.root.bodies) {
+            bodies.push_back({{"id", body.id}, {"name", body.name}, {"visible", body.visible}});
+        }
+        component["bodies"] = std::move(bodies);
+    }
+    if (!document.root.visibleOrigin.empty()) {
+        component["visibleOrigin"] = document.root.visibleOrigin;
+    }
     const Json result = {
         {"format", json::kFormat},
         {"formatVersion", kDocumentFormatVersion},
         {"nextId", document.nextId},
         {"parameters", std::move(parameters)},
-        {"root",
-         {{"id", document.root.id},
-          {"name", document.root.name},
-          {"timeline", std::move(timeline)}}},
+        {"root", std::move(component)},
         {"rollback", document.rollback ? Json(*document.rollback) : Json(nullptr)},
     };
     return result.dump(2) + "\n";
@@ -238,6 +248,18 @@ Document parseDocument(std::string_view text) {
     document.root.name = component.at("name").string();
     for (const Reader& feature : component.at("timeline").items()) {
         document.root.timeline.push_back(json::readFeature(feature));
+    }
+    if (component.has("bodies")) {
+        for (const Reader& body : component.at("bodies").items()) {
+            document.root.bodies.push_back({.id = body.at("id").string(),
+                                            .name = body.at("name").string(),
+                                            .visible = body.at("visible").boolean()});
+        }
+    }
+    if (component.has("visibleOrigin")) {
+        for (const Reader& item : component.at("visibleOrigin").items()) {
+            document.root.visibleOrigin.push_back(item.string());
+        }
     }
     if (root.has("rollback")) {
         document.rollback = static_cast<std::size_t>(root.at("rollback").unsignedNumber());

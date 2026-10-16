@@ -42,9 +42,12 @@ Back to the [roadmap overview](../ROADMAP.md).
   - feature status and messages;
   - bodies as meshes with element names;
   - references from picks.
-- [ ] Document structure: root component with origin (XY/XZ/YZ planes, X/Y/Z axes, origin
-      point), bodies, sketches, construction geometry
-- [ ] **Browser** panel (tree): show/hide, rename, select, isolate, delete
+- [x] Document structure: root component with origin (XY/XZ/YZ planes, X/Y/Z axes, origin
+      point), bodies with names and visibility, sketches
+      ([#16](https://github.com/DerPW/facetry/issues/16)). Construction geometry joins with M1.7;
+      drawing the origin in the viewport comes with it
+- [x] **Browser** panel (tree): show/hide, rename, select, isolate; selecting opens the feature
+      in the timeline, where it can be deleted ([#15](https://github.com/DerPW/facetry/issues/15))
 - [x] **Timeline** bar, Fusion-style ([#14](https://github.com/DerPW/facetry/issues/14)):
   - [x] one icon per feature, in order
   - [x] drag the rollback marker to view and edit the model at an earlier state

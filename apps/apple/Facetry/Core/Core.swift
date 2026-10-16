@@ -54,6 +54,9 @@ struct MeshData: Sendable, Equatable {
     var vertexIDs: [UInt32] = []
 
     var triangleCount: Int { triangles.count / 3 }
+
+    /// Nothing to show. Edge offsets always have one entry more than there are edges.
+    static let empty = MeshData(edgeOffsets: [0])
 }
 
 /// An open document in a ``Core`` context: description, undo/redo and regeneration cache.
@@ -111,8 +114,25 @@ struct SessionState: Decodable, Sendable, Equatable {
     let canRedo: Bool
     let needsRegeneration: Bool
     let features: [Feature]
-    let bodies: [String]
+    /// Bodies of the last regeneration; a body's ID is the ID of the feature that created it.
+    let bodies: [Body]
+    /// The fixed origin: base planes, axes and the origin point.
+    let origin: [OriginItem]
     let regeneration: Regeneration
+
+    struct Body: Decodable, Sendable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let visible: Bool
+    }
+
+    struct OriginItem: Decodable, Sendable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        /// "plane", "axis" or "point".
+        let kind: String
+        let visible: Bool
+    }
 }
 
 /// Persistent names of a body's elements; index i belongs to element ID i + 1.
@@ -198,9 +218,13 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case setRollback(index: Int?)
     /// Replaces the feature with the same `id` (a changed ``SessionState/Feature/definition``).
     case replaceFeature(JSONValue)
+    /// An empty name restores the default ("Body 1", …).
+    case renameBody(id: String, name: String)
+    case setBodyVisible(id: String, visible: Bool)
+    case setOriginVisible(id: String, visible: Bool)
 
     private enum Key: String, CodingKey {
-        case op, name, value, id, suppressed, index, feature
+        case op, name, value, id, suppressed, index, feature, visible
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -234,6 +258,14 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .replaceFeature(let definition):
             try c.encode(op, forKey: .op)
             try c.encode(definition, forKey: .feature)
+        case .renameBody(let id, let name):
+            try c.encode(op, forKey: .op)
+            try c.encode(id, forKey: .id)
+            try c.encode(name, forKey: .name)
+        case .setBodyVisible(let id, let visible), .setOriginVisible(let id, let visible):
+            try c.encode(op, forKey: .op)
+            try c.encode(id, forKey: .id)
+            try c.encode(visible, forKey: .visible)
         }
     }
 
@@ -247,6 +279,9 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .suppressFeature: "suppressFeature"
         case .setRollback: "setRollback"
         case .replaceFeature: "replaceFeature"
+        case .renameBody: "renameBody"
+        case .setBodyVisible: "setBodyVisible"
+        case .setOriginVisible: "setOriginVisible"
         }
     }
 }
