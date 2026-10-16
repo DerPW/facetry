@@ -16,7 +16,7 @@ Each phase has its own document with the detailed feature list:
 
 Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 in progress. M0.1 is done; next up is M0.2 (OpenCASCADE builds).
+**Current status:** Phase 0 in progress. M0.1 and M0.2 are done; next up is M0.3 (core skeleton & API boundary).
 
 ---
 
@@ -65,7 +65,7 @@ Phase 0: **S** ≤ 1 week · **M** 1–3 weeks · **L** 3–6 weeks · **XL** > 
 | ID | Milestone | Size | Status |
 |---|---|---|---|
 | M0.1 | Repository & engineering setup | S | ✅ |
-| M0.2 | OpenCASCADE builds for Apple and WebAssembly | M | ⬜ |
+| M0.2 | OpenCASCADE builds for Apple and WebAssembly | M | ✅ |
 | M0.3 | Core skeleton & API boundary | M | ⬜ |
 | M0.4 | Viewport renderer spike | M | ⬜ |
 | M0.5 | App shells (SwiftUI + web) | M | ⬜ |

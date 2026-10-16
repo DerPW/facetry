@@ -1,0 +1,34 @@
+name: Set up Emscripten
+description: Installs and activates the pinned emsdk version, with caching.
+
+inputs:
+  version:
+    description: emsdk version
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Cache emsdk
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/emsdk
+        key: emsdk-${{ runner.os }}-${{ inputs.version }}
+    - name: Install emsdk ${{ inputs.version }}
+      shell: bash
+      env:
+        EMSDK_VERSION: ${{ inputs.version }}
+      run: |
+        if [ ! -d "$RUNNER_TEMP/emsdk" ]; then
+          git clone --depth 1 --branch "$EMSDK_VERSION" \
+            https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+        fi
+        cd "$RUNNER_TEMP/emsdk"
+        ./emsdk install "$EMSDK_VERSION"
+        ./emsdk activate "$EMSDK_VERSION"
+        source ./emsdk_env.sh
+        echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+        echo "EMSDK_NODE=$EMSDK_NODE" >> "$GITHUB_ENV"
+        echo "$EMSDK" >> "$GITHUB_PATH"
+        echo "$EMSDK/upstream/emscripten" >> "$GITHUB_PATH"
+        dirname "$EMSDK_NODE" >> "$GITHUB_PATH"

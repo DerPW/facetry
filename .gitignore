@@ -19,6 +19,7 @@ compile_commands.json
 # Third-party build outputs (OpenCASCADE, PlaneGCS, ...)
 /third_party/_build/
 /third_party/_install/
+/third_party/_dist/
 
 # Web
 node_modules/
