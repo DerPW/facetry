@@ -28,7 +28,7 @@ milestone says so and the web app explains why the feature is missing.
 | Pencil hover preview | ✅ supported iPads | — | ◐ where the browser reports hover |
 | Pencil double-tap, squeeze, barrel roll | ✅ (squeeze and barrel roll need Apple Pencil Pro) | — | — not exposed to the web |
 | Scribble handwriting in fields | ✅ | — | ◐ |
-| Keyboard shortcuts | ✅ with hardware keyboard | ✅ | ✅ |
+| Keyboard shortcuts ([input model](INPUT.md)) | ✅ with hardware keyboard | ✅ | ✅ |
 | Multithreaded regeneration | ✅ | ✅ | ◐ needs cross-origin isolation |
 | Large models | ✅ limited by device memory | ✅ | ◐ wasm32 memory limit, stricter in Safari on iPad |
 | Files / iCloud Drive | ✅ | ✅ | ◐ File System Access API in Chromium; upload/download elsewhere |
@@ -59,11 +59,15 @@ milestone says so and the web app explains why the feature is missing.
 
 ### Web: GitHub Pages
 
-- Deployed automatically from `main`, so the web app always shows the latest merged state.
-- Installable as a PWA and usable offline after the first visit.
-- GitHub Pages cannot set custom HTTP headers. WebAssembly threads need cross-origin isolation
-  (COOP/COEP headers), so a service-worker shim provides it. If that proves unreliable, the web
-  build moves to a host that allows custom headers.
+- Deployed automatically from `main` by the CI workflow, so the web app at
+  <https://derpw.github.io/facetry/> always shows the latest merged state.
+- Installable as a PWA (`manifest.webmanifest`, icons) and usable offline after the first visit:
+  a generated service worker precaches every file of the build.
+- The repository owner's GitHub Pages use a custom domain, so the URL above redirects there.
+- GitHub Pages cannot set custom HTTP headers. WebAssembly threads would need cross-origin
+  isolation (COOP/COEP headers). Neither the core nor the renderer uses threads yet, so this is
+  not needed. When multithreading comes (M2.9), a service-worker shim can provide the headers;
+  if that proves unreliable, the web build moves to a host that allows custom headers.
 - The WebAssembly download size is tracked against a budget. M0.2 measured 2.6 MB (brotli) for
   modeling only and 3.3 MB with STEP (see [benchmarks](benchmarks.md)), so STEP is linked in for
   now. Loading it on demand stays an option if the core grows.

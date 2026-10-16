@@ -44,3 +44,4 @@ Run the checks for the parts you touched (CI runs all of them and they are requi
 - **Core changes need tests.** Modeling changes need golden-model or edit tests in
   `tests/models/`.
 - Ideas that fit no milestone go to `docs/roadmap/future.md` instead of into the current work.
+- Input handling follows `docs/INPUT.md` on every platform; change the table and both shells together.

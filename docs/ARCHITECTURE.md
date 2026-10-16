@@ -104,8 +104,10 @@ render/           facetry-render: viewport renderer (C API facetry_render.h), sh
                   render/shaders/ compiled into render/src/shaders/ by generate.sh
 apps/apple/       SwiftUI app for iPadOS and macOS (XcodeGen spec: project.yml);
                   Facetry/Core/ wraps the C API, scripts/build-core.sh builds its frameworks
-apps/web/         Vite + TypeScript app; src/core/ wraps the C API and runs it in a Web Worker
+apps/web/         Vite + React + TypeScript app (PWA); src/core/ wraps the C API and runs it in a
+                  Web Worker, src/render/ hosts the renderer, src/components/ the React UI
 tools/cli/        facetry-cli: build models from JSON, print stats, export STL, check goldens
+tools/icons/      render-icons.swift: draws the app icon for both apps
 tests/models/     benchmark models (.facetry) with expected results
 third_party/      build scripts and pins for OpenCASCADE, PlaneGCS, …
 docs/             roadmap, architecture, ADRs, benchmarks
@@ -148,7 +150,7 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0004](adr/0004-viewport-renderer-shared-cpp-sokol.md) | Viewport renderer: one shared C++ renderer on sokol_gfx, CPU picking | Accepted | M0.4 |
 | 0005 | Sketch constraint solver: PlaneGCS (proposed) | Open | M0.7 |
 | 0006 | Persistent naming scheme | Open | M0.6 |
-| 0007 | Web UI framework | Open | M0.5 |
+| [0007](adr/0007-web-ui-framework-react.md) | Web UI framework: React | Accepted | M0.5 |
 | 0008 | Native file format | Open | M0.7 |
 | 0009 | Minimum OS and browser versions | Open | M0.7 |
 | 0010 | Script engine: embedded QuickJS (proposed) vs. platform JS engines | Open | M3.5 |

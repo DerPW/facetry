@@ -131,20 +131,30 @@ iPad** (frame rate and finger picking) once the app shell can be installed on a 
 
 **Size:** M · **Depends on:** M0.4
 
-- [ ] **Apple:** SwiftUI multiplatform app (iPadOS + macOS)
-  - [ ] document-based app skeleton (opens and saves an empty `.facetry` document)
+- [x] **Apple:** SwiftUI multiplatform app (iPadOS + macOS)
+  - [x] document-based app skeleton (opens and saves an empty `.facetry` document; provisional
+        JSON content until ADR-0008)
   - [x] Metal view hosting the viewport (done in M0.4)
-  - [ ] input routing that tells Pencil, finger, mouse, trackpad and keyboard apart
-- [ ] **Web:** Vite + TypeScript app (UI framework decided in ADR-0007)
+  - [x] input routing that tells Pencil, finger, mouse, trackpad and keyboard apart
+        ([input model](../INPUT.md))
+  - [x] app icon
+- [x] **Web:** Vite + TypeScript app (UI framework decided in ADR-0007 → **React**,
+      [ADR-0007](../adr/0007-web-ui-framework-react.md))
   - [x] core in a Web Worker, viewport on a canvas (done in M0.3/M0.4)
-  - [ ] Pointer Events with `pointerType` (pen, touch, mouse) routed the same way as on Apple
-  - [ ] PWA manifest and service worker for offline use
-- [ ] Web build deployed from `main` to GitHub Pages
-- [ ] Cross-origin isolation for WebAssembly threads on GitHub Pages (service-worker shim) if
-      ADR-0004/0003 require threads
+  - [x] Pointer Events with `pointerType` (pen, touch, mouse) routed the same way as on Apple
+  - [x] PWA manifest and service worker for offline use (checked offline in headless Chrome)
+- [x] Web build deployed from `main` to GitHub Pages (<https://derpw.github.io/facetry/>)
+- [x] Cross-origin isolation for WebAssembly threads on GitHub Pages (service-worker shim) if
+      ADR-0004/0003 require threads → **not needed yet**: neither the core nor the renderer uses
+      threads. It comes back when the core goes multithreaded (M2.9).
+- [ ] Checks on a real iPad: frame rate, finger picking, Pencil hover
+      ([#7](https://github.com/DerPW/facetry/issues/7))
 
 **Done when:** all three platforms show the filleted box, tapping or clicking selects a face,
 and hovering highlights it with the mouse and with Pencil hover on supported iPads.
+
+**Status:** Mac, web (Chromium, Safari) and the iPad simulator do all of this. Pencil hover and
+the frame rate on a real iPad are still open in #7.
 
 ## M0.6 — Document model & persistent naming prototype
 
