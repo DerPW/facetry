@@ -37,6 +37,14 @@ namespace kernel {
 // Wraps an OpenCASCADE result. Throws Error(Kernel) for a null shape.
 Shape wrap(const TopoDS_Shape& shape, const char* operation);
 
+// Like wrap(), but results that fail OpenCASCADE's validity check are reported instead of passed
+// on.
+Shape checkedResult(const TopoDS_Shape& shape, const char* operation);
+
+// Argument checks; they throw Error(InvalidArgument) with `name` in the message.
+void requirePositive(double value, const char* name);
+void requireFinite(double value, const char* name);
+
 // Routes OpenCASCADE's messenger output into facetry's log. Called by guard().
 void routeMessagesToLog();
 
