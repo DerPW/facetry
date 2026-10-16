@@ -113,8 +113,9 @@ it either, but its naming types (generation, intersection, filter by neighbors) 
 vocabulary.
 
 OCCT 8.0 adds `BRepGraph` with typed node ids and history tracking
-([8.0 release](https://github.com/Open-Cascade-SAS/OCCT/releases/tag/V8_0_0)). It is worth
-evaluating in M0.6 but is unproven as a naming solution.
+([8.0 release](https://github.com/Open-Cascade-SAS/OCCT/releases/tag/V8_0_0)). Evaluated in
+M0.6 ([ADR-0006](adr/0006-persistent-naming.md)): its IDs are stable inside one graph, but a model
+rebuilt from changed parameters is a new graph, so it does not replace naming.
 
 ### Dune 3D: what happens without naming
 

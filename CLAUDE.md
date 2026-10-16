@@ -43,5 +43,10 @@ Run the checks for the parts you touched (CI runs all of them and they are requi
   `docs/ARCHITECTURE.md`.
 - **Core changes need tests.** Modeling changes need golden-model or edit tests in
   `tests/models/`.
+- **References are names, never indices** ([ADR-0006](docs/adr/0006-persistent-naming.md)). New
+  features name their results through the shared naming pass in
+  `core/src/kernel/occt_naming.cpp`.
+- **Document format changes** bump `kDocumentFormatVersion` (or a feature's `kNamingVersion`),
+  add a migration, and keep every example in `tests/documents/` loading.
 - Ideas that fit no milestone go to `docs/roadmap/future.md` instead of into the current work.
 - Input handling follows `docs/INPUT.md` on every platform; change the table and both shells together.

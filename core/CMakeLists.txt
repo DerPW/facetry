@@ -4,11 +4,17 @@ configure_file(src/build_info.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/buil
 add_library(facetry-core STATIC
     src/c_api.cpp
     src/log.cpp
+    src/naming.cpp
     src/stl.cpp
     src/version.cpp
+    src/document/document.cpp
+    src/document/document_json.cpp
+    src/document/regeneration.cpp
+    src/document/session.cpp
     src/kernel/occt_common.cpp
     src/kernel/occt_mesh.cpp
     src/kernel/occt_modeling.cpp
+    src/kernel/occt_naming.cpp
     src/kernel/occt_shape.cpp
     src/kernel/occt_version.cpp)
 add_library(facetry::core ALIAS facetry-core)
@@ -20,7 +26,8 @@ target_include_directories(facetry-core
         "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # OpenCASCADE is private: OCCT types and headers never leave the kernel adapter (src/kernel/).
-target_link_libraries(facetry-core PRIVATE facetry::occt)
+# nlohmann/json reads and writes documents (src/document/).
+target_link_libraries(facetry-core PRIVATE facetry::occt facetry-json)
 
 facetry_set_warnings(facetry-core)
 

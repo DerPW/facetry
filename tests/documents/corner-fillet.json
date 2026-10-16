@@ -1,0 +1,115 @@
+{
+  "format": "facetry-document",
+  "formatVersion": 1,
+  "nextId": 6,
+  "parameters": [
+    {
+      "name": "width",
+      "value": 10.0
+    },
+    {
+      "name": "depth",
+      "value": 6.0
+    },
+    {
+      "name": "height",
+      "value": 4.0
+    },
+    {
+      "name": "radius",
+      "value": 1.5
+    }
+  ],
+  "root": {
+    "id": "root",
+    "name": "Root",
+    "timeline": [
+      {
+        "id": "f1",
+        "type": "sketch",
+        "name": "Sketch 1",
+        "suppressed": false,
+        "namingVersion": 1,
+        "points": [
+          {
+            "id": "p1",
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "id": "p2",
+            "x": "width",
+            "y": 0.0
+          },
+          {
+            "id": "p3",
+            "x": "width",
+            "y": "depth"
+          },
+          {
+            "id": "p4",
+            "x": 0.0,
+            "y": "depth"
+          }
+        ],
+        "lines": [
+          {
+            "id": "l1",
+            "start": "p1",
+            "end": "p2"
+          },
+          {
+            "id": "l2",
+            "start": "p2",
+            "end": "p3"
+          },
+          {
+            "id": "l3",
+            "start": "p3",
+            "end": "p4"
+          },
+          {
+            "id": "l4",
+            "start": "p4",
+            "end": "p1"
+          }
+        ]
+      },
+      {
+        "id": "f2",
+        "type": "extrude",
+        "name": "Extrude 1",
+        "suppressed": false,
+        "namingVersion": 1,
+        "profile": "f1",
+        "distance": "height"
+      },
+      {
+        "id": "f5",
+        "type": "fillet",
+        "name": "Fillet 1",
+        "suppressed": false,
+        "namingVersion": 1,
+        "radius": "radius",
+        "edges": [
+          {
+            "body": "f2",
+            "kind": "edge",
+            "name": "edge{f2:side[f1/l2]|f2:side[f1/l3]}",
+            "shadow": {
+              "id": 5,
+              "type": "line",
+              "centroid": [
+                10.0,
+                6.0,
+                2.0
+              ],
+              "size": 4.0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "rollback": null
+}

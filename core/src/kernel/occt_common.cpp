@@ -2,6 +2,7 @@
 
 #include "facetry/core/log.hpp"
 
+#include <BRepCheck_Analyzer.hxx>
 #include <Message.hxx>
 #include <Message_Messenger.hxx>
 #include <Message_Printer.hxx>
@@ -10,6 +11,7 @@
 #include <TopAbs_ShapeEnum.hxx>
 #include <TopExp.hxx>
 
+#include <cmath>
 #include <mutex>
 
 namespace facetry::core {
@@ -69,6 +71,26 @@ Shape wrap(const TopoDS_Shape& shape, const char* operation) {
         throw Error(ErrorCode::Kernel, std::string(operation) + " produced no shape");
     }
     return Shape(std::make_shared<const Shape::Impl>(shape));
+}
+
+Shape checkedResult(const TopoDS_Shape& shape, const char* operation) {
+    if (!shape.IsNull() && !BRepCheck_Analyzer(shape).IsValid()) {
+        throw Error(ErrorCode::Kernel, std::string(operation) + " produced an invalid shape");
+    }
+    return wrap(shape, operation);
+}
+
+void requirePositive(double value, const char* name) {
+    if (!std::isfinite(value) || value <= 0.0) {
+        throw Error(ErrorCode::InvalidArgument,
+                    std::string(name) + " must be a positive number, got " + std::to_string(value));
+    }
+}
+
+void requireFinite(double value, const char* name) {
+    if (!std::isfinite(value)) {
+        throw Error(ErrorCode::InvalidArgument, std::string(name) + " must be a finite number");
+    }
 }
 
 }  // namespace kernel
