@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(Facetry
-    VERSION 0.0.0
+    VERSION 0.0.1
     DESCRIPTION "Parametric 3D CAD for iPad, Mac and the web"
     HOMEPAGE_URL "https://github.com/DerPW/facetry"
     LANGUAGES CXX)
@@ -28,6 +28,10 @@ if(EMSCRIPTEN)
     # 8 MB stack like other OCCT WebAssembly builds (see docs/PRIOR-ART.md): booleans and
     # fillets recurse deeply.
     add_link_options(-fwasm-exceptions -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=8MB)
+    # Oldest supported browsers (docs/adr/0009-minimum-os-and-browser-versions.md). Emscripten
+    # generates its JavaScript glue for these; the web app's Vite build target matches them.
+    add_link_options(-sMIN_CHROME_VERSION=111 -sMIN_FIREFOX_VERSION=114
+                     -sMIN_SAFARI_VERSION=160400)
 endif()
 
 include(cmake/FacetryWarnings.cmake)
@@ -41,7 +45,7 @@ endif()
 add_subdirectory(core)
 add_subdirectory(render)
 
-# The command-line tool runs on the development machine only.
-if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+# The command-line tool runs on the development machine, natively or as WebAssembly in Node.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_subdirectory(tools/cli)
 endif()

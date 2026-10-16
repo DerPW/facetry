@@ -1,6 +1,7 @@
 // facetry-cli: builds models from JSON descriptions without any UI. Used for tests and debugging.
 #include "facetry/core/error.hpp"
 #include "facetry/core/mesh.hpp"
+#include "facetry/core/session.hpp"
 #include "facetry/core/stl.hpp"
 #include "facetry/core/version.hpp"
 #include "facetry/script/model_script.hpp"
@@ -8,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +18,12 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifdef __EMSCRIPTEN__
+#include <cstddef>
+#else
+#include <sys/resource.h>
+#endif
 
 namespace {
 
@@ -26,10 +34,13 @@ constexpr std::string_view kUsage = R"(Usage:
   facetry-cli version
   facetry-cli info <model.json> [--stl <out.stl>] [--deflection <mm>]
   facetry-cli check <model.json | directory>...
+  facetry-cli bench <document.json> [--runs <n>]
 
   info   Builds the model and prints its properties and mesh statistics as JSON.
   check  Builds each model and compares it with its "expected" section. Exits with 1 on any
          mismatch.
+  bench  Loads a document (tests/documents) and times regeneration: from scratch, after a
+         change to the first parameter, and with everything cached. Prints JSON.
 )";
 
 std::string readFile(const fs::path& path) {
@@ -139,6 +150,101 @@ int check(const std::vector<std::string_view>& args) {
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+double millisecondsSince(std::chrono::steady_clock::time_point start) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+        .count();
+}
+
+double median(std::vector<double> values) {
+    std::sort(values.begin(), values.end());
+    return values[values.size() / 2];
+}
+
+// Peak memory of the process (native) or the size of the WebAssembly memory, which only grows.
+double peakMemoryMegabytes() {
+#ifdef __EMSCRIPTEN__
+    return static_cast<double>(__builtin_wasm_memory_size(0)) * 65536.0 / 1e6;
+#else
+    rusage usage{};
+    getrusage(RUSAGE_SELF, &usage);
+#ifdef __APPLE__
+    return static_cast<double>(usage.ru_maxrss) / 1e6;  // bytes
+#else
+    return static_cast<double>(usage.ru_maxrss) / 1e3;  // kilobytes
+#endif
+#endif
+}
+
+int bench(const std::vector<std::string_view>& args) {
+    if (args.empty()) {
+        std::cerr << kUsage;
+        return 2;
+    }
+    int runs = 20;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        if (args[i] == "--runs" && i + 1 < args.size()) {
+            runs = std::max(1, std::stoi(std::string(args[++i])));
+        } else {
+            std::cerr << "Unknown option: " << args[i] << "\n" << kUsage;
+            return 2;
+        }
+    }
+    using facetry::core::Session;
+    const std::string json = readFile(std::string(args[0]));
+    std::vector<double> load;
+    std::vector<double> full;
+    std::vector<double> parameter;
+    std::vector<double> cached;
+    std::size_t features = 0;
+    for (int run = 0; run < runs; ++run) {
+        auto start = std::chrono::steady_clock::now();
+        Session session = Session::load(json);
+        load.push_back(millisecondsSince(start));
+
+        start = std::chrono::steady_clock::now();
+        const auto& regeneration = session.regenerate();
+        full.push_back(millisecondsSince(start));
+        features = regeneration.features.size();
+        for (const auto& feature : regeneration.features) {
+            if (feature.status == facetry::core::FeatureStatus::Error) {
+                throw Error(facetry::core::ErrorCode::Kernel,
+                            "Feature " + feature.feature + " failed: " +
+                                (feature.messages.empty() ? "" : feature.messages.front()));
+            }
+        }
+
+        if (!session.document().parameters.empty()) {
+            session.edit([](facetry::core::Document& document) {
+                document.parameters.front().value *= 1.01;
+            });
+            start = std::chrono::steady_clock::now();
+            session.regenerate();
+            parameter.push_back(millisecondsSince(start));
+        }
+
+        start = std::chrono::steady_clock::now();
+        session.regenerate();
+        cached.push_back(millisecondsSince(start));
+    }
+
+    nlohmann::ordered_json report = {
+        {"document", fs::path(std::string(args[0])).filename().string()},
+        {"platform", facetry::core::platform()},
+        {"features", features},
+        {"runs", runs},
+        {"loadMs", median(load)},
+        {"regenerateMs", median(full)},
+        {"firstRegenerateMs", full.front()},
+        {"cachedRegenerateMs", median(cached)},
+        {"peakMemoryMB", peakMemoryMegabytes()},
+    };
+    if (!parameter.empty()) {
+        report["firstParameterChangeMs"] = median(parameter);
+    }
+    std::cout << report.dump(2) << "\n";
+    return EXIT_SUCCESS;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -157,6 +263,9 @@ int main(int argc, char** argv) {
         }
         if (args[0] == "check") {
             return check(rest);
+        }
+        if (args[0] == "bench") {
+            return bench(rest);
         }
         std::cerr << kUsage;
         return 2;

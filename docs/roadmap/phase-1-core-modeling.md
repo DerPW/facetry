@@ -14,12 +14,33 @@ extrude, fillet, edit anything in the timeline, export for 3D printing.
 
 Back to the [roadmap overview](../ROADMAP.md).
 
+**Refined in M0.7** with what Phase 0 taught:
+
+- The core's document model, naming and regeneration exist (M0.6) but are not reachable from the
+  apps yet. M1.1 adds the C API for them before any UI work.
+- Parts of navigation and selection were built in M0.4 and M0.5 and are ticked below.
+- The solver (ADR-0005) and the file format (ADR-0008) are decided. M1.4 and M1.1 name the
+  concrete steps.
+- Sizes are now measured in working sessions instead of weeks
+  ([roadmap](../ROADMAP.md#milestone-index)). The relative sizes are unchanged: Phase 0 kept
+  their order, with M0.6 as the largest. M1.1 grows with the C API; it was L already.
+- Issues are created when a milestone starts. M1.1's are open on GitHub.
+
 ---
 
 ## M1.1 — Document, timeline & undo
 
 **Size:** L · **Depends on:** M0.6
 
+- [ ] **C API for documents** ([ADR-0003](../adr/0003-core-api-boundary-c-abi.md)), with Swift and
+      TypeScript wrappers. It covers:
+  - new, open and save;
+  - edits as commands;
+  - undo/redo;
+  - regeneration with progress and cancel;
+  - feature status and messages;
+  - bodies as meshes with element names;
+  - references from picks.
 - [ ] Document structure: root component with origin (XY/XZ/YZ planes, X/Y/Z axes, origin
       point), bodies, sketches, construction geometry
 - [ ] **Browser** panel (tree): show/hide, rename, select, isolate, delete
@@ -29,14 +50,19 @@ Back to the [roadmap overview](../ROADMAP.md).
   - [ ] edit a feature (reopens its tool with the stored values)
   - [ ] suppress / unsuppress, rename, delete with a dependency warning
   - [ ] error and warning badges with an explanation
+  - [ ] broken references ([ADR-0006](../adr/0006-persistent-naming.md)): list each with its last
+        known place, pick a replacement as one undo step
 - [ ] Regeneration engine (from the M0.6 prototype):
-  - [ ] incremental: regenerate from the first changed feature
+  - [x] incremental: regenerate from the first changed feature (core, M0.6)
   - [ ] runs off the UI thread (background thread on Apple, Web Worker on web)
-  - [ ] progress and cancel for long operations
-  - [ ] a failed feature does not block independent later features
+  - [ ] progress and cancel between features (core, M0.6) and inside long kernel operations
+  - [x] a failed feature does not block independent later features (core, M0.6)
 - [ ] Command system with unlimited undo/redo per session; a tool session is one undo step
-- [ ] Native file format v1 (`.facetry`, ADR-0008): versioned schema, migration hook, optional
-      geometry cache, embedded thumbnail
+      (replaces the M0.6 document snapshots)
+- [ ] Native file format v1 (`.facetry`, [ADR-0008](../adr/0008-native-file-format.md)): a zip
+      container written by the core (miniz) with manifest, versioned document, migration hook,
+      optional geometry cache and thumbnail; opens the provisional M0.5 files as empty
+      documents
 - [ ] Autosave and crash recovery
 - [ ] Document units (mm, cm, m, in); internal unit is mm
 
@@ -46,23 +72,25 @@ Back to the [roadmap overview](../ROADMAP.md).
 
 **Size:** M · **Depends on:** M0.4, M1.1
 
-- [ ] Touch gestures: one finger orbits, two fingers pan, pinch zooms, two-finger double-tap fits
-      the view (all configurable)
+- [x] Touch gestures: one finger orbits, two fingers pan, pinch zooms (M0.5)
+- [ ] Two-finger double-tap fits the view; all gestures configurable
 - [ ] Mouse and trackpad: navigation presets (Fusion-like: middle drag pans, Shift + middle drag
       orbits, wheel zooms; plus a trackpad-friendly preset)
 - [ ] ViewCube: click faces, edges and corners to change the view; drag to orbit
-- [ ] Named views (top, front, right, iso, …), fit all, fit selection, perspective/orthographic
-      toggle
+- [x] Fit all and perspective/orthographic toggle (`F`, `O`; M0.5)
+- [ ] Named views (top, front, right, iso, …), fit selection
 - [ ] Visual styles: shaded, shaded with edges, shaded with hidden edges, wireframe;
       transparency per body
 - [ ] Ground grid with adaptive spacing
 - [ ] Selection:
-  - [ ] faces, edges, vertices, bodies, sketch entities
+  - [x] faces, edges, vertices (M0.4)
+  - [ ] bodies, sketch entities
   - [ ] selection filters
   - [ ] multi-select (Shift/Cmd on Mac, toggle mode on iPad)
   - [ ] window and crossing box selection
   - [ ] cycling through overlapping candidates; magnifier for precise touch picks
-- [ ] Hover pre-highlight with mouse and with Pencil hover
+- [x] Hover pre-highlight with mouse and with Pencil hover (M0.5; on a real iPad still to be
+      checked in [#7](https://github.com/DerPW/facetry/issues/7))
 
 **Done when:** any edge of the benchmark models can be selected with a finger, with the Pencil
 and with a mouse on the first or second attempt.
@@ -71,6 +99,8 @@ and with a mouse on the first or second attempt.
 
 **Size:** L · **Depends on:** M1.2
 
+- [ ] Sketch model in the core: points, lines, arcs, circles and constraints with stable IDs that
+      sketch-based features reference (extends the M0.6 sketch, ADR-0006)
 - [ ] Create a sketch on an origin plane or a planar face; the view turns to face the sketch
 - [ ] Drawing tools:
   - [ ] line / polyline (with tangent arc by dragging back from the last point)
@@ -94,7 +124,12 @@ and with a mouse on the first or second attempt.
 
 **Size:** L · **Depends on:** M1.3
 
-- [ ] Solver integration (PlaneGCS, ADR-0005): solve on every edit; interactive drag solving
+- [ ] Solver integration ([ADR-0005](../adr/0005-sketch-solver-planegcs.md)):
+  - [ ] PlaneGCS from FreeCAD 1.1.4 vendored unmodified with shim headers, plus Eigen 3.4;
+        notices updated
+  - [ ] solve on every edit; interactive drag solving
+  - [ ] diagnosis (degrees of freedom, conflicting, redundant) after each edit, off the UI
+        thread
 - [ ] Geometric constraints: coincident, horizontal, vertical, parallel, perpendicular, tangent,
       equal, concentric, midpoint, collinear, symmetric, fix
 - [ ] Dimensions: linear (aligned, horizontal, vertical), radius, diameter, angle
@@ -132,6 +167,9 @@ constraint shows a clear message.
       sensible steps
 - [ ] Errors: e.g. a fillet radius that is too large shows a clear message, marks the feature
       red and leaves the rest of the model usable
+- [ ] Every feature names its results through the shared naming pass
+      ([ADR-0006](../adr/0006-persistent-naming.md)) and gets edit scenarios like M0.6. For
+      booleans, faces keep the names they had in either input.
 
 **Done when:** benchmark models 1–4 can be built.
 
@@ -220,7 +258,10 @@ prints correctly.
 
 - [ ] All Phase 1 benchmark tests pass on every platform
 - [ ] Performance targets met: benchmark models regenerate fast enough to edit interactively;
-      targets recorded in `docs/benchmarks.md`
+      targets recorded in `docs/benchmarks.md` (M0.7 baseline: the M0.6 example regenerates in
+      2.0 ms natively and 3.6 ms in WebAssembly)
+- [ ] Browsers below the floor of [ADR-0009](../adr/0009-minimum-os-and-browser-versions.md)
+      get a clear message instead of an empty page
 - [ ] Onboarding: sample documents, first-run tips, keyboard shortcut overview
 - [ ] Settings: default units, navigation preset, Pencil behavior, light/dark theme
 - [ ] i18n infrastructure in place (English only at first, German in M3.7)

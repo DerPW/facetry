@@ -7,7 +7,7 @@ Facetry targets three platforms with one core and one file format.
 | **Role** | Primary touch and Pencil experience | Desktop with keyboard, mouse, trackpad | Try it and share it, no install |
 | **Distribution** | App Store (TestFlight for betas) | Signed and notarized download on GitHub Releases | GitHub Pages (installable PWA) |
 | **Technology** | SwiftUI + Metal, native core | SwiftUI + Metal, native core | TypeScript, core as WebAssembly in a Web Worker |
-| **Minimum version** | Proposal: current major − 1 (ADR-0009) | Proposal: current major − 1 (ADR-0009) | Current and previous major version of Safari, Chrome, Firefox, Edge |
+| **Minimum version** ([ADR-0009](adr/0009-minimum-os-and-browser-versions.md)) | iPadOS 26 (iPads from 2018 on, A12 or newer) | macOS 26 | Supported: current and previous major of Safari, Chrome, Firefox, Edge. Floor: Chrome/Edge 111, Firefox 114, Safari 16.4 |
 | **Architectures** | arm64 | Apple silicon (arm64) | wasm32 |
 
 ## Principle for platform differences
@@ -71,5 +71,5 @@ milestone says so and the web app explains why the feature is missing.
 - The WebAssembly download size is tracked against a budget. M0.2 measured 2.6 MB (brotli) for
   modeling only and 3.3 MB with STEP (see [benchmarks](benchmarks.md)), so STEP is linked in for
   now. Loading it on demand stays an option if the core grows.
-- Required browser features: WebAssembly with exceptions and SIMD, WebGL2 (WebGPU used when
-  available, depending on ADR-0004), Web Workers, OPFS/IndexedDB.
+- Required browser features: WebAssembly with exceptions and SIMD, WebGL2, module Web Workers;
+  OPFS/IndexedDB for autosave (M1.1). The build targets the floor in ADR-0009.

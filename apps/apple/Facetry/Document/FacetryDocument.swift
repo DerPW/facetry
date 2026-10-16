@@ -1,5 +1,6 @@
-// The .facetry document. Until the native file format is decided (ADR-0008, M0.7), a document
-// is a small JSON file with a format marker and version; the model itself arrives with M1.1.
+// The .facetry document. For now a document is a small JSON file with a format marker and
+// version 0. The native file format (docs/adr/0008-native-file-format.md), a zip container
+// written by the core, and the model itself arrive with M1.1.
 
 import SwiftUI
 import UniformTypeIdentifiers
