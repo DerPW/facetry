@@ -1,8 +1,11 @@
 add_executable(facetry-core-tests
     main.cpp
     c_api_test.cpp
+    document_test.cpp
     golden_test.cpp
     kernel_test.cpp
+    naming_scenarios_test.cpp
+    naming_test.cpp
     occt_smoke_test.cpp
     version_test.cpp)
 
@@ -26,6 +29,7 @@ target_compile_definitions(facetry-core-tests PRIVATE
     FACETRY_EXPECTED_VERSION="${PROJECT_VERSION}"
     FACETRY_EXPECTED_PLATFORM="${FACETRY_EXPECTED_PLATFORM}"
     FACETRY_EXPECTED_OCCT_VERSION="${FACETRY_OCCT_VERSION}"
-    FACETRY_MODELS_DIR="${PROJECT_SOURCE_DIR}/tests/models")
+    FACETRY_MODELS_DIR="${PROJECT_SOURCE_DIR}/tests/models"
+    FACETRY_DOCUMENTS_DIR="${PROJECT_SOURCE_DIR}/tests/documents")
 
 add_test(NAME facetry-core-tests COMMAND facetry-core-tests)

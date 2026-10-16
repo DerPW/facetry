@@ -1,8 +1,8 @@
 # Small header-only dependencies, downloaded at configure time and verified by hash.
 include(FetchContent)
 
-# nlohmann/json: JSON model descriptions (facetry-script, CLI, golden tests). Not used by the core
-# library itself, so it never ends up in the app or the web module.
+# nlohmann/json: documents (facetry-core, privately) and JSON model descriptions (facetry-script,
+# CLI, golden tests).
 FetchContent_Declare(nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.12.0/include.zip
     URL_HASH SHA256=b8cb0ef2dd7f57f18933997c9934bb1fa962594f701cd5a8d3c2c80541559372

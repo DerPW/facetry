@@ -163,23 +163,23 @@ the frame rate on a real iPad are still open in #7.
 This is the most important milestone of Phase 0. If references to faces and edges are not
 stable across edits, parametric modeling does not work. FreeCAD struggled with this for years.
 
-- [ ] Data model draft: document, components, bodies, sketches, features, timeline, parameters
+- [x] Data model draft: document, components, bodies, sketches, features, timeline, parameters
       (see [Architecture](../ARCHITECTURE.md#document-model))
-- [ ] Feature contract: inputs (parameters + references) → execute → outputs (shapes + naming
+- [x] Feature contract: inputs (parameters + references) → execute → outputs (shapes + naming
       map) or an error
-- [ ] Persistent naming design (ADR-0006):
-  - [ ] references are stored as topological selectors derived from feature history
+- [x] Persistent naming design ([ADR-0006](../adr/0006-persistent-naming.md)):
+  - [x] references are stored as topological selectors derived from feature history
         (which input generated or modified which face or edge), not as indices
-  - [ ] geometric matching as a fallback when history is ambiguous
-  - [ ] a broken reference is reported on the feature, with a concept for a repair UI
-- [ ] Regeneration engine prototype: dirty tracking, per-feature result cache, cancellation
-- [ ] Prototype features: sketch rectangle → extrude → fillet one edge
-- [ ] Automated scenarios that must keep the fillet on the intended edge:
-  - [ ] change the rectangle width
-  - [ ] change the extrude height
-  - [ ] replace the rectangle with a polygon that has one more edge before the filleted one
-  - [ ] delete the fillet, undo, regenerate
-  - [ ] save, reload, regenerate
+  - [x] geometric matching as a fallback when history is ambiguous
+  - [x] a broken reference is reported on the feature, with a concept for a repair UI
+- [x] Regeneration engine prototype: dirty tracking, per-feature result cache, cancellation
+- [x] Prototype features: sketch rectangle → extrude → fillet one edge
+- [x] Automated scenarios that must keep the fillet on the intended edge:
+  - [x] change the rectangle width
+  - [x] change the extrude height
+  - [x] replace the rectangle with a polygon that has one more edge before the filleted one
+  - [x] delete the fillet, undo, regenerate
+  - [x] save, reload, regenerate
 
 **Done when:** all scenarios pass in CI on native and WebAssembly builds.
 

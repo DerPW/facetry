@@ -7,7 +7,6 @@
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
-#include <BRepCheck_Analyzer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -24,26 +23,9 @@
 namespace facetry::core {
 namespace {
 
-void requirePositive(double value, const char* name) {
-    if (!std::isfinite(value) || value <= 0.0) {
-        throw Error(ErrorCode::InvalidArgument,
-                    std::string(name) + " must be a positive number, got " + std::to_string(value));
-    }
-}
-
-void requireFinite(double value, const char* name) {
-    if (!std::isfinite(value)) {
-        throw Error(ErrorCode::InvalidArgument, std::string(name) + " must be a finite number");
-    }
-}
-
-// Results that fail OpenCASCADE's validity check are reported instead of passed on.
-Shape checkedResult(const TopoDS_Shape& shape, const char* operation) {
-    if (!shape.IsNull() && !BRepCheck_Analyzer(shape).IsValid()) {
-        throw Error(ErrorCode::Kernel, std::string(operation) + " produced an invalid shape");
-    }
-    return kernel::wrap(shape, operation);
-}
+using kernel::checkedResult;
+using kernel::requireFinite;
+using kernel::requirePositive;
 
 }  // namespace
 

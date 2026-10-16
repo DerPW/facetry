@@ -73,9 +73,23 @@ Document
 - **Regeneration** runs the timeline in order up to the rollback marker. Results are cached per
   feature; a change invalidates only the features after it.
 - **References** to faces, edges and vertices are persistent selectors derived from feature
-  history, not indices (see ADR-0006 and roadmap milestone M0.6).
+  history, not indices ([ADR-0006](adr/0006-persistent-naming.md)).
 - **Undo/redo** is command-based on the document description. Geometry is a cache that can
   always be rebuilt.
+
+The M0.6 prototype implements this in the core:
+
+| Part | Where | Prototype scope |
+|---|---|---|
+| Document, components, features, parameters | `core/include/facetry/core/document.hpp` | Root component only; sketch (lines on XY), extrude (new body), fillet; parameters are numbers that features use by name |
+| Bodies | results in `regeneration.hpp` | A body's ID is the ID of the feature that created it |
+| JSON form | `document.hpp` (`toJson`, `parseDocument`) | Versioned (`formatVersion`, per-feature `namingVersion`); examples in `tests/documents/` |
+| Naming | `naming.hpp`, `core/src/kernel/occt_naming.cpp` | Faces from history and roles, edges and vertices by their faces |
+| Regeneration engine | `regeneration.hpp` | Per-feature cache keyed by the feature's definition with parameter values filled in; cancellation between features; failed features pass the model through |
+| Session | `session.hpp` | Undo/redo as snapshots of the document; becomes a command system in M1.1 |
+
+Feature and sketch element IDs come from one counter in the document and are never reused, so a
+reference to something deleted cannot attach to something new.
 
 ### Native file format
 
@@ -149,7 +163,7 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0003](adr/0003-core-api-boundary-c-abi.md) | Core API boundary: a C ABI with handles | Accepted | M0.3 |
 | [0004](adr/0004-viewport-renderer-shared-cpp-sokol.md) | Viewport renderer: one shared C++ renderer on sokol_gfx, CPU picking | Accepted | M0.4 |
 | 0005 | Sketch constraint solver: PlaneGCS (proposed) | Open | M0.7 |
-| 0006 | Persistent naming scheme | Open | M0.6 |
+| [0006](adr/0006-persistent-naming.md) | Persistent naming: names from feature history, edges by neighbors, geometric fallback with a warning | Accepted | M0.6 |
 | [0007](adr/0007-web-ui-framework-react.md) | Web UI framework: React | Accepted | M0.5 |
 | 0008 | Native file format | Open | M0.7 |
 | 0009 | Minimum OS and browser versions | Open | M0.7 |
