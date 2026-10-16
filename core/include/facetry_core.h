@@ -7,8 +7,11 @@
  *   facetry_last_error_message() describes the problem. No exception ever crosses this API.
  * - Objects are identified by handles (uint32_t) inside a context. 0 is never a valid handle.
  * - Topology IDs (faces, edges, vertices) are 1-based and only valid for the shape they came
- *   from. They are not persistent across modeling operations.
+ *   from. They are not persistent across modeling operations; persistent names come from
+ *   sessions (see "Documents" below).
  * - Lengths are in millimeters, angles in radians.
+ * - Strings are UTF-8. Strings returned through `const char**` are owned by the context and
+ *   valid until the next call on the same context.
  */
 #ifndef FACETRY_CORE_H
 #define FACETRY_CORE_H
@@ -31,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 1
+#define FACETRY_API_VERSION_MINOR 2
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -167,6 +170,79 @@ FACETRY_API facetry_status facetry_mesh_buffer(facetry_context* context, facetry
                                                size_t* out_count);
 
 FACETRY_API facetry_status facetry_mesh_release(facetry_context* context, facetry_handle mesh);
+
+/* ---- Documents -------------------------------------------------------------------------- */
+
+/* A session is an open document: its description, undo/redo history and regeneration cache.
+ * Edits and summaries cross the API as JSON; geometry comes out as shapes and meshes
+ * (docs/adr/0011-document-api-json-over-c.md). The JSON formats are documented in
+ * core/include/facetry/core/session_json.hpp and core/include/facetry/core/document.hpp. */
+
+/* Opens a document from its JSON description, or an empty document if `document_json` is NULL.
+ * The document is not regenerated yet. */
+FACETRY_API facetry_status facetry_session_create(facetry_context* context,
+                                                  const char* document_json,
+                                                  facetry_handle* out_session);
+
+/* The document's JSON description. */
+FACETRY_API facetry_status facetry_session_save(facetry_context* context, facetry_handle session,
+                                                const char** out_json);
+
+/* Applies one edit, or a JSON array of edits, as one undo step. An edit that fails changes
+ * nothing. */
+FACETRY_API facetry_status facetry_session_apply(facetry_context* context, facetry_handle session,
+                                                 const char* edit_json);
+
+/* `out_changed` (optional) is set to 1 if there was something to undo or redo, else 0. */
+FACETRY_API facetry_status facetry_session_undo(facetry_context* context, facetry_handle session,
+                                                int* out_changed);
+FACETRY_API facetry_status facetry_session_redo(facetry_context* context, facetry_handle session,
+                                                int* out_changed);
+
+/* Called after each feature during regeneration. Return non-zero to cancel the rest: features
+ * that finished stay cached, and the next regeneration continues from there. The callback must
+ * not call into the same context. */
+typedef int (*facetry_progress_callback)(uint32_t done, uint32_t total, void* user_data);
+
+/* Regenerates the document. Feature failures are not call failures: they are reported per
+ * feature in facetry_session_state(). `progress` may be NULL. */
+FACETRY_API facetry_status facetry_session_regenerate(facetry_context* context,
+                                                      facetry_handle session,
+                                                      facetry_progress_callback progress,
+                                                      void* user_data);
+
+/* Summary as JSON: parameters, features with their status and messages, bodies, undo/redo
+ * state, and whether the document changed since the last regeneration. */
+FACETRY_API facetry_status facetry_session_state(facetry_context* context, facetry_handle session,
+                                                 const char** out_json);
+
+/* A new shape handle for a body of the last regeneration (`body_id` is the ID of the feature that
+ * created it). Release it with facetry_shape_release(). */
+FACETRY_API facetry_status facetry_session_body_shape(facetry_context* context,
+                                                      facetry_handle session, const char* body_id,
+                                                      facetry_handle* out_shape);
+
+/* Persistent names of the body's faces, edges and vertices as JSON:
+ * {"faces": [...], "edges": [...], "vertices": [...]}; entry i belongs to element ID i + 1. */
+FACETRY_API facetry_status facetry_session_element_names(facetry_context* context,
+                                                         facetry_handle session,
+                                                         const char* body_id,
+                                                         const char** out_json);
+
+typedef enum facetry_element_kind {
+    FACETRY_ELEMENT_FACE = 0,
+    FACETRY_ELEMENT_EDGE = 1,
+    FACETRY_ELEMENT_VERTEX = 2
+} facetry_element_kind;
+
+/* Turns a picked element (an ID from a mesh of the body's shape) into a persistent reference, as
+ * JSON to put into a feature edit, e.g. a fillet's "edges". */
+FACETRY_API facetry_status facetry_session_make_reference(
+    facetry_context* context, facetry_handle session, const char* body_id,
+    facetry_element_kind kind, uint32_t element_id, const char** out_json);
+
+FACETRY_API facetry_status facetry_session_release(facetry_context* context,
+                                                   facetry_handle session);
 
 #ifdef __cplusplus
 }

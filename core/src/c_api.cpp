@@ -4,6 +4,9 @@
 #include "facetry/core/log.hpp"
 #include "facetry/core/mesh.hpp"
 #include "facetry/core/modeling.hpp"
+#include "facetry/core/regeneration.hpp"
+#include "facetry/core/session.hpp"
+#include "facetry/core/session_json.hpp"
 #include "facetry/core/shape.hpp"
 #include "facetry/core/version.hpp"
 
@@ -21,6 +24,7 @@
 using facetry::core::Error;
 using facetry::core::ErrorCode;
 using facetry::core::Mesh;
+using facetry::core::Session;
 using facetry::core::Shape;
 
 static_assert(static_cast<int>(ErrorCode::InvalidArgument) == FACETRY_ERROR_INVALID_ARGUMENT);
@@ -30,18 +34,29 @@ static_assert(static_cast<int>(ErrorCode::Unsupported) == FACETRY_ERROR_UNSUPPOR
 static_assert(static_cast<int>(ErrorCode::Io) == FACETRY_ERROR_IO);
 static_assert(static_cast<int>(ErrorCode::OutOfMemory) == FACETRY_ERROR_OUT_OF_MEMORY);
 static_assert(static_cast<int>(ErrorCode::Internal) == FACETRY_ERROR_INTERNAL);
+static_assert(static_cast<int>(facetry::core::ElementKind::Face) == FACETRY_ELEMENT_FACE);
+static_assert(static_cast<int>(facetry::core::ElementKind::Edge) == FACETRY_ELEMENT_EDGE);
+static_assert(static_cast<int>(facetry::core::ElementKind::Vertex) == FACETRY_ELEMENT_VERTEX);
 static_assert(sizeof(facetry_shape_properties) == 12 * sizeof(double),
               "facetry_shape_properties must stay a plain array of doubles");
 
 struct facetry_context {
-    // Meshes are held by pointer so their buffers never move while a shell reads them.
-    using Object = std::variant<Shape, std::unique_ptr<Mesh>>;
+    // Meshes are held by pointer so their buffers never move while a shell reads them; sessions
+    // because they are large.
+    using Object = std::variant<Shape, std::unique_ptr<Mesh>, std::unique_ptr<Session>>;
 
     std::mutex mutex;
     std::unordered_map<facetry_handle, Object> objects;
     facetry_handle nextHandle = 1;
     facetry_status lastStatus = FACETRY_OK;
     std::string lastError;
+    // Backs strings returned through `const char**` until the next call.
+    std::string output;
+
+    const char* setOutput(std::string text) {
+        output = std::move(text);
+        return output.c_str();
+    }
 
     facetry_handle add(Object object) {
         if (nextHandle == 0) {
@@ -62,12 +77,10 @@ struct facetry_context {
         return std::get<T>(it->second);
     }
 
-    void release(facetry_handle handle, const char* kind, bool isMesh) {
+    template <typename T>
+    void release(facetry_handle handle, const char* kind) {
         const auto it = objects.find(handle);
-        const bool matches = it != objects.end() &&
-                             (isMesh ? std::holds_alternative<std::unique_ptr<Mesh>>(it->second)
-                                     : std::holds_alternative<Shape>(it->second));
-        if (!matches) {
+        if (it == objects.end() || !std::holds_alternative<T>(it->second)) {
             throw Error(ErrorCode::InvalidHandle,
                         "Handle " + std::to_string(handle) + " is not a valid " + kind);
         }
@@ -106,6 +119,24 @@ facetry_status run(facetry_context* context, Function&& function) {
         facetry::core::log(facetry::core::LogLevel::Debug, context->lastError);
     }
     return status;
+}
+
+const char* requireString(const char* text, const char* name) {
+    if (text == nullptr) {
+        throw Error(ErrorCode::InvalidArgument, std::string(name) + " must not be null");
+    }
+    return text;
+}
+
+const facetry::core::NamedShape& requireBody(const Session& session, const char* body) {
+    const auto& bodies = session.regeneration().model.bodies;
+    const auto it = bodies.find(requireString(body, "body_id"));
+    if (it == bodies.end()) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "The body " + std::string(body) +
+                        " does not exist; regenerate the session after changes");
+    }
+    return *it->second;
 }
 
 template <typename T>
@@ -249,7 +280,7 @@ facetry_status facetry_shape_properties_get(facetry_context* context, facetry_ha
 }
 
 facetry_status facetry_shape_release(facetry_context* context, facetry_handle shape) {
-    return run(context, [&](facetry_context& ctx) { ctx.release(shape, "shape", false); });
+    return run(context, [&](facetry_context& ctx) { ctx.release<Shape>(shape, "shape"); });
 }
 
 facetry_status facetry_shape_tessellate(facetry_context* context, facetry_handle shape,
@@ -313,7 +344,125 @@ facetry_status facetry_mesh_buffer(facetry_context* context, facetry_handle mesh
 }
 
 facetry_status facetry_mesh_release(facetry_context* context, facetry_handle mesh) {
-    return run(context, [&](facetry_context& ctx) { ctx.release(mesh, "mesh", true); });
+    return run(context,
+               [&](facetry_context& ctx) { ctx.release<std::unique_ptr<Mesh>>(mesh, "mesh"); });
+}
+
+facetry_status facetry_session_create(facetry_context* context, const char* document_json,
+                                      facetry_handle* out_session) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_session, "out_session");
+        auto session = std::make_unique<Session>(document_json != nullptr
+                                                     ? facetry::core::parseDocument(document_json)
+                                                     : facetry::core::Document{});
+        out = ctx.add(std::move(session));
+    });
+}
+
+facetry_status facetry_session_save(facetry_context* context, facetry_handle session,
+                                    const char** out_json) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_json, "out_json");
+        out = ctx.setOutput(ctx.get<std::unique_ptr<Session>>(session, "session")->save());
+    });
+}
+
+facetry_status facetry_session_apply(facetry_context* context, facetry_handle session,
+                                     const char* edit_json) {
+    return run(context, [&](facetry_context& ctx) {
+        const std::string_view edits = requireString(edit_json, "edit_json");
+        ctx.get<std::unique_ptr<Session>>(session, "session")
+            ->edit([&](facetry::core::Document& document) {
+                facetry::core::applyEdits(document, edits);
+            });
+    });
+}
+
+facetry_status facetry_session_undo(facetry_context* context, facetry_handle session,
+                                    int* out_changed) {
+    return run(context, [&](facetry_context& ctx) {
+        const bool changed = ctx.get<std::unique_ptr<Session>>(session, "session")->undo();
+        if (out_changed != nullptr) {
+            *out_changed = changed ? 1 : 0;
+        }
+    });
+}
+
+facetry_status facetry_session_redo(facetry_context* context, facetry_handle session,
+                                    int* out_changed) {
+    return run(context, [&](facetry_context& ctx) {
+        const bool changed = ctx.get<std::unique_ptr<Session>>(session, "session")->redo();
+        if (out_changed != nullptr) {
+            *out_changed = changed ? 1 : 0;
+        }
+    });
+}
+
+facetry_status facetry_session_regenerate(facetry_context* context, facetry_handle session,
+                                          facetry_progress_callback progress, void* user_data) {
+    return run(context, [&](facetry_context& ctx) {
+        Session& target = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        const facetry::core::CancelToken cancel;
+        facetry::core::ProgressCallback report;
+        if (progress != nullptr) {
+            report = [&](std::size_t done, std::size_t total) {
+                if (progress(static_cast<uint32_t>(done), static_cast<uint32_t>(total),
+                             user_data) != 0) {
+                    cancel.cancel();
+                }
+            };
+        }
+        target.regenerate(cancel, report);
+    });
+}
+
+facetry_status facetry_session_state(facetry_context* context, facetry_handle session,
+                                     const char** out_json) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_json, "out_json");
+        out = ctx.setOutput(facetry::core::sessionStateJson(
+            *ctx.get<std::unique_ptr<Session>>(session, "session")));
+    });
+}
+
+facetry_status facetry_session_body_shape(facetry_context* context, facetry_handle session,
+                                          const char* body_id, facetry_handle* out_shape) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_shape, "out_shape");
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        out = ctx.add(requireBody(source, body_id).shape);
+    });
+}
+
+facetry_status facetry_session_element_names(facetry_context* context, facetry_handle session,
+                                             const char* body_id, const char** out_json) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_json, "out_json");
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        out = ctx.setOutput(facetry::core::elementNamesJson(requireBody(source, body_id)));
+    });
+}
+
+facetry_status facetry_session_make_reference(facetry_context* context, facetry_handle session,
+                                              const char* body_id, facetry_element_kind kind,
+                                              uint32_t element_id, const char** out_json) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_json, "out_json");
+        if (kind != FACETRY_ELEMENT_FACE && kind != FACETRY_ELEMENT_EDGE &&
+            kind != FACETRY_ELEMENT_VERTEX) {
+            throw Error(ErrorCode::InvalidArgument, "Unknown element kind");
+        }
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        out = ctx.setOutput(facetry::core::referenceJson(facetry::core::makeReference(
+            source.regeneration().model, requireString(body_id, "body_id"),
+            static_cast<facetry::core::ElementKind>(kind), element_id)));
+    });
+}
+
+facetry_status facetry_session_release(facetry_context* context, facetry_handle session) {
+    return run(context, [&](facetry_context& ctx) {
+        ctx.release<std::unique_ptr<Session>>(session, "session");
+    });
 }
 
 }  // extern "C"

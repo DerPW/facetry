@@ -11,7 +11,7 @@ private let viewportLogger = Logger(subsystem: "io.github.derpw.facetry", catego
 @MainActor
 @Observable
 final class ViewportModel {
-    /// The mesh to show. Setting a new mesh frames it.
+    /// The mesh to show. The first mesh is framed; later ones keep the camera (call ``fit()``).
     var mesh: MeshData?
     var orthographic = false
     var selection = Pick.none
@@ -73,7 +73,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         if let mesh = model.mesh, mesh.positions != shownMesh?.positions {
             do {
                 try renderer.setMesh(mesh)
-                renderer.fit()
+                if shownMesh == nil { renderer.fit() }
                 model.triangles = mesh.triangleCount
             } catch {
                 model.error = "\(error)"

@@ -45,6 +45,11 @@ class Session {
         return regeneration_;
     }
 
+    // True if the document changed (edit, undo, redo) since the last complete regeneration.
+    [[nodiscard]] bool needsRegeneration() const noexcept {
+        return stale_;
+    }
+
     [[nodiscard]] std::string save() const {
         return toJson(document_);
     }
@@ -58,6 +63,7 @@ class Session {
     std::vector<Document> redo_;
     Regenerator regenerator_;
     Regeneration regeneration_;
+    bool stale_ = true;
 };
 
 }  // namespace facetry::core

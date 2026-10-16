@@ -1,6 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "node:fs";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite";
 
 import { serviceWorker } from "./vite/service-worker";
 
@@ -32,6 +32,10 @@ export default defineConfig({
   base: "./",
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+  server: {
+    // The app bundles the example document from tests/documents.
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), "../../tests/documents"] },
   },
   build: {
     // Oldest supported browsers (docs/adr/0009-minimum-os-and-browser-versions.md), the same as
