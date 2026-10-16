@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the frameworks the Apple app links, into apps/apple/Frameworks (not checked in):
-#   CFacetryCore.xcframework  the core as a static library plus its C API as a Clang module
+#   CFacetryCore.xcframework  the core and the viewport renderer as one static library, plus
+#                             their C APIs (facetry_core.h, facetry_render.h) as a Clang module
 #   OCCT.xcframework          OpenCASCADE, copied from third_party/_install (embedded in the app)
 #
 # Run it after changing core code, then build the app in Xcode. Needs the OpenCASCADE artifact
@@ -20,16 +21,19 @@ presets=(macos-release ios-device ios-simulator)
 for preset in "${presets[@]}"; do
     echo "== Building facetry-core ($preset)"
     cmake --preset "$preset" >/dev/null
-    cmake --build --preset "$preset" --target facetry-core
+    cmake --build --preset "$preset" --target facetry-core facetry-render
+    libtool -static -o "$root/build/$preset/libfacetry-apple.a" \
+        "$root/build/$preset/core/libfacetry-core.a" "$root/build/$preset/render/libfacetry-render.a"
 done
 
 # Swift imports the C API as the module CFacetryCore.
 rm -rf "$stage"
 mkdir -p "$stage/include"
-cp "$root/core/include/facetry_core.h" "$stage/include/"
+cp "$root/core/include/facetry_core.h" "$root/render/include/facetry_render.h" "$stage/include/"
 cat >"$stage/include/module.modulemap" <<'EOF'
 module CFacetryCore {
     header "facetry_core.h"
+    header "facetry_render.h"
     export *
 }
 EOF
@@ -38,7 +42,7 @@ mkdir -p "$out"
 rm -rf "$out/CFacetryCore.xcframework" "$out/OCCT.xcframework"
 args=()
 for preset in "${presets[@]}"; do
-    args+=(-library "$root/build/$preset/core/libfacetry-core.a" -headers "$stage/include")
+    args+=(-library "$root/build/$preset/libfacetry-apple.a" -headers "$stage/include")
 done
 xcodebuild -create-xcframework "${args[@]}" -output "$out/CFacetryCore.xcframework" >/dev/null
 ditto "$occt" "$out/OCCT.xcframework"

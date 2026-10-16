@@ -31,6 +31,7 @@ openly. Small pull requests, recorded decisions and automated tests keep it main
 
 - **Core:** C++20 on top of the [OpenCASCADE](https://dev.opencascade.org/) geometry kernel,
   shared by all platforms
+- **Viewport:** one shared C++ renderer on [sokol_gfx](https://github.com/floooh/sokol): Metal on Apple platforms, WebGL2 on the web
 - **iPad & Mac:** SwiftUI and Metal
 - **Web:** TypeScript, with the core compiled to WebAssembly
 

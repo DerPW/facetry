@@ -12,6 +12,21 @@ add_library(facetry-json INTERFACE)
 target_include_directories(facetry-json SYSTEM INTERFACE
     "${nlohmann_json_SOURCE_DIR}" "${nlohmann_json_SOURCE_DIR}/include")
 
+# sokol_gfx: the viewport's graphics abstraction (docs/adr/0004-viewport-renderer-shared-cpp-sokol.md).
+set(FACETRY_SOKOL_COMMIT 5e94d1291fea)
+FetchContent_Declare(sokol_gfx
+    URL https://raw.githubusercontent.com/floooh/sokol/${FACETRY_SOKOL_COMMIT}/sokol_gfx.h
+    URL_HASH SHA256=6af70de1a768ac3ff85f4c0a145c2e8e702abd5f101c2ad005b69ef69d5094f0
+    DOWNLOAD_NO_EXTRACT TRUE)
+FetchContent_Declare(sokol_log
+    URL https://raw.githubusercontent.com/floooh/sokol/${FACETRY_SOKOL_COMMIT}/sokol_log.h
+    URL_HASH SHA256=a8d55de21694410740e752ea8e57c4103d5951d20339ba9712e24232adef9a42
+    DOWNLOAD_NO_EXTRACT TRUE)
+FetchContent_MakeAvailable(sokol_gfx sokol_log)
+add_library(facetry-sokol INTERFACE)
+target_include_directories(facetry-sokol SYSTEM INTERFACE
+    "${sokol_gfx_SOURCE_DIR}" "${sokol_log_SOURCE_DIR}")
+
 if(FACETRY_BUILD_TESTS)
     # doctest is used as a single header.
     FetchContent_Declare(doctest

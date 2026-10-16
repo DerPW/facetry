@@ -40,6 +40,8 @@ apps/apple/*.xcodeproj/
 # Core WebAssembly module, built by CMake (core/wasm)
 apps/web/src/core/wasm/*.mjs
 apps/web/src/core/wasm/*.wasm
+apps/web/src/render/wasm/*.mjs
+apps/web/src/render/wasm/*.wasm
 
 # Frameworks for the Apple app, built by apps/apple/scripts/build-core.sh
 apps/apple/Frameworks/

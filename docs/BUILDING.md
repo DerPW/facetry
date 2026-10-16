@@ -73,14 +73,28 @@ source ~/emsdk/emsdk_env.sh
 cmake --preset wasm-debug && cmake --build --preset wasm-debug && ctest --preset wasm-debug
 ```
 
-The `wasm-*` builds also produce the web app's core module (`facetry-core.mjs` and `.wasm`) and
-copy it into `apps/web/src/core/wasm/`. Use the release preset for the web app:
+The `wasm-*` builds also produce the web app's two modules and copy them into the app: the
+core (`apps/web/src/core/wasm/`) and the renderer (`apps/web/src/render/wasm/`). Use the release
+preset for the web app:
 
 ```bash
-cmake --preset wasm-release && cmake --build --preset wasm-release --target facetry-core-web
+cmake --preset wasm-release && cmake --build --preset wasm-release --target facetry-core-web facetry-render-web
 ```
 
 The `wasm-*` presets find the toolchain through the `EMSDK` environment variable.
+
+## Viewport renderer
+
+The renderer (`render/`, [ADR-0004](adr/0004-viewport-renderer-shared-cpp-sokol.md)) builds with
+the same presets as the core; its tests (`facetry-render-tests`) run with `ctest`. Its shaders
+are written in `render/shaders/viewport.glsl` and compiled with a pinned sokol-shdc into
+`render/src/shaders/viewport.glsl.h`, which is checked in. After changing the shaders:
+
+```bash
+render/shaders/generate.sh
+```
+
+CI fails if the checked-in header does not match the shader source.
 
 ## Apple app
 
@@ -119,7 +133,19 @@ cd apps/web && npm install && npm run dev
 ```
 
 The core runs in a Web Worker (`src/core/core.worker.ts`). The UI thread talks to it through
-`CoreClient` (`src/core/client.ts`).
+`CoreClient` (`src/core/client.ts`) and renders with the viewport (`src/render/viewport.ts`).
+
+Development URLs:
+
+| URL | Purpose |
+|---|---|
+| `/?stress` | Tessellates the demo part finely (about 215k triangles) |
+| `/?stress&bench` | Also measures draw and pick times and prints them in the dev server's log (`[bench]`). Useful in browsers that cannot be scripted, such as Safari |
+
+In development builds the browser console has `window.facetry.viewport` (e.g.
+`facetry.viewport.benchmark(60)`) and `window.facetry.core`.
+
+The Apple app takes `--stress` as a launch argument for the same fine tessellation.
 
 | Script | Purpose |
 |---|---|
@@ -149,7 +175,7 @@ The core runs in a Web Worker (`src/core/core.worker.ts`). The UI thread talks t
 | `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten, run its tests in Node, build the web module |
 | `Apple app` | macOS 26 | Build the core frameworks and the app, run the Swift tests on macOS, lint Swift |
 | `web app` | Ubuntu 24.04 | Lint, format check, test against the core module, type-check and build |
-| `format (C++)` | Ubuntu 24.04 | clang-format check |
+| `format (C++)` | Ubuntu 24.04 | clang-format check; checks that the generated shader header is up to date |
 
 All checks above are required to merge into `main`. A seventh job, `Publish OpenCASCADE
 artifacts`, runs only after CI built a new OpenCASCADE revision from source. It uploads the new

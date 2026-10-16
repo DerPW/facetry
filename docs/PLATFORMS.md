@@ -23,6 +23,7 @@ milestone says so and the web app explains why the feature is missing.
 | Feature | iPadOS | macOS | Web |
 |---|---|---|---|
 | Full modeling feature set | ✅ | ✅ | ✅ |
+| Viewport rendering | ✅ Metal, 120 Hz on ProMotion | ✅ Metal | ✅ WebGL2 (WebGPU later); Safari caps at 60 Hz |
 | Apple Pencil drawing and selection | ✅ | — | ◐ via Pointer Events (pressure, tilt) |
 | Pencil hover preview | ✅ supported iPads | — | ◐ where the browser reports hover |
 | Pencil double-tap, squeeze, barrel roll | ✅ (squeeze and barrel roll need Apple Pencil Pro) | — | — not exposed to the web |

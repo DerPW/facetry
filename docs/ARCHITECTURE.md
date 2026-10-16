@@ -30,7 +30,13 @@ iPadOS/macOS and TypeScript for the web, render panels and forward input.
 │  kernel        OpenCASCADE adapter (the only place OCCT is used) │
 │  scene         tessellation, edge/vertex buffers, picking IDs    │
 │  io            .facetry, STEP, STL, 3MF, …                       │
-│  render        viewport renderer (if shared, ADR-0004)           │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ facetry-render (C++20, ADR-0004) — facetry_render.h               │
+│  camera, CPU picking (BVH), highlights, shaders via sokol_gfx    │
+│  Metal on Apple (MTKView), WebGL2 on the web (UI thread)         │
+│  no OpenCASCADE: renders the core's mesh buffers                 │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,6 +100,8 @@ core/src/         facetry-core (C++20); src/kernel/ is the only place that uses 
 core/src/script/  JSON model descriptions (CLI and golden tests only)
 core/wasm/        the WebAssembly module for the web app
 core/tests/       unit tests and golden-model tests
+render/           facetry-render: viewport renderer (C API facetry_render.h), shaders in
+                  render/shaders/ compiled into render/src/shaders/ by generate.sh
 apps/apple/       SwiftUI app for iPadOS and macOS (XcodeGen spec: project.yml);
                   Facetry/Core/ wraps the C API, scripts/build-core.sh builds its frameworks
 apps/web/         Vite + TypeScript app; src/core/ wraps the C API and runs it in a Web Worker
@@ -120,6 +128,7 @@ docs/             roadmap, architecture, ADRs, benchmarks
 |---|---|---|
 | [OpenCASCADE](https://dev.opencascade.org/) 8.0.1 | B-Rep geometry kernel (prebuilt, see [`third_party/occt`](../third_party/occt/README.md)) | LGPL-2.1 with OCCT exception |
 | PlaneGCS (from [FreeCAD](https://github.com/FreeCAD/FreeCAD)) | 2D sketch constraint solver (proposed) | LGPL-2.1-or-later |
+| [sokol_gfx](https://github.com/floooh/sokol) | Graphics abstraction for the viewport (Metal, WebGL2) | zlib |
 | [Blockly](https://github.com/google/blockly) | Block editor (M3.6) | Apache-2.0 |
 | [QuickJS](https://bellard.org/quickjs/) | Script engine (proposed, M3.5) | MIT |
 
@@ -136,7 +145,7 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0001](adr/0001-geometry-kernel-opencascade.md) | Geometry kernel: OpenCASCADE | Accepted | M0.1 |
 | [0002](adr/0002-shared-core-with-native-and-web-shells.md) | Shared C++ core with native (SwiftUI) and web (TypeScript) shells | Accepted | M0.1 |
 | [0003](adr/0003-core-api-boundary-c-abi.md) | Core API boundary: a C ABI with handles | Accepted | M0.3 |
-| 0004 | Viewport renderer: shared C++ renderer vs. one renderer per platform | Open | M0.4 |
+| [0004](adr/0004-viewport-renderer-shared-cpp-sokol.md) | Viewport renderer: one shared C++ renderer on sokol_gfx, CPU picking | Accepted | M0.4 |
 | 0005 | Sketch constraint solver: PlaneGCS (proposed) | Open | M0.7 |
 | 0006 | Persistent naming scheme | Open | M0.6 |
 | 0007 | Web UI framework | Open | M0.5 |
