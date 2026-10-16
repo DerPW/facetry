@@ -9,6 +9,10 @@ once there is something to run.
 Everything in this repository is in **English**: code, comments, documentation, commit
 messages, issues and pull requests.
 
+## Building
+
+See [docs/BUILDING.md](docs/BUILDING.md) for the toolchain, build presets and formatting tools.
+
 ## Workflow
 
 - `main` is protected. Every change goes through a pull request, including the maintainer's own.

@@ -25,20 +25,22 @@ Back to the [roadmap overview](../ROADMAP.md).
 
 Set up the repository so that every later milestone can be built, tested and reviewed the same way.
 
-- [ ] Monorepo layout as described in [Architecture](../ARCHITECTURE.md#repository-layout)
-- [ ] CMake presets: `macos-debug`, `macos-release`, `ios-device`, `ios-simulator`, `wasm-debug`, `wasm-release`
-- [ ] Code style and tooling: `clang-format`, `swift-format`, Prettier + ESLint, `.editorconfig`
-- [ ] GitHub templates: pull request template, issue templates (bug, feature, task)
-- [ ] Labels: `area:*` (core, sketch, render, apple, web, docs, ci), `platform:*` (ipados, macos, web), `type:*`
-- [ ] GitHub milestones mirroring this roadmap
-- [ ] CI with GitHub Actions on macOS runners:
-  - [ ] build the core and run its tests (native)
-  - [ ] build the core for WebAssembly and run its tests in Node
-  - [ ] build the Apple app for the iPadOS simulator and macOS
-  - [ ] build the web app
-- [ ] CI checks added as required status checks to the `main` ruleset
-- [ ] ADR template in `docs/adr/`, plus ADR-0001 (geometry kernel) and ADR-0002 (shared core with native and web shells)
-- [ ] `THIRD_PARTY_NOTICES.md` started
+- [x] Monorepo layout as described in [Architecture](../ARCHITECTURE.md#repository-layout)
+- [x] CMake presets: `macos-debug`, `macos-release`, `ios-device`, `ios-simulator`, `wasm-debug`, `wasm-release`
+- [x] Code style and tooling: `clang-format`, `swift-format`, Prettier + ESLint, `.editorconfig`
+- [x] GitHub templates: pull request template, issue templates (bug, feature, task)
+- [x] Labels: `area:*` (core, sketch, render, apple, web, docs, ci), `platform:*` (ipados, macos, web), `type:*`
+- [x] GitHub milestones mirroring this roadmap
+- [x] CI with GitHub Actions (macOS runners for Apple targets, Linux for WebAssembly and web):
+  - [x] build the core and run its tests (native)
+  - [x] build the core for the iOS simulator and device (build only until the app links the core)
+  - [x] build the core for WebAssembly and run its tests in Node
+  - [x] build the Apple app for the iPadOS simulator and macOS
+  - [x] build the web app
+- [x] CI checks added as required status checks to the `main` ruleset
+- [x] ADR template in `docs/adr/`, plus ADR-0001 (geometry kernel) and ADR-0002 (shared core with native and web shells)
+- [x] `THIRD_PARTY_NOTICES.md` started
+- [x] Build instructions in [`docs/BUILDING.md`](../BUILDING.md)
 
 **Done when:** a trivial core function is built and tested in CI for all targets, and a PR shows
 green checks for each of them.

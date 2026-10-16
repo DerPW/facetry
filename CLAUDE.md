@@ -4,7 +4,17 @@ Facetry is a parametric 3D CAD app (Fusion 360 workflow, pencil-first UI) for iP
 the web, built on one shared C++ core over OpenCASCADE.
 
 Start here: [docs/ROADMAP.md](docs/ROADMAP.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[docs/PLATFORMS.md](docs/PLATFORMS.md).
+[docs/PLATFORMS.md](docs/PLATFORMS.md), [docs/BUILDING.md](docs/BUILDING.md).
+
+## Verify before pushing
+
+Run the checks for the parts you touched (CI runs all of them and they are required):
+
+- Core: `cmake --preset macos-debug -DFACETRY_WARNINGS_AS_ERRORS=ON && cmake --build --preset macos-debug && ctest --preset macos-debug`
+- C++ formatting: clang-format 23.1.3 `--dry-run --Werror` on changed `.cpp`/`.hpp` files
+- Apple app: `cd apps/apple && xcodegen generate`, then `xcodebuild … build` for the iPadOS
+  simulator and macOS, and `swift format lint --strict --recursive apps/apple`
+- Web app: `cd apps/web && npm run lint && npm run format:check && npm run build`
 
 ## Rules
 

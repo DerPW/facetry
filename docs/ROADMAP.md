@@ -14,9 +14,9 @@ Each phase has its own document with the detailed feature list:
 | [3 — Assemblies & Output](roadmap/phase-3-assemblies-and-output.md) | Multi-part designs, motion, drawings, scripting, blocks | M3.1 – M3.7 | **v1.0** |
 | [Future](roadmap/future.md) | Ideas without a schedule, and explicit non-goals | — | — |
 
-Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md)
+Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 has not started yet.
+**Current status:** Phase 0 in progress. M0.1 is done; next up is M0.2 (OpenCASCADE builds).
 
 ---
 
@@ -64,7 +64,7 @@ Phase 0: **S** ≤ 1 week · **M** 1–3 weeks · **L** 3–6 weeks · **XL** > 
 
 | ID | Milestone | Size | Status |
 |---|---|---|---|
-| M0.1 | Repository & engineering setup | S | ⬜ |
+| M0.1 | Repository & engineering setup | S | ✅ |
 | M0.2 | OpenCASCADE builds for Apple and WebAssembly | M | ⬜ |
 | M0.3 | Core skeleton & API boundary | M | ⬜ |
 | M0.4 | Viewport renderer spike | M | ⬜ |

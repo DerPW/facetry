@@ -1,0 +1,47 @@
+name: Bug report
+description: Something does not work as expected.
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a sketch on the XY plane
+        2. Draw a rectangle
+        3. …
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - iPadOS
+        - macOS
+        - Web
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Facetry version
+      placeholder: e.g. 0.1.0, or the commit shown in the web app
+  - type: input
+    id: device
+    attributes:
+      label: Device, OS and browser
+      placeholder: e.g. iPad Pro 13-inch (M4), iPadOS 27.0 / Safari 27
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Model, screenshots or logs
+      description: Attach the .facetry file if you can. It helps a lot.

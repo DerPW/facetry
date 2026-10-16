@@ -1,0 +1,110 @@
+# Building Facetry
+
+Facetry has three parts that build independently:
+
+| Part | Location | Build system |
+|---|---|---|
+| Core (C++20) | `core/` | CMake presets (`CMakePresets.json`) |
+| Apple app (iPadOS + macOS) | `apps/apple/` | XcodeGen → Xcode |
+| Web app | `apps/web/` | npm + Vite |
+
+## Prerequisites
+
+| Tool | Needed for | Install |
+|---|---|---|
+| Xcode 26 or newer | Core (Apple), Apple app | App Store |
+| CMake 3.28+ and Ninja | Core | `brew install cmake ninja` |
+| Emscripten 6.0.12 | Core (WebAssembly) | [emsdk](https://emscripten.org/docs/getting_started/downloads.html), see below |
+| XcodeGen | Apple app | `brew install xcodegen` |
+| Node.js 24 LTS | Web app | [nodejs.org](https://nodejs.org/) or `brew install node@24` |
+| clang-format 23.1.3 | C++ formatting | `pipx install clang-format==23.1.3` |
+
+## Core
+
+Presets for every target:
+
+| Preset | Target | Tests |
+|---|---|---|
+| `macos-debug`, `macos-release` | macOS (Apple silicon) | ✅ native |
+| `ios-simulator` | iOS simulator (arm64) | build only |
+| `ios-device` | iOS device (arm64) | build only |
+| `wasm-debug`, `wasm-release` | WebAssembly | ✅ in Node |
+
+```bash
+cmake --preset macos-debug
+cmake --build --preset macos-debug
+ctest --preset macos-debug
+```
+
+Build output goes to `build/<preset>/`. CI configures with `-DFACETRY_WARNINGS_AS_ERRORS=ON`.
+Use the same option locally to catch warnings before pushing.
+
+### WebAssembly
+
+Install and activate the pinned Emscripten version once:
+
+```bash
+git clone --branch 6.0.12 https://github.com/emscripten-core/emsdk.git ~/emsdk
+~/emsdk/emsdk install 6.0.12 && ~/emsdk/emsdk activate 6.0.12
+```
+
+Then, in every new shell, load its environment before configuring:
+
+```bash
+source ~/emsdk/emsdk_env.sh
+cmake --preset wasm-debug && cmake --build --preset wasm-debug && ctest --preset wasm-debug
+```
+
+The `wasm-*` presets find the toolchain through the `EMSDK` environment variable.
+
+## Apple app
+
+The Xcode project is generated from `apps/apple/project.yml` and is not checked in. Generate it
+again after pulling changes that touch `project.yml` or add files:
+
+```bash
+cd apps/apple && xcodegen generate && open Facetry.xcodeproj
+```
+
+The app target supports iPad (iPadOS 26+) and native macOS (macOS 26+, Apple silicon). To build
+without signing, as CI does:
+
+```bash
+xcodebuild -project apps/apple/Facetry.xcodeproj -scheme Facetry -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+## Web app
+
+```bash
+cd apps/web && npm install && npm run dev
+```
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` | Type-check and production build into `dist/` |
+| `npm run lint` | ESLint |
+| `npm run format` / `format:check` | Prettier |
+
+## Formatting
+
+| Language | Tool | Check | Fix |
+|---|---|---|---|
+| C++ | clang-format 23.1.3 (`.clang-format`) | `git ls-files '*.cpp' '*.hpp' \| xargs clang-format --dry-run --Werror` | same with `-i` |
+| Swift | swift-format, bundled with Xcode (`.swift-format`) | `swift format lint --strict --recursive apps/apple` | `swift format --in-place --recursive apps/apple` |
+| TypeScript, CSS, HTML | Prettier (`apps/web/.prettierrc.json`) | `npm run format:check` | `npm run format` |
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and on `main`:
+
+| Check | Runner | What it does |
+|---|---|---|
+| `core (macOS)` | macOS 26 | Build and test the core natively |
+| `core (iOS)` | macOS 26 | Build the core for the iOS simulator and device |
+| `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten and run its tests in Node |
+| `Apple app` | macOS 26 | Generate the Xcode project, build for the iPadOS simulator and macOS, lint Swift |
+| `web app` | Ubuntu 24.04 | Lint, format check, type-check and build the web app |
+| `format (C++)` | Ubuntu 24.04 | clang-format check |
+
+All checks are required to merge into `main`.
