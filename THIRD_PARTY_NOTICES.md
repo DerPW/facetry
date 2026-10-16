@@ -26,6 +26,14 @@ the app.
 
 Used by the viewport renderer (`render/`) on all platforms.
 
+### React and React DOM 19
+
+- Source: <https://github.com/facebook/react>
+- License: MIT
+- Copyright © Meta Platforms, Inc. and affiliates
+
+Used by the web app's UI.
+
 ## Development and test only
 
 These components are used to build or test Facetry. They are not part of the shipped app.
@@ -35,6 +43,7 @@ These components are used to build or test Facetry. They are not part of the shi
 | [doctest](https://github.com/doctest/doctest) | 2.5.3 | MIT | C++ unit tests |
 | [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | JSON model descriptions in `facetry-cli` and the golden tests (not linked into the apps) |
 | [Vitest](https://vitest.dev/) | 5.x | MIT | Web app tests |
+| [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react), [eslint-plugin-react-hooks](https://github.com/facebook/react) | 6.x, 7.x | MIT | Web app build and linting |
 | [sokol-shdc](https://github.com/floooh/sokol-tools) | `b975d5642093` | MIT | Compiling the viewport shaders (the generated header is checked in) |
 | [Vite](https://vite.dev/) | 8.x | MIT | Web app build |
 | [TypeScript](https://www.typescriptlang.org/) | 6.0.x | Apache-2.0 | Web app type checking |

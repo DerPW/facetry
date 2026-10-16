@@ -40,6 +40,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownMesh: MeshData?
     private var shownFitRequests = 0
     private var shownOrthographic = false
+    private var shownSelection = Pick.none
     private var lastFrameTime: CFTimeInterval = 0
     private var frameTimes: [Double] = []
 
@@ -82,6 +83,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         if model.orthographic != shownOrthographic {
             renderer.setOrthographic(model.orthographic)
             shownOrthographic = model.orthographic
+        }
+        if model.selection != shownSelection {
+            renderer.setSelection(model.selection)
+            shownSelection = model.selection
         }
         if model.fitRequests != shownFitRequests {
             renderer.fit()
@@ -145,6 +150,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         let pick = renderer.pick(at: point, radius: radius)
         renderer.setSelection(pick)
         model.selection = pick
+        shownSelection = pick
     }
 }
 
@@ -196,10 +202,20 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         override func rightMouseUp(with event: NSEvent) { dragStart = nil }
         override func otherMouseUp(with event: NSEvent) { dragStart = nil }
 
+        // Trackpads (precise deltas): two-finger scroll orbits, with Shift it pans.
+        // Mouse wheels (line deltas): zoom toward the pointer. See docs/INPUT.md.
         override func scrollWheel(with event: NSEvent) {
-            let delta =
-                event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.scrollingDeltaY * 16
-            coordinator?.renderer?.zoom(factor: exp(-delta * 0.004), at: location(event))
+            guard let renderer = coordinator?.renderer else { return }
+            if event.hasPreciseScrollingDeltas {
+                if event.phase == .began { renderer.orbitBegin(at: location(event)) }
+                if event.modifierFlags.contains(.shift) {
+                    renderer.pan(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY)
+                } else {
+                    renderer.orbit(dx: -event.scrollingDeltaX, dy: -event.scrollingDeltaY)
+                }
+            } else {
+                renderer.zoom(factor: exp(-event.scrollingDeltaY * 0.06), at: location(event))
+            }
         }
 
         override func magnify(with event: NSEvent) {
@@ -261,7 +277,11 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch))
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
             let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover))
-            for recognizer in [orbit, pan, pinch, tap, hover] as [UIGestureRecognizer] {
+            // Trackpad or mouse scrolling (no touches): orbits, with Shift it pans.
+            let scroll = UIPanGestureRecognizer(target: self, action: #selector(handleScroll))
+            scroll.allowedScrollTypesMask = .all
+            scroll.allowedTouchTypes = []
+            for recognizer in [orbit, pan, pinch, tap, hover, scroll] as [UIGestureRecognizer] {
                 recognizer.delegate = gestureDelegate
                 addGestureRecognizer(recognizer)
             }
@@ -270,7 +290,11 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         private let gestureDelegate = SimultaneousGestures()
 
         private func radius(for touchType: UITouch.TouchType?) -> Double {
-            touchType == .pencil ? PickRadius.pencil : PickRadius.finger
+            switch touchType {
+            case .pencil: PickRadius.pencil
+            case .indirectPointer: PickRadius.mouse
+            default: PickRadius.finger
+            }
         }
 
         @objc private func handleOrbit(_ recognizer: UIPanGestureRecognizer) {
@@ -283,6 +307,26 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
                 coordinator?.renderer?.orbit(
                     dx: translation.x - lastTranslation.x, dy: translation.y - lastTranslation.y)
                 lastTranslation = translation
+            default:
+                break
+            }
+        }
+
+        @objc private func handleScroll(_ recognizer: UIPanGestureRecognizer) {
+            let translation = recognizer.translation(in: self)
+            switch recognizer.state {
+            case .began:
+                lastTranslation = .zero
+                coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
+            case .changed:
+                let dx = translation.x - lastTranslation.x
+                let dy = translation.y - lastTranslation.y
+                lastTranslation = translation
+                if recognizer.modifierFlags.contains(.shift) {
+                    coordinator?.renderer?.pan(dx: dx, dy: dy)
+                } else {
+                    coordinator?.renderer?.orbit(dx: -dx, dy: -dy)
+                }
             default:
                 break
             }
@@ -318,7 +362,11 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         @objc private func handleHover(_ recognizer: UIHoverGestureRecognizer) {
             switch recognizer.state {
             case .began, .changed:
-                coordinator?.hover(at: recognizer.location(in: self), radius: PickRadius.pencil)
+                // Hover comes from a hovering Pencil (zOffset > 0) or a trackpad/mouse pointer.
+                let pencil = recognizer.zOffset > 0
+                coordinator?.hover(
+                    at: recognizer.location(in: self),
+                    radius: pencil ? PickRadius.pencil : PickRadius.mouse)
             default:
                 coordinator?.renderer?.setHover(.none)
             }

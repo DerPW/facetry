@@ -25,3 +25,4 @@ a new ADR that supersedes the old one and set the old one's status to
 | [0002](0002-shared-core-with-native-and-web-shells.md) | Shared C++ core with native and web shells | Accepted |
 | [0003](0003-core-api-boundary-c-abi.md) | Core API boundary: a C ABI with handles | Accepted |
 | [0004](0004-viewport-renderer-shared-cpp-sokol.md) | Viewport renderer: shared C++ on sokol_gfx, CPU picking | Accepted |
+| [0007](0007-web-ui-framework-react.md) | Web UI framework: React | Accepted |

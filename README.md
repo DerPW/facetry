@@ -3,8 +3,9 @@
 Parametric 3D CAD for iPad, Mac and the web — Fusion 360's way of working, with a pencil-first
 interface.
 
-> **Status: Phase 0, technical foundation.** Nothing useful to run yet. See the
-> [roadmap](docs/ROADMAP.md) for where things stand.
+> **Status: Phase 0, technical foundation.** A tech preview runs in the browser at
+> **GitHub Pages**: a demo part rendered by the real core, with orbit, zoom
+> and selection. No modeling tools yet. See the [roadmap](docs/ROADMAP.md) for where things stand.
 
 ## What Facetry wants to be
 
@@ -33,7 +34,7 @@ openly. Small pull requests, recorded decisions and automated tests keep it main
   shared by all platforms
 - **Viewport:** one shared C++ renderer on [sokol_gfx](https://github.com/floooh/sokol): Metal on Apple platforms, WebGL2 on the web
 - **iPad & Mac:** SwiftUI and Metal
-- **Web:** TypeScript, with the core compiled to WebAssembly
+- **Web:** React and TypeScript, with the core compiled to WebAssembly; installable as an offline-capable PWA
 
 Details: [Architecture](docs/ARCHITECTURE.md) · [Platforms & distribution](docs/PLATFORMS.md)
 
@@ -50,6 +51,7 @@ Details: [Architecture](docs/ARCHITECTURE.md) · [Platforms & distribution](docs
 | [Prior art & lessons](docs/PRIOR-ART.md) | What other CAD projects solved or got wrong, and what Facetry takes from them |
 | [Architecture](docs/ARCHITECTURE.md) | Structure, rules, document model, decisions |
 | [Platforms & distribution](docs/PLATFORMS.md) | Feature matrix and how each platform is shipped |
+| [Input model](docs/INPUT.md) | How fingers, Pencil, mouse, trackpad and keyboard control the viewport |
 | [Building](docs/BUILDING.md) | Toolchain, build presets, formatting, CI |
 | [Benchmarks](docs/benchmarks.md) | Measured sizes, load times and memory |
 | [Decision records](docs/adr/README.md) | Why the architecture looks the way it does |

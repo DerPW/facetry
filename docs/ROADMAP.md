@@ -16,7 +16,7 @@ Each phase has its own document with the detailed feature list:
 
 Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Prior art & lessons](PRIOR-ART.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 in progress. M0.1–M0.4 are done (M0.4 still needs a check on a real iPad); next up is M0.5 (app shells).
+**Current status:** Phase 0 in progress. M0.1–M0.4 are done and M0.5 is done except the checks on a real iPad ([#7](https://github.com/DerPW/facetry/issues/7)); next up is M0.6 (document model & persistent naming). The web app runs at GitHub Pages.
 
 ---
 
@@ -68,7 +68,7 @@ Phase 0: **S** ≤ 1 week · **M** 1–3 weeks · **L** 3–6 weeks · **XL** > 
 | M0.2 | OpenCASCADE builds for Apple and WebAssembly | M | ✅ |
 | M0.3 | Core skeleton & API boundary | M | ✅ |
 | M0.4 | Viewport renderer spike | M | ✅ |
-| M0.5 | App shells (SwiftUI + web) | M | ⬜ |
+| M0.5 | App shells (SwiftUI + web) | M | 🟡 |
 | M0.6 | Document model & persistent naming prototype | L | ⬜ |
 | M0.7 | Phase 0 wrap-up & tech preview | S | ⬜ |
 

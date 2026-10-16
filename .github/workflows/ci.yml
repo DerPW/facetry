@@ -268,6 +268,31 @@ jobs:
         run: npm test
       - name: Type-check and build
         run: npm run build
+      - name: Keep the build for GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: apps/web/dist
+
+  # Publishes the web app from main: GitHub Pages
+  pages:
+    name: Deploy web app to GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: web
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v5
 
   format:
     name: format (C++)

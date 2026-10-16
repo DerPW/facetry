@@ -36,6 +36,7 @@ dist/
 
 # Generated Xcode project (see apps/apple/project.yml)
 apps/apple/*.xcodeproj/
+apps/apple/Facetry/Info.plist
 
 # Core WebAssembly module, built by CMake (core/wasm)
 apps/web/src/core/wasm/*.mjs
