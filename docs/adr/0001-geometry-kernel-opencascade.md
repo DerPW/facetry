@@ -63,8 +63,20 @@ the full feature set and runs on all three platforms.
 - All OCCT usage is wrapped in a kernel adapter inside `facetry-core`. No OCCT types leave it
   (see the [architecture rules](../ARCHITECTURE.md#rules)).
 - OCCT is built once per pinned version for iOS, the iOS simulator, macOS and WebAssembly. CI
-  reuses prebuilt artifacts (M0.2). The exact version and the toolkit selection are recorded
-  here in M0.2.
+  reuses prebuilt artifacts (M0.2), see [`third_party/occt`](../../third_party/occt/README.md).
+
+## Pinned version (M0.2)
+
+- **OCCT 8.0.1** (tag `V8_0_1`, July 2026), the latest stable release when Facetry started.
+  Starting on the 8.x line avoids an early migration from 7.x. 8.0.1 is a patch release on top
+  of 8.0.0 (May 2026).
+- **Toolkits:** modeling (TKPrim, TKBO, TKBool, TKFillet, TKOffset, TKFeat and their
+  foundations), TKMesh, TKShHealing, TKDESTEP and TKDESTL. STEP needs TKXCAF, which in turn
+  pulls in TKCAF, TKVCAF, TKService and TKV3d. They are built without OpenGL and FreeType.
+- **Apple:** all toolkits linked into one dynamic `OCCT.framework` per platform, shipped as an
+  XCFramework. **WebAssembly:** static libraries built with native WebAssembly exceptions and
+  SIMD.
+- Sizes and timings are recorded in [benchmarks](../benchmarks.md).
 - LGPL compliance: OCCT is linked dynamically on Apple platforms, and the notices are shipped.
   Because Facetry is fully open source with build scripts, users can rebuild it against a
   modified OCCT.

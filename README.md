@@ -50,6 +50,7 @@ Details: [Architecture](docs/ARCHITECTURE.md) · [Platforms & distribution](docs
 | [Architecture](docs/ARCHITECTURE.md) | Structure, rules, document model, decisions |
 | [Platforms & distribution](docs/PLATFORMS.md) | Feature matrix and how each platform is shipped |
 | [Building](docs/BUILDING.md) | Toolchain, build presets, formatting, CI |
+| [Benchmarks](docs/benchmarks.md) | Measured sizes, load times and memory |
 | [Decision records](docs/adr/README.md) | Why the architecture looks the way it does |
 | [Contributing](CONTRIBUTING.md) | Workflow and conventions |
 

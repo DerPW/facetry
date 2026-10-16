@@ -12,7 +12,9 @@ projects solved it.
 
 Run the checks for the parts you touched (CI runs all of them and they are required):
 
+- OpenCASCADE: `third_party/occt/fetch.sh apple` (and `wasm`) once, before configuring the core
 - Core: `cmake --preset macos-debug -DFACETRY_WARNINGS_AS_ERRORS=ON && cmake --build --preset macos-debug && ctest --preset macos-debug`
+- Core in the iOS simulator: `cmake --preset ios-simulator && cmake --build --preset ios-simulator && ctest --preset ios-simulator`
 - C++ formatting: clang-format 23.1.3 `--dry-run --Werror` on changed `.cpp`/`.hpp` files
 - Apple app: `cd apps/apple && xcodegen generate`, then `xcodebuild … build` for the iPadOS
   simulator and macOS, and `swift format lint --strict --recursive apps/apple`

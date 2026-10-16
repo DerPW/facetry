@@ -52,17 +52,20 @@ green checks for each of them.
 OpenCASCADE (OCCT) is the geometry kernel (ADR-0001). It is big and slow to build, so it is built
 once per version and cached.
 
-- [ ] Pin an OCCT release; record the version and the reason in ADR-0001
-- [ ] Build script in `third_party/occt/` that produces:
-  - [ ] an XCFramework with dynamic frameworks for iOS arm64, iOS simulator arm64 and macOS arm64
-  - [ ] static libraries for WebAssembly with Emscripten (C++ exceptions enabled, SIMD enabled)
-- [ ] Minimal toolkit selection: foundation, modeling (primitives, booleans, fillets, offsets,
-      local features), meshing, shape healing, STEP. No OCCT visualization, no Draw harness.
-- [ ] Prebuilt artifacts published as versioned GitHub Release assets and cached in CI, so
+- [x] Pin an OCCT release; record the version and the reason in ADR-0001 (8.0.1)
+- [x] Build script in `third_party/occt/` that produces:
+  - [x] an XCFramework with dynamic frameworks for iOS arm64, iOS simulator arm64 and macOS arm64
+  - [x] static libraries for WebAssembly with Emscripten (C++ exceptions enabled, SIMD enabled)
+- [x] Minimal toolkit selection: foundation, modeling (primitives, booleans, fillets, offsets,
+      local features), meshing, shape healing, STEP. No OpenGL rendering, no Draw harness.
+      (STEP pulls in TKService and TKV3d, built without OpenGL.)
+- [x] Prebuilt artifacts published as versioned GitHub Release assets and cached in CI, so
       normal CI runs never rebuild OCCT
-- [ ] Measure and document: binary size per platform, WebAssembly download size (gzip and
+- [x] Measure and document: binary size per platform, WebAssembly download size (gzip and
       brotli), first-load time in Safari and Chrome, baseline memory
-- [ ] License notes for OCCT (LGPL-2.1 with the OCCT exception) in `THIRD_PARTY_NOTICES.md`
+      ([benchmarks](../benchmarks.md))
+- [x] License notes for OCCT (LGPL-2.1 with the OCCT exception) in `THIRD_PARTY_NOTICES.md`
+- [x] Core tests run inside the iOS simulator (`ctest --preset ios-simulator`)
 
 **Done when:** a C++ test that creates a box, fillets one edge and checks the resulting volume
 passes on macOS, in the iPadOS simulator and in Node (WebAssembly).

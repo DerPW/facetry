@@ -32,7 +32,7 @@ milestone says so and the web app explains why the feature is missing.
 | Large models | ✅ limited by device memory | ✅ | ◐ wasm32 memory limit, stricter in Safari on iPad |
 | Files / iCloud Drive | ✅ | ✅ | ◐ File System Access API in Chromium; upload/download elsewhere |
 | Offline use | ✅ | ✅ | ✅ after the first visit (PWA) |
-| STEP import/export | ✅ | ✅ | ✅ module loaded on demand |
+| STEP import/export | ✅ | ✅ | ✅ |
 | STL / 3MF export | ✅ | ✅ | ✅ |
 | Fonts for sketch text | ✅ system fonts | ✅ system fonts | ◐ bundled fonts and user-uploaded fonts |
 | USDZ export / AR Quick Look | ✅ | ✅ export | ◐ export only |
@@ -63,7 +63,8 @@ milestone says so and the web app explains why the feature is missing.
 - GitHub Pages cannot set custom HTTP headers. WebAssembly threads need cross-origin isolation
   (COOP/COEP headers), so a service-worker shim provides it. If that proves unreliable, the web
   build moves to a host that allows custom headers.
-- The WebAssembly download size is tracked in CI with a budget (set after M0.2). Rarely used
-  modules, such as STEP, are loaded on demand.
+- The WebAssembly download size is tracked against a budget. M0.2 measured 2.6 MB (brotli) for
+  modeling only and 3.3 MB with STEP (see [benchmarks](benchmarks.md)), so STEP is linked in for
+  now. Loading it on demand stays an option if the core grows.
 - Required browser features: WebAssembly with exceptions and SIMD, WebGL2 (WebGPU used when
   available, depending on ADR-0004), Web Workers, OPFS/IndexedDB.

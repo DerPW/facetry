@@ -19,11 +19,100 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  # Provides the prebuilt OpenCASCADE artifact to the core jobs: from the cache, from this
+  # repository's GitHub releases, or (once per OCCT version/build rev) built from source.
+  occt-apple:
+    name: OpenCASCADE (Apple)
+    runs-on: macos-26
+    timeout-minutes: 300
+    outputs:
+      built: ${{ steps.fetch.outputs.missing }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache OpenCASCADE
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: third_party/_install
+          key: occt-apple-${{ hashFiles('third_party/occt/occt.env') }}
+      - name: Download prebuilt artifact
+        id: fetch
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          status=0
+          third_party/occt/fetch.sh apple || status=$?
+          if [ "$status" -eq 2 ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+      - name: Build from source (no prebuilt artifact yet)
+        if: steps.fetch.outputs.missing == 'true'
+        run: |
+          third_party/occt/build.sh macos
+          third_party/occt/build.sh ios-simulator
+          third_party/occt/build.sh ios
+          third_party/occt/package.sh apple
+      - name: Keep the new artifact for publishing
+        if: steps.fetch.outputs.missing == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: occt-dist-apple
+          path: third_party/_dist/
+          retention-days: 7
+
+  occt-wasm:
+    name: OpenCASCADE (WebAssembly)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    outputs:
+      built: ${{ steps.fetch.outputs.missing }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache OpenCASCADE
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: third_party/_install
+          key: occt-wasm-${{ hashFiles('third_party/occt/occt.env') }}
+      - name: Download prebuilt artifact
+        id: fetch
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          status=0
+          third_party/occt/fetch.sh wasm || status=$?
+          if [ "$status" -eq 2 ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+      - name: Set up Emscripten
+        if: steps.fetch.outputs.missing == 'true'
+        uses: ./.github/actions/setup-emsdk
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+      - name: Build from source (no prebuilt artifact yet)
+        if: steps.fetch.outputs.missing == 'true'
+        run: |
+          third_party/occt/build.sh wasm
+          third_party/occt/package.sh wasm
+      - name: Keep the new artifact for publishing
+        if: steps.fetch.outputs.missing == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: occt-dist-wasm
+          path: third_party/_dist/
+          retention-days: 7
+
   core-macos:
     name: core (macOS)
+    needs: occt-apple
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/occt
+        with:
+          kind: apple
       - name: Configure
         run: cmake --preset macos-debug -DFACETRY_WARNINGS_AS_ERRORS=ON
       - name: Build
@@ -33,13 +122,19 @@ jobs:
 
   core-ios:
     name: core (iOS)
+    needs: occt-apple
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/occt
+        with:
+          kind: apple
       - name: Build for iOS simulator
         run: |
           cmake --preset ios-simulator -DFACETRY_WARNINGS_AS_ERRORS=ON
           cmake --build --preset ios-simulator
+      - name: Test in iOS simulator
+        run: ctest --preset ios-simulator
       - name: Build for iOS device
         run: |
           cmake --preset ios-device -DFACETRY_WARNINGS_AS_ERRORS=ON
@@ -47,35 +142,63 @@ jobs:
 
   core-wasm:
     name: core (WebAssembly)
+    needs: occt-wasm
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Cache Emscripten
-        uses: actions/cache@v6
+      - uses: ./.github/actions/setup-emsdk
         with:
-          path: ${{ runner.temp }}/emsdk
-          key: emsdk-${{ runner.os }}-${{ env.EMSDK_VERSION }}
-      - name: Install Emscripten ${{ env.EMSDK_VERSION }}
-        run: |
-          if [ ! -d "$RUNNER_TEMP/emsdk" ]; then
-            git clone --depth 1 --branch "$EMSDK_VERSION" \
-              https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
-          fi
-          cd "$RUNNER_TEMP/emsdk"
-          ./emsdk install "$EMSDK_VERSION"
-          ./emsdk activate "$EMSDK_VERSION"
-          source ./emsdk_env.sh
-          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
-          echo "EMSDK_NODE=$EMSDK_NODE" >> "$GITHUB_ENV"
-          echo "$EMSDK" >> "$GITHUB_PATH"
-          echo "$EMSDK/upstream/emscripten" >> "$GITHUB_PATH"
-          dirname "$EMSDK_NODE" >> "$GITHUB_PATH"
+          version: ${{ env.EMSDK_VERSION }}
+      - uses: ./.github/actions/occt
+        with:
+          kind: wasm
       - name: Configure
         run: cmake --preset wasm-debug -DFACETRY_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build --preset wasm-debug
       - name: Test (Node)
         run: ctest --preset wasm-debug
+
+  # Publishes newly built OpenCASCADE artifacts once all core tests passed with them.
+  # Release assets are never replaced: a changed build needs a new OCCT_BUILD_REV.
+  occt-release:
+    name: Publish OpenCASCADE artifacts
+    needs: [occt-apple, occt-wasm, core-macos, core-ios, core-wasm]
+    if: >-
+      (needs.occt-apple.outputs.built == 'true' || needs.occt-wasm.outputs.built == 'true') &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: occt-dist-*
+          path: dist
+          merge-multiple: true
+      - name: Upload to the release
+        run: |
+          source third_party/occt/occt.env
+          tag="occt-${OCCT_VERSION}-r${OCCT_BUILD_REV}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --prerelease --latest=false \
+              --target "${{ github.event.repository.default_branch }}" \
+              --title "OpenCASCADE ${OCCT_VERSION} (build ${OCCT_BUILD_REV})" \
+              --notes "Prebuilt OpenCASCADE ${OCCT_VERSION} for Facetry, built by CI from the official ${OCCT_TAG} sources with third_party/occt/build.sh. OpenCASCADE is licensed under LGPL-2.1 with the OCCT exception; the license files are included in each archive. Not a Facetry app release."
+          fi
+          existing="$(gh release view "$tag" --json assets -q '.assets[].name')"
+          for file in dist/*; do
+            name="$(basename "$file")"
+            if grep -qx "$name" <<<"$existing"; then
+              echo "Keeping existing $name"
+            else
+              gh release upload "$tag" "$file"
+            fi
+          done
 
   apple-app:
     name: Apple app

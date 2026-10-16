@@ -42,12 +42,13 @@
     },
     {
       "name": "ios-simulator",
-      "displayName": "iOS simulator (Debug, build only)",
+      "displayName": "iOS simulator (Debug, tests run in the simulator)",
       "inherits": "apple-base",
       "cacheVariables": {
         "CMAKE_SYSTEM_NAME": "iOS",
         "CMAKE_OSX_SYSROOT": "iphonesimulator",
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CROSSCOMPILING_EMULATOR": "${sourceDir}/cmake/ios-simulator-run.sh"
       }
     },
     {
@@ -80,6 +81,7 @@
   "testPresets": [
     { "name": "macos-debug", "configurePreset": "macos-debug", "output": { "outputOnFailure": true } },
     { "name": "macos-release", "configurePreset": "macos-release", "output": { "outputOnFailure": true } },
+    { "name": "ios-simulator", "configurePreset": "ios-simulator", "output": { "outputOnFailure": true } },
     { "name": "wasm-debug", "configurePreset": "wasm-debug", "output": { "outputOnFailure": true } },
     { "name": "wasm-release", "configurePreset": "wasm-release", "output": { "outputOnFailure": true } }
   ]

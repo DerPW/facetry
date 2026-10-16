@@ -9,3 +9,7 @@ TEST_CASE("version matches the project version") {
 TEST_CASE("platform matches the build target") {
     CHECK(facetry::core::platform() == FACETRY_EXPECTED_PLATFORM);
 }
+
+TEST_CASE("kernel version matches the pinned OpenCASCADE version") {
+    CHECK(facetry::core::kernelVersion() == FACETRY_EXPECTED_OCCT_VERSION);
+}
