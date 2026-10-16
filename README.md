@@ -3,9 +3,13 @@
 Parametric 3D CAD for iPad, Mac and the web — Fusion 360's way of working, with a pencil-first
 interface.
 
-> **Status: Phase 0, technical foundation.** A tech preview runs in the browser at
-> **GitHub Pages**: a demo part rendered by the real core, with orbit, zoom
-> and selection. No modeling tools yet. See the [roadmap](docs/ROADMAP.md) for where things stand.
+> **Status: v0.0.1 tech preview.** Phase 0, the technical foundation, is done.
+>
+> **Try it in the browser:** a demo part rendered by the
+> real core, with orbit, zoom and selection. It works offline once loaded. The Mac and iPad
+> apps build from source ([Building](docs/BUILDING.md)). There are no modeling tools in the
+> apps yet; the core already regenerates parametric models with stable references. See the
+> [roadmap](docs/ROADMAP.md) for what comes next.
 
 ## What Facetry wants to be
 

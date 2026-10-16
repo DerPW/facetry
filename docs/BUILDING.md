@@ -81,7 +81,24 @@ preset for the web app:
 cmake --preset wasm-release && cmake --build --preset wasm-release --target facetry-core-web facetry-render-web
 ```
 
-The `wasm-*` presets find the toolchain through the `EMSDK` environment variable.
+The `wasm-*` presets find the toolchain through the `EMSDK` environment variable. The modules
+are built for the oldest browsers in
+[ADR-0009](adr/0009-minimum-os-and-browser-versions.md) (`MIN_*_VERSION` in `CMakeLists.txt`).
+
+### Command-line tool
+
+`facetry-cli` builds with the macOS and WebAssembly presets. The WebAssembly version runs in Node
+with access to local files:
+
+```bash
+build/macos-release/tools/cli/facetry-cli check tests/models
+build/macos-release/tools/cli/facetry-cli bench tests/documents/corner-fillet.json
+node build/wasm-release/tools/cli/facetry-cli.js bench tests/documents/corner-fillet.json
+```
+
+`check` compares the golden models with their expected values (also part of `ctest`), `info`
+prints a model's properties and can write an STL, and `bench` times the regeneration of a
+document ([benchmarks](benchmarks.md#regeneration)).
 
 ## Viewport renderer
 
@@ -192,7 +209,7 @@ It writes the web icons (`apps/web/public/icons/`) and the Apple app icon set
 | `OpenCASCADE (Apple)`, `OpenCASCADE (WebAssembly)` | macOS 26, Ubuntu 24.04 | Provide the OCCT artifact: from the cache, from the release, or built from source when a new revision has no release yet |
 | `core (macOS)` | macOS 26 | Build and test the core natively, check the golden models with `facetry-cli` |
 | `core (iOS)` | macOS 26 | Build the core for the iOS simulator and device; run the tests in the simulator |
-| `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten, run its tests in Node, build the web module |
+| `core (WebAssembly)` | Ubuntu 24.04 | Build the core with Emscripten, run its tests and the golden models in Node, build the web module |
 | `Apple app` | macOS 26 | Build the core frameworks and the app, run the Swift tests on macOS, lint Swift |
 | `web app` | Ubuntu 24.04 | Lint, format check, test against the core module, type-check and build |
 | `Deploy web app to GitHub Pages` | Ubuntu 24.04 | `main` only: publishes the web build |

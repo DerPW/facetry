@@ -34,6 +34,8 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
-    target: "es2022",
+    // Oldest supported browsers (docs/adr/0009-minimum-os-and-browser-versions.md), the same as
+    // the WebAssembly modules' MIN_*_VERSION settings in CMakeLists.txt.
+    target: ["chrome111", "edge111", "firefox114", "safari16.4", "ios16.4"],
   },
 });

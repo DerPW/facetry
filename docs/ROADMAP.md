@@ -16,7 +16,7 @@ Each phase has its own document with the detailed feature list:
 
 Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Prior art & lessons](PRIOR-ART.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 in progress. M0.1–M0.4 and M0.6 are done, and M0.5 is done except the checks on a real iPad ([#7](https://github.com/DerPW/facetry/issues/7)); next up is M0.7 (Phase 0 wrap-up & tech preview). The web app runs at GitHub Pages.
+**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview. The checks on a real iPad from M0.5 are still open ([#7](https://github.com/DerPW/facetry/issues/7)). Next up is Phase 1, starting with M1.1 (document, timeline & undo). The web app runs at GitHub Pages.
 
 ---
 
@@ -57,8 +57,14 @@ Facetry is a parametric 3D CAD app for iPad, Mac and the web.
 
 Status: ⬜ planned · 🟡 in progress · ✅ done
 
-Size is the rough effort for one developer working with AI assistance, recalibrated after
-Phase 0: **S** ≤ 1 week · **M** 1–3 weeks · **L** 3–6 weeks · **XL** > 6 weeks.
+Size is the rough effort for one developer working with AI assistance. **S** is one working
+session (a few hours), **M** two to four sessions, **L** about a week of sessions, and **XL**
+several weeks.
+
+These sizes were recalibrated in M0.7. The original estimate in weeks was far too pessimistic:
+all of Phase 0 (M0.1–M0.7) took one day of sessions on 2026-10-16. From Phase 1 on, most work is
+UI that the maintainer has to try on real devices, which AI does not speed up the same way. The
+relative sizes stay as they were.
 
 ### Phase 0 — Foundation
 
@@ -70,7 +76,7 @@ Phase 0: **S** ≤ 1 week · **M** 1–3 weeks · **L** 3–6 weeks · **XL** > 
 | M0.4 | Viewport renderer spike | M | ✅ |
 | M0.5 | App shells (SwiftUI + web) | M | 🟡 |
 | M0.6 | Document model & persistent naming prototype | L | ✅ |
-| M0.7 | Phase 0 wrap-up & tech preview | S | ⬜ |
+| M0.7 | Phase 0 wrap-up & tech preview | S | ✅ |
 
 ### Phase 1 — Core Modeling (MVP)
 

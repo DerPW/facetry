@@ -3,6 +3,55 @@
 Measured numbers that guide technical decisions. Each section says what was measured, on which
 machine, and with which build. Numbers are refreshed when the setup changes noticeably.
 
+## Phase 0 summary (M0.7)
+
+Measured on 2026-10-16 on the M0.2 machine (MacBook Pro, Apple M3, 8 GB RAM, macOS 27.0),
+Emscripten 6.0.12 and Node 24.19. These are the baseline for the Phase 1 performance targets
+(M1.10).
+
+### Regeneration
+
+`facetry-cli bench tests/documents/corner-fillet.json --runs 50`: the M0.6 example (sketch →
+extrude → fillet, 3 features). Release builds; the median of 50 runs, three times, with the
+spread shown.
+
+| Measurement | macOS, native | WebAssembly (Node 24) |
+|---|---|---|
+| Load the document (parse and validate JSON) | 0.02 ms | 0.05 ms |
+| Regenerate from scratch | 2.0 ms | 3.6–3.8 ms |
+| First regeneration in a fresh process | 2.8–31 ms | 39–41 ms |
+| After changing the first parameter (all 3 features run) | 2.0–2.1 ms | 3.6–3.9 ms |
+| Nothing changed (all from the cache) | 0.01 ms | 0.02 ms |
+| Peak memory | 17.5 MB process RSS | 26.9 MB WebAssembly memory |
+
+- WebAssembly takes about 1.8 times as long as native code once warmed up.
+- The first run pays for page faults, OCCT's start-up and, in WebAssembly, the JIT tiers.
+- Browsers run the same code in V8 (Chromium) or JavaScriptCore (Safari). Safari compiled
+  WebAssembly about three times slower in M0.2, so expect a slower first run there.
+
+### Download size
+
+| Module | Raw | gzip -9 | brotli 11 |
+|---|---|---|---|
+| `facetry-core.wasm` (C API, modeling, meshing, M0.6 document model) | 10.60 MB | 3.95 MB | 2.75 MB |
+| `facetry-render.wasm` | 0.14 MB | 0.05 MB | 0.04 MB |
+| PlaneGCS spike (ADR-0005), for comparison | 0.29 MB | 0.11 MB | 0.08 MB |
+
+The document model added only 107 bytes to the core module: the C API does not reach it yet,
+so the linker removes it. It grows with M1.1. PlaneGCS will add less than its spike size,
+because the C++ runtime it brings along is already in the core.
+
+### Frame time
+
+Unchanged since M0.4 (see [Viewport](#viewport-m04)): 120 Hz in the Mac app and in Chromium,
+Safari capped at 60 Hz with 1.3 ms of GPU time for 215k triangles. **A real iPad is still
+missing** ([#7](https://github.com/DerPW/facetry/issues/7)).
+
+### Sketch solver spike
+
+PlaneGCS solve and diagnosis times, native and WebAssembly, are in
+[ADR-0005](adr/0005-sketch-solver-planegcs.md#spike).
+
 ## OpenCASCADE 8.0.1 (M0.2)
 
 Measured on 2026-10-16. Machine: MacBook with Apple M3 (8 cores, 8 GB RAM), macOS 27.0,
