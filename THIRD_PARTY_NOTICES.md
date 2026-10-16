@@ -5,7 +5,18 @@ shown in the app's About screen.
 
 ## Shipped with the app
 
-None yet. OpenCASCADE (LGPL-2.1 with the OCCT exception) is added in milestone M0.2.
+### OpenCASCADE Technology 8.0.1
+
+- Website: <https://dev.opencascade.org/>
+- Source: <https://github.com/Open-Cascade-SAS/OCCT> (tag `V8_0_1`), unmodified
+- License: GNU Lesser General Public License version 2.1, with the Open CASCADE Exception 1.0
+- Copyright © Open CASCADE SAS
+
+Facetry links OpenCASCADE dynamically on Apple platforms (`OCCT.framework`) and statically in
+the WebAssembly build. All of Facetry is open source, and the build scripts in
+[`third_party/occt/`](third_party/occt/README.md) let you rebuild it against a modified
+OpenCASCADE. The full license texts ship with every OpenCASCADE artifact (`licenses/`) and in
+the app.
 
 ## Development and test only
 

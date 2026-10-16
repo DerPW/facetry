@@ -1,0 +1,18 @@
+name: Restore OpenCASCADE
+description: >-
+  Restores the prebuilt OpenCASCADE artifact saved by the occt-* job of the same workflow run.
+
+inputs:
+  kind:
+    description: apple or wasm
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore OpenCASCADE (${{ inputs.kind }})
+      uses: actions/cache/restore@v6
+      with:
+        path: third_party/_install
+        key: occt-${{ inputs.kind }}-${{ hashFiles('third_party/occt/occt.env') }}
+        fail-on-cache-miss: true

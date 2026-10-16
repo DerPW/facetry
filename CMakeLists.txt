@@ -11,8 +11,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Tests run natively and, for WebAssembly, in Node. iOS builds are build-only.
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+# Tests run natively, in the iOS simulator and, for WebAssembly, in Node.
+# iOS device builds are build-only.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
     set(FACETRY_TESTS_DEFAULT OFF)
 else()
     set(FACETRY_TESTS_DEFAULT ON)
@@ -21,12 +22,14 @@ option(FACETRY_BUILD_TESTS "Build the test suites" ${FACETRY_TESTS_DEFAULT})
 option(FACETRY_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (enabled in CI)" OFF)
 
 if(EMSCRIPTEN)
-    # OpenCASCADE relies on C++ exceptions, so native WebAssembly exceptions are on everywhere.
-    add_compile_options(-fwasm-exceptions)
-    add_link_options(-fwasm-exceptions)
+    # Must match the OpenCASCADE build (third_party/occt/build.sh): OCCT reports failures with
+    # C++ exceptions, so native WebAssembly exceptions are on everywhere, and SIMD is enabled.
+    add_compile_options(-fwasm-exceptions -msimd128)
+    add_link_options(-fwasm-exceptions -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=2MB)
 endif()
 
 include(cmake/FacetryWarnings.cmake)
+include(cmake/FacetryOCCT.cmake)
 
 if(FACETRY_BUILD_TESTS)
     enable_testing()

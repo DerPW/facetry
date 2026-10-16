@@ -114,7 +114,7 @@ docs/             roadmap, architecture, ADRs, benchmarks
 
 | Component | Purpose | License |
 |---|---|---|
-| [OpenCASCADE](https://dev.opencascade.org/) | B-Rep geometry kernel | LGPL-2.1 with OCCT exception |
+| [OpenCASCADE](https://dev.opencascade.org/) 8.0.1 | B-Rep geometry kernel (prebuilt, see [`third_party/occt`](../third_party/occt/README.md)) | LGPL-2.1 with OCCT exception |
 | PlaneGCS (from [FreeCAD](https://github.com/FreeCAD/FreeCAD)) | 2D sketch constraint solver (proposed) | LGPL-2.1-or-later |
 | [Blockly](https://github.com/google/blockly) | Block editor (M3.6) | Apache-2.0 |
 | [QuickJS](https://bellard.org/quickjs/) | Script engine (proposed, M3.5) | MIT |
