@@ -87,6 +87,7 @@ The M0.6 prototype implements this in the core:
 | Naming | `naming.hpp`, `core/src/kernel/occt_naming.cpp` | Faces from history and roles, edges and vertices by their faces |
 | Regeneration engine | `regeneration.hpp` | Per-feature cache keyed by the feature's definition with parameter values filled in; cancellation between features; failed features pass the model through |
 | Session | `session.hpp` | Undo/redo as snapshots of the document; becomes a command system in M1.1 |
+| C API | `facetry_core.h`, `session_json.hpp` | Sessions with JSON edits and summaries ([ADR-0011](adr/0011-document-api-json-over-c.md)); the apps open the M0.6 example through it |
 
 Feature and sketch element IDs come from one counter in the document and are never reused, so a
 reference to something deleted cannot attach to something new.
@@ -171,3 +172,4 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0008](adr/0008-native-file-format.md) | Native file format: a zip container with manifest, document, thumbnail and cache | Accepted | M0.7 |
 | [0009](adr/0009-minimum-os-and-browser-versions.md) | Minimum versions: iPadOS/macOS 26, a feature-based browser floor | Accepted | M0.7 |
 | 0010 | Script engine: embedded QuickJS (proposed) vs. platform JS engines | Open | M3.5 |
+| [0011](adr/0011-document-api-json-over-c.md) | Document API: sessions with JSON edits over the C API | Accepted | M1.1 |
