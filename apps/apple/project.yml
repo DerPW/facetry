@@ -1,0 +1,45 @@
+# XcodeGen spec for the Facetry Apple app (iPadOS + macOS).
+# Generate the Xcode project with `xcodegen generate` in this directory.
+# The generated Facetry.xcodeproj is not checked in.
+name: Facetry
+
+options:
+  bundleIdPrefix: io.github.derpw
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Facetry:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Facetry
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.derpw.facetry
+        PRODUCT_NAME: Facetry
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Facetry
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.graphics-design
+        # iPad only on iOS; the Mac build is a native macOS app (not Mac Catalyst)
+        # for Apple silicon only.
+        TARGETED_DEVICE_FAMILY: "2"
+        "ARCHS[sdk=macosx*]": arm64
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: >-
+          UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown
+          UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_USER_SELECTED_FILES: readwrite
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+    scheme: {}

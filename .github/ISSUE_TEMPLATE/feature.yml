@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a new tool, behavior or improvement.
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: Describe the modeling task or workflow, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How should it work?
+      description: How would you expect to use it with Pencil, touch, or keyboard and mouse?
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference
+      description: How do Fusion 360, Shapr3D or other tools handle this? Screenshots welcome.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - All
+        - iPadOS
+        - macOS
+        - Web

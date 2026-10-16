@@ -84,17 +84,20 @@ The format is versioned from the first release. Each version bump comes with a m
 
 ## Repository layout
 
-Planned layout (set up in M0.1):
+Set up in M0.1. How to build each part: [Building](BUILDING.md).
 
 ```
+CMakeLists.txt    root CMake project; CMakePresets.json defines all core targets
+cmake/            shared CMake helpers (warnings, …)
 core/             facetry-core (C++20): document, features, kernel adapter, solver, io, …
 core/tests/       unit tests and golden-model tests
-apps/apple/       Xcode project: SwiftUI app for iPadOS and macOS
+apps/apple/       SwiftUI app for iPadOS and macOS (XcodeGen spec: project.yml)
 apps/web/         Vite + TypeScript app
 tools/cli/        facetry-cli: headless regeneration, inspection, export
 tests/models/     benchmark models (.facetry) with expected results
 third_party/      build scripts and pins for OpenCASCADE, PlaneGCS, …
 docs/             roadmap, architecture, ADRs, benchmarks
+.github/          CI workflow, issue and pull request templates
 ```
 
 ## Testing
@@ -122,12 +125,12 @@ notices are collected in `THIRD_PARTY_NOTICES.md` and shown in the app.
 
 ## Decisions
 
-Decisions are recorded as ADRs (Architecture Decision Records) in `docs/adr/` (from M0.1).
+Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](adr/README.md).
 
 | ADR | Topic | Status | Decided in |
 |---|---|---|---|
-| 0001 | Geometry kernel: OpenCASCADE | Accepted (to be written down) | M0.1 |
-| 0002 | Shared C++ core with native (SwiftUI) and web (TypeScript) shells | Accepted (to be written down) | M0.1 |
+| [0001](adr/0001-geometry-kernel-opencascade.md) | Geometry kernel: OpenCASCADE | Accepted | M0.1 |
+| [0002](adr/0002-shared-core-with-native-and-web-shells.md) | Shared C++ core with native (SwiftUI) and web (TypeScript) shells | Accepted | M0.1 |
 | 0003 | Core API boundary: C ABI vs. Swift C++ interop + Embind | Open | M0.3 |
 | 0004 | Viewport renderer: shared C++ renderer vs. one renderer per platform | Open | M0.4 |
 | 0005 | Sketch constraint solver: PlaneGCS (proposed) | Open | M0.7 |

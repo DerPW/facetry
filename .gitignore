@@ -32,3 +32,6 @@ dist/
 
 # Claude Code (local, per-machine settings)
 .claude/settings.local.json
+
+# Generated Xcode project (see apps/apple/project.yml)
+apps/apple/*.xcodeproj/

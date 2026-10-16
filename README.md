@@ -3,8 +3,8 @@
 Parametric 3D CAD for iPad, Mac and the web — Fusion 360's way of working, with a pencil-first
 interface.
 
-> **Status: planning.** Nothing to run yet. Work starts with
-> [Phase 0](docs/roadmap/phase-0-foundation.md), the technical foundation.
+> **Status: Phase 0, technical foundation.** Nothing useful to run yet. See the
+> [roadmap](docs/ROADMAP.md) for where things stand.
 
 ## What Facetry wants to be
 
@@ -48,6 +48,8 @@ Details: [Architecture](docs/ARCHITECTURE.md) · [Platforms & distribution](docs
 | [Future ideas & non-goals](docs/roadmap/future.md) | What is not scheduled, and what is out of scope |
 | [Architecture](docs/ARCHITECTURE.md) | Structure, rules, document model, decisions |
 | [Platforms & distribution](docs/PLATFORMS.md) | Feature matrix and how each platform is shipped |
+| [Building](docs/BUILDING.md) | Toolchain, build presets, formatting, CI |
+| [Decision records](docs/adr/README.md) | Why the architecture looks the way it does |
 | [Contributing](CONTRIBUTING.md) | Workflow and conventions |
 
 ## License
