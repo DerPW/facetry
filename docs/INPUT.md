@@ -58,7 +58,22 @@ perpendicular, parallel and tangent directions, and free points line up with oth
 next to the pointer says what it snapped to; dashed guides show alignments; **Grid snap** rounds
 free points to the grid (docs/adr/0016-sketch-snapping.md). A polyline ends when it closes on its
 first point. Without a tool (Select), clicks select sketch curves and points before the model,
-for example to toggle them to construction curves.
+for example to toggle them to construction curves or to delete them.
+
+### Editing in sketch mode
+
+The editing tools (docs/adr/0017-sketch-editing.md) use the same input as the drawing tools:
+
+| Tool | Tap or click | Drag |
+|---|---|---|
+| Trim | removes the piece under the pointer, up to the curves crossing it | trims every curve the pointer passes |
+| Extend | runs the line near the pointer on, from its nearer end, to the next curve | — |
+| Fillet | a corner of two lines, then a point as far from it as the arc should start; a second tap on the corner repeats the last size | from the corner outwards |
+| Move, Copy | a base point, then the target; without a selection, the first tap takes the point or curve under it | from what to move to where |
+
+The fillet's radius shows next to the pointer. **Delete** (the button, or the `Delete` or
+`Backspace` key) removes the selected points and curves, the curves on deleted points, and the
+constraints on them.
 
 ### Navigation presets
 
@@ -112,6 +127,8 @@ Mac, iPad with a hardware keyboard, and the web app:
 | `1` … `5` | Select vertices, edges, faces, bodies, or everything (like Plasticity's selection modes) |
 | `Esc` | Clear the selection; with a drawing tool, end the shape, then leave the tool |
 | `L`, `R`, `C`, `A`, `P` | In sketch mode: line, rectangle (2 corners), circle (center), arc (3 points), point |
+| `T`, `E`, `M` | In sketch mode: trim, extend, move |
+| `Delete`, `Backspace` | In sketch mode without a tool: delete the selected points and curves |
 | `X` | In sketch mode: construction curves (the selected ones, or the next ones drawn) |
 | `⌘Z` / `Ctrl+Z` | Undo the last step (its name is shown on the Undo button) |
 | `⇧⌘Z` / `Shift+Ctrl+Z` / `Ctrl+Y` | Redo |

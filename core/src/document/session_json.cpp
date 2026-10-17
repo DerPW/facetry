@@ -1,6 +1,7 @@
 #include "facetry/core/session_json.hpp"
 
 #include "facetry/core/error.hpp"
+#include "facetry/core/sketch_edit.hpp"
 
 #include "document_json.hpp"
 
@@ -202,6 +203,23 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
         }
         return;
     }
+    if (op == "deleteSketchEntities") {
+        const std::string sketch = reader.at("sketch").string();
+        const Feature* feature = document.findFeature(sketch);
+        if (feature == nullptr || !std::holds_alternative<Sketch>(feature->data)) {
+            invalidEdit(path + ": \"sketch\" is not a sketch of the document");
+        }
+        std::vector<std::string> entities;
+        for (const Reader& entity : reader.at("entities").items()) {
+            entities.push_back(entity.string());
+        }
+        try {
+            deleteSketchEntities(document, sketch, entities);
+        } catch (const Error& error) {
+            invalidEdit(path + ": " + error.what());
+        }
+        return;
+    }
     if (op == "setConstruction") {
         Feature* feature = document.findFeature(reader.at("sketch").string());
         auto* sketch = feature != nullptr ? std::get_if<Sketch>(&feature->data) : nullptr;
@@ -339,6 +357,8 @@ std::string stepName(const Json& edit) {
         return "Change units";
     if (op == "setConstruction")
         return flag("construction") ? "Make construction" : "Make normal";
+    if (op == "deleteSketchEntities")
+        return "Delete sketch entities";
     return "Edit";
 }
 

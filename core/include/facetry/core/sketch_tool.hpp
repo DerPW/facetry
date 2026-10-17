@@ -1,6 +1,6 @@
-// Sketch drawing tools (#49, docs/adr/0015-sketch-tools.md): state machines that turn pointer
-// events on the sketch plane into sketch entities. The shells only convert screen positions into
-// sketch coordinates, so every platform draws the same way.
+// Sketch tools (#49, docs/adr/0015-sketch-tools.md): state machines that turn pointer events on
+// the sketch plane into sketch entities, and edit them (#51, sketch_edit.hpp). The shells only
+// convert screen positions into sketch coordinates, so every platform draws the same way.
 #pragma once
 
 #include "facetry/core/mesh.hpp"
@@ -28,6 +28,14 @@ enum class SketchToolKind : std::uint8_t {
                               // pointer
     ArcTangent = 9,           // from the end of a line or arc, tangent to it, to the end
     Point = 10,
+    // Editing (#51)
+    Trim = 11,    // removes the piece of the curve under the pointer up to the curves crossing it;
+                  // dragging trims every curve the pointer passes
+    Extend = 12,  // runs the line clicked near one end on to the next curve
+    Fillet = 13,  // a corner where two lines meet, then how far from it the arc starts
+    Move = 14,    // the selection, or what is under the first click, from a base point to a
+                  // target
+    Copy = 15,    // like Move, keeping the originals
 };
 
 enum class PointerEvent : std::uint8_t { Down = 0, Move = 1, Up = 2 };
@@ -44,6 +52,8 @@ struct SnapFeedback {
     // Constraints the next click would add: "horizontal", "vertical", "parallel",
     // "perpendicular", "tangent".
     std::vector<std::string> inferences;
+    // Fillet: the radius of the arc the next click makes, in millimeters; 0 otherwise.
+    double radius = 0.0;
 };
 
 class SketchTool {
@@ -70,6 +80,13 @@ class SketchTool {
 
     // The snap and inferences at the pointer.
     [[nodiscard]] SnapFeedback feedback() const;
+
+    // Move and copy: the points and curves to move. Without a selection, the first click takes the
+    // point or curve under the pointer.
+    void setSelection(std::vector<std::string> entities) {
+        selection_ = std::move(entities);
+        pickedSelection_ = false;
+    }
 
     // Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off.
     void setGrid(double spacing) noexcept {
@@ -113,6 +130,25 @@ class SketchTool {
     // The points of the shape so far, with a drag in progress counting as a click.
     [[nodiscard]] std::vector<Spot> placed(double radius) const;
 
+    // Editing tools (sketch_edit_tool.cpp).
+    [[nodiscard]] bool editing() const noexcept {
+        return kind_ >= SketchToolKind::Trim;
+    }
+    // Trim and extend act where the pointer is, without snapping.
+    bool trimOrExtend(Session& session, PointerEvent event, double u, double v, double radius);
+    bool editClick(Session& session, const Spot& spot, double snapRadius);
+    // What an edit would change: curves and points to show, and curves to show as guides.
+    struct EditPreview {
+        std::vector<ProfileSegment> curves;
+        std::vector<std::pair<double, double>> points;
+        std::vector<ProfileSegment> guides;
+    };
+    [[nodiscard]] EditPreview editPreview(const Session& session) const;
+    // Move and copy: what the base point `base` moves.
+    [[nodiscard]] std::vector<std::string> moving(const Session& session, const Spot& base) const;
+    // Fillet: the radius at the pointer, for the feedback.
+    [[nodiscard]] double filletRadius(const Session& session) const;
+
     SketchToolKind kind_;
     std::string sketch_;
     bool construction_;
@@ -130,6 +166,12 @@ class SketchTool {
     // Arcs by center: how far the pointer went round the center since the start was clicked.
     double sweep_ = 0.0;
     double lastAngle_ = 0.0;
+    // Editing: the entities to move, whether the first click picked them, the last fillet's
+    // setback and the radius at the pointer.
+    std::vector<std::string> selection_;
+    bool pickedSelection_ = false;
+    double setback_ = 0.0;
+    double radius_ = 0.0;
 };
 
 }  // namespace facetry::core

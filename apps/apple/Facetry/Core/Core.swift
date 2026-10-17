@@ -23,7 +23,7 @@ struct ToolHandle: Hashable, Sendable {
     let rawValue: UInt32
 }
 
-/// The drawing tools (facetry_sketch_tool_kind), with their keys (docs/INPUT.md).
+/// The drawing and editing tools (facetry_sketch_tool_kind), with their keys (docs/INPUT.md).
 enum SketchToolKind: UInt32, CaseIterable, Identifiable, Sendable {
     case line = 0
     case rectangleTwoPoint = 1
@@ -36,8 +36,16 @@ enum SketchToolKind: UInt32, CaseIterable, Identifiable, Sendable {
     case arcCenter = 8
     case arcTangent = 9
     case point = 10
+    case trim = 11
+    case extend = 12
+    case fillet = 13
+    case move = 14
+    case copy = 15
 
     var id: UInt32 { rawValue }
+
+    /// Trim, extend, fillet, move and copy change what is drawn (sketch_edit.hpp).
+    var isEditing: Bool { rawValue >= SketchToolKind.trim.rawValue }
 
     var title: String {
         switch self {
@@ -52,6 +60,11 @@ enum SketchToolKind: UInt32, CaseIterable, Identifiable, Sendable {
         case .arcCenter: "Arc: center"
         case .arcTangent: "Arc: tangent"
         case .point: "Point"
+        case .trim: "Trim"
+        case .extend: "Extend"
+        case .fillet: "Fillet"
+        case .move: "Move"
+        case .copy: "Copy"
         }
     }
 
@@ -63,6 +76,9 @@ enum SketchToolKind: UInt32, CaseIterable, Identifiable, Sendable {
         case .circleCenter: "c"
         case .arcThreePoint: "a"
         case .point: "p"
+        case .trim: "t"
+        case .extend: "e"
+        case .move: "m"
         default: nil
         }
     }
@@ -75,8 +91,10 @@ struct SnapFeedback: Decodable, Sendable, Equatable {
     let snap: String
     /// "horizontal", "vertical", "parallel", "perpendicular", "tangent".
     let inferences: [String]
+    /// The fillet tool's radius at the pointer in millimeters; 0 for other tools.
+    let radius: Double
 
-    static let none = SnapFeedback(snap: "", inferences: [])
+    static let none = SnapFeedback(snap: "", inferences: [], radius: 0)
 }
 
 /// A pointer event for a sketch tool (facetry_pointer_event).
@@ -208,6 +226,12 @@ struct SessionState: Decodable, Sendable, Equatable {
                     return (id, curve["construction"] == .bool(true))
                 }
             }
+        }
+
+        /// A sketch's point IDs in the order of its display mesh (vertex ID i + 1 is point i).
+        var sketchPoints: [String] {
+            guard case .array(let points)? = definition["points"] else { return [] }
+            return points.compactMap { $0["id"]?.string }
         }
     }
 
@@ -355,6 +379,8 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case addFeature(JSONValue, index: Int?)
     /// Makes curves of a sketch construction curves, or normal ones again.
     case setConstruction(sketch: String, entities: [String], construction: Bool)
+    /// Deletes points and curves of a sketch, and what depends on them.
+    case deleteSketchEntities(sketch: String, entities: [String])
     /// An empty name restores the default ("Body 1", …).
     case renameBody(id: String, name: String)
     case setBodyVisible(id: String, visible: Bool)
@@ -409,6 +435,10 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
             try c.encode(sketch, forKey: .sketch)
             try c.encode(entities, forKey: .entities)
             try c.encode(construction, forKey: .construction)
+        case .deleteSketchEntities(let sketch, let entities):
+            try c.encode(op, forKey: .op)
+            try c.encode(sketch, forKey: .sketch)
+            try c.encode(entities, forKey: .entities)
         case .renameBody(let id, let name):
             try c.encode(op, forKey: .op)
             try c.encode(id, forKey: .id)
@@ -439,6 +469,7 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .replaceFeature: "replaceFeature"
         case .addFeature: "addFeature"
         case .setConstruction: "setConstruction"
+        case .deleteSketchEntities: "deleteSketchEntities"
         case .renameBody: "renameBody"
         case .setBodyVisible: "setBodyVisible"
         case .setOriginVisible: "setOriginVisible"
@@ -610,6 +641,13 @@ final class Core {
     /// Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off.
     func setSketchToolGrid(_ tool: ToolHandle, spacing: Double) throws {
         try check(facetry_sketch_tool_set_grid(context, tool.rawValue, spacing))
+    }
+
+    /// The move and copy tools' points and curves; with none, the first click takes the one
+    /// under the pointer.
+    func setSketchToolSelection(_ tool: ToolHandle, entities: [String]) throws {
+        let json = String(decoding: try JSONEncoder().encode(entities), as: UTF8.self)
+        try check(facetry_sketch_tool_set_selection(context, tool.rawValue, json))
     }
 
     func releaseSketchTool(_ tool: ToolHandle) throws {

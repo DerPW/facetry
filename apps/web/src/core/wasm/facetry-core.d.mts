@@ -121,6 +121,7 @@ export interface FacetryCoreModule {
   _facetry_sketch_tool_release(context: number, tool: number): number;
   _facetry_sketch_tool_feedback(context: number, tool: number, out: number): number;
   _facetry_sketch_tool_set_grid(context: number, tool: number, spacing: number): number;
+  _facetry_sketch_tool_set_selection(context: number, tool: number, entities: number): number;
   _facetry_session_sketch_mesh(
     context: number,
     session: number,

@@ -131,24 +131,39 @@ struct ContentView: View {
         .disabled(model?.state == nil || model?.sketching != nil)
     }
 
+    /// A tool's name with its key, e.g. "Line (L)".
+    private static func toolTitle(_ kind: SketchToolKind) -> String {
+        kind.key.map { "\(kind.title) (\(String($0).uppercased()))" } ?? kind.title
+    }
+
     /// While sketching: which sketch, and finishing or cancelling it.
     @ViewBuilder private var sketchBar: some View {
         if let model, let sketching = model.sketching {
             let name = model.state?.features.first { $0.id == sketching }?.name ?? "sketch"
             HStack {
                 Text("Sketching \(name)").font(.caption)
-                Picker("Tool", selection: Binding(get: { model.tool }, set: { model.tool = $0 })) {
-                    Text("Select").tag(SketchToolKind?.none)
-                    ForEach(SketchToolKind.allCases) { kind in
-                        Text(
-                            kind.key.map { "\(kind.title) (\(String($0).uppercased()))" }
-                                ?? kind.title
-                        )
-                        .tag(Optional(kind))
+                // Drawing and editing tools in two short menus, so neither needs scrolling.
+                Menu {
+                    Button("Select") { model.tool = nil }
+                    ForEach(SketchToolKind.allCases.filter { !$0.isEditing }) { kind in
+                        Button(Self.toolTitle(kind)) { model.tool = kind }
                     }
+                } label: {
+                    Text(model.tool.map { $0.isEditing ? "Draw" : Self.toolTitle($0) } ?? "Select")
                 }
-                .pickerStyle(.menu)
                 .fixedSize()
+                Menu {
+                    ForEach(SketchToolKind.allCases.filter(\.isEditing)) { kind in
+                        Button(Self.toolTitle(kind)) { model.tool = kind }
+                    }
+                } label: {
+                    Text(model.tool.flatMap { $0.isEditing ? Self.toolTitle($0) : nil } ?? "Edit")
+                }
+                .fixedSize()
+                Button("Delete") { Task { await model.deleteSelected() } }
+                    .keyboardShortcut(.delete, modifiers: [])
+                    .disabled(model.tool != nil || model.selectedSketchEntities.isEmpty)
+                    .help("Delete the selected points and curves (Delete)")
                 Toggle(
                     "Construction",
                     isOn: Binding(

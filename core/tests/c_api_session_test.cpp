@@ -289,3 +289,39 @@ TEST_CASE("sketch tools draw through the C API") {
     CHECK(facetry_sketch_tool_release(c.ctx, tool) == FACETRY_ERROR_INVALID_HANDLE);
     CHECK(facetry_sketch_tool_create(c.ctx, "f1", 99, 0, &tool) == FACETRY_ERROR_INVALID_ARGUMENT);
 }
+
+TEST_CASE("sketch editing tools work through the C API") {
+    Context c;
+    facetry_handle session = 0;
+    REQUIRE(facetry_session_create(c.ctx, example().c_str(), &session) == FACETRY_OK);
+    REQUIRE(facetry_session_regenerate(c.ctx, session, nullptr, nullptr) == FACETRY_OK);
+    const double volume = bodyVolume(c.ctx, session, "f2");
+    facetry_handle tool = 0;
+    REQUIRE(facetry_sketch_tool_create(c.ctx, "f1", FACETRY_TOOL_MOVE, 0, &tool) == FACETRY_OK);
+    CHECK(facetry_sketch_tool_set_selection(c.ctx, tool, "[\"l1\", 2]") ==
+          FACETRY_ERROR_INVALID_ARGUMENT);
+    CHECK(facetry_sketch_tool_set_selection(c.ctx, tool, "nope") == FACETRY_ERROR_INVALID_ARGUMENT);
+    REQUIRE(facetry_sketch_tool_set_selection(c.ctx, tool, R"(["l1", "l2", "l3", "l4"])") ==
+            FACETRY_OK);
+    int changed = -1;
+    const auto click = [&](double u, double v) {
+        REQUIRE(facetry_sketch_tool_pointer(c.ctx, session, tool, FACETRY_POINTER_DOWN, u, v, 0.1,
+                                            &changed) == FACETRY_OK);
+        REQUIRE(facetry_sketch_tool_pointer(c.ctx, session, tool, FACETRY_POINTER_UP, u, v, 0.1,
+                                            &changed) == FACETRY_OK);
+    };
+    click(0, 0);
+    CHECK(changed == 0);
+    click(2, 3);
+    CHECK(changed == 1);
+    const json moved = state(c.ctx, session);
+    CHECK(moved["features"][0]["definition"]["points"][0]["x"] == 2.0);
+    REQUIRE(facetry_session_regenerate(c.ctx, session, nullptr, nullptr) == FACETRY_OK);
+    CHECK(bodyVolume(c.ctx, session, "f2") == doctest::Approx(volume));
+    const char* feedback = nullptr;
+    REQUIRE(facetry_sketch_tool_feedback(c.ctx, tool, &feedback) == FACETRY_OK);
+    CHECK(json::parse(feedback)["radius"] == 0.0);
+    REQUIRE(facetry_sketch_tool_release(c.ctx, tool) == FACETRY_OK);
+    CHECK(facetry_sketch_tool_create(c.ctx, "f1", FACETRY_TOOL_COPY + 1, 0, &tool) ==
+          FACETRY_ERROR_INVALID_ARGUMENT);
+}

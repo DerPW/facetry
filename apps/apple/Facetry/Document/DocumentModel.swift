@@ -80,8 +80,15 @@ actor DocumentEngine {
 
     // Sketch tools (docs/adr/0015-sketch-tools.md).
 
-    func makeTool(sketch: String, kind: SketchToolKind, construction: Bool) throws -> ToolHandle {
-        try core.createSketchTool(sketch: sketch, kind: kind, construction: construction)
+    /// A tool; move and copy take `selection`.
+    func makeTool(
+        sketch: String, kind: SketchToolKind, construction: Bool, selection: [String]
+    ) throws -> ToolHandle {
+        let tool = try core.createSketchTool(sketch: sketch, kind: kind, construction: construction)
+        if kind == .move || kind == .copy {
+            try core.setSketchToolSelection(tool, entities: selection)
+        }
+        return tool
     }
 
     /// A pointer event for the tool, with the grid spacing to snap to (0: none): whether the
@@ -337,9 +344,14 @@ final class DocumentModel {
         "perpendicular": "Perpendicular", "tangent": "Tangent",
     ]
 
-    private static func describe(_ feedback: SnapFeedback) -> String {
-        ([feedback.snap] + feedback.inferences).compactMap { snapNames[$0] }.joined(
-            separator: " · ")
+    private func describe(_ feedback: SnapFeedback) -> String {
+        var labels = ([feedback.snap] + feedback.inferences).compactMap { Self.snapNames[$0] }
+        if feedback.radius > 0 {
+            let units = state?.units ?? .millimeter
+            let value = (feedback.radius / units.millimeters * 1000).rounded() / 1000
+            labels.append("R \(value.formatted()) \(units.symbol)")
+        }
+        return labels.joined(separator: " · ")
     }
 
     /// Constraint glyphs on the sketch (docs/adr/0015-sketch-tools.md).
@@ -389,7 +401,7 @@ final class DocumentModel {
     /// Everything a tool does goes through one queue, so its creation, pointer events and
     /// release reach the engine in order. Moves that pile up collapse into the latest.
     private enum ToolCommand {
-        case configure(SketchToolKind?, construction: Bool)
+        case configure(SketchToolKind?, construction: Bool, selection: [String])
         case pointer(ToolEvent, u: Double, v: Double, snapRadius: Double, grid: Double)
         case cancel
     }
@@ -398,7 +410,10 @@ final class DocumentModel {
     private var toolHandle: ToolHandle?
 
     private func configureTool() {
-        queueTool(.configure(sketching != nil ? tool : nil, construction: construction))
+        queueTool(
+            .configure(
+                sketching != nil ? tool : nil, construction: construction,
+                selection: selectedSketchEntities))
         updateDrawing()
     }
 
@@ -448,6 +463,30 @@ final class DocumentModel {
         ])
     }
 
+    /// The selected points and curves of the sketch being edited.
+    var selectedSketchEntities: [String] {
+        guard let sketching, let feature = state?.features.first(where: { $0.id == sketching })
+        else { return [] }
+        let curves = feature.sketchCurves
+        let points = feature.sketchPoints
+        return viewport.selected.compactMap { pick in
+            let index = Int(pick.id) - 1
+            switch pick.kind {
+            case .sketchCurve: return curves.indices.contains(index) ? curves[index].id : nil
+            case .sketchPoint: return points.indices.contains(index) ? points[index] : nil
+            default: return nil
+            }
+        }
+    }
+
+    /// Delete: removes the selected points and curves, and what depends on them.
+    func deleteSelected() async {
+        let entities = selectedSketchEntities
+        guard let sketching, tool == nil, !entities.isEmpty else { return }
+        viewport.selection = .none
+        await edit([.deleteSketchEntities(sketch: sketching, entities: entities)])
+    }
+
     private func queueTool(_ command: ToolCommand) {
         if case .pointer(.move, _, _, _, _) = command,
             case .pointer(.move, _, _, _, _)? = toolCommands.last
@@ -468,7 +507,7 @@ final class DocumentModel {
             guard let engine else { continue }
             do {
                 switch command {
-                case .configure(let kind, let construction):
+                case .configure(let kind, let construction, let selection):
                     if let old = toolHandle {
                         toolHandle = nil
                         try? await engine.releaseTool(old)
@@ -477,14 +516,15 @@ final class DocumentModel {
                     viewport.pointerLabel = ""
                     if let kind, let sketching {
                         toolHandle = try await engine.makeTool(
-                            sketch: sketching, kind: kind, construction: construction)
+                            sketch: sketching, kind: kind, construction: construction,
+                            selection: selection)
                     }
                 case .pointer(let event, let u, let v, let snapRadius, let grid):
                     guard let toolHandle else { continue }
                     let result = try await engine.toolEvent(
                         toolHandle, event, u: u, v: v, snapRadius: snapRadius, grid: grid)
                     viewport.sketchPreview = result.preview
-                    viewport.pointerLabel = Self.describe(result.feedback)
+                    viewport.pointerLabel = describe(result.feedback)
                     if result.changed { await run { _ in } }
                 case .cancel:
                     viewport.sketchPreview = nil
