@@ -25,9 +25,40 @@ final class ViewportModel {
     var triangles = 0
     var error: String?
 
+    /// The ViewCube's visible cells, kept current by the viewport (see ViewCubeView).
+    fileprivate(set) var viewCube: [ViewCubeCell] = []
+
     fileprivate var fitRequests = 0
+    @ObservationIgnored fileprivate weak var coordinator: ViewportCoordinator?
 
     func fit() { fitRequests += 1 }
+
+    /// Frames the selection, or the whole model.
+    func fitSelection() { coordinator?.renderer?.fitSelection() }
+
+    /// The home view: the whole model from the front right, above.
+    func home() { coordinator?.renderer?.home(animated: true) }
+
+    /// Turns the view to look from `direction` (from the model toward the eye).
+    func view(from direction: SIMD3<Float>) {
+        coordinator?.renderer?.view(from: direction, animated: true)
+    }
+
+    /// The ViewCube cell under `point` in its square, if any.
+    func viewCubeCell(at point: CGPoint) -> ViewCubeCell? {
+        guard let renderer = coordinator?.renderer,
+            let index = renderer.viewCubeHit(size: ViewCubeView.size, at: point)
+        else { return nil }
+        let cells = renderer.viewCubeCells(size: ViewCubeView.size)
+        return cells.indices.contains(index) ? cells[index] : nil
+    }
+
+    /// Orbits around the point in the middle of the view (dragging the ViewCube).
+    func orbitFromCenter(dx: Double, dy: Double, begin: Bool) {
+        guard let coordinator, let renderer = coordinator.renderer else { return }
+        if begin { renderer.orbitBegin(at: coordinator.viewCenter) }
+        renderer.orbit(dx: dx, dy: dy)
+    }
 }
 
 /// Pick radius in points per input type: fingers need more room than the Pencil or a mouse.
@@ -48,8 +79,13 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var lastFrameTime: CFTimeInterval = 0
     private var frameTimes: [Double] = []
 
+    /// Middle of the view, in points.
+    fileprivate(set) var viewCenter = CGPoint.zero
+
     init(model: ViewportModel) {
         self.model = model
+        super.init()
+        model.coordinator = self
     }
 
     func configure(_ view: MTKView) {
@@ -77,7 +113,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         if let mesh = model.mesh, mesh.positions != shownMesh?.positions {
             do {
                 try renderer.setMesh(mesh)
-                if shownMesh == nil { renderer.fit() }
+                if shownMesh == nil { renderer.home(animated: false) }
                 model.triangles = mesh.triangleCount
             } catch {
                 model.error = "\(error)"
@@ -99,6 +135,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     }
 
     func updateViewport(_ view: MTKView) {
+        viewCenter = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
         let scale = view.drawableSize.width / max(view.bounds.width, 1)
         renderer?.setViewport(
             width: view.bounds.width, height: view.bounds.height, pixelRatio: scale)
@@ -125,6 +162,9 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         } catch {
             model.error = "\(error)"
         }
+        // The ViewCube follows the camera, including its animations.
+        let cells = renderer.viewCubeCells(size: ViewCubeView.size)
+        if cells != model.viewCube { model.viewCube = cells }
         recordFrame(renderer)
     }
 

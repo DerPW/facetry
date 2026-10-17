@@ -2,6 +2,8 @@
 
 #include "facetry/render/math.hpp"
 
+#include <optional>
+
 namespace facetry::render {
 
 // Viewport camera for a Z-up world. Screen coordinates are in points (UIKit points, CSS pixels)
@@ -26,8 +28,21 @@ class Camera {
     // Scene bounds, used for the near and far planes and by fit().
     void setSceneBounds(const Bounds& bounds);
 
-    // Looks at the whole scene from the default isometric direction.
+    // Frames the whole scene, or `bounds`, from the current view direction (Fusion's Fit).
     void fit();
+    void fit(const Bounds& bounds);
+    // The home view: the whole scene from the front right, above.
+    void home(float seconds = 0.0F);
+    // Turns the camera around its target to look from `direction` (from the target toward the
+    // eye), keeping the distance. Views straight down or up get a tilt too small to see, so the
+    // front stays at the bottom of the screen. With `seconds` > 0 the turn is animated.
+    void viewFrom(Vec3 direction, float seconds = 0.0F);
+    // Moves a running animation on. Returns true while one runs. Every other camera move
+    // stops it.
+    bool advance(float seconds);
+    [[nodiscard]] bool animating() const {
+        return animation_.has_value();
+    }
 
     // Turntable orbit around `pivot`: horizontal drags rotate around the world Z axis, vertical
     // drags tilt around the camera's right axis. The view never flips over the poles.
@@ -72,6 +87,24 @@ class Camera {
     void lookAt(Vec3 eye, Vec3 target);
 
   private:
+    struct Pose {
+        Vec3 target;
+        Vec3 direction;  // unit, from the target toward the eye
+        float distance = 1.0F;
+        float orthoHalfHeight = 1.0F;
+    };
+    struct Animation {
+        Pose from;
+        Pose to;
+        float elapsed = 0.0F;
+        float duration = 0.0F;
+    };
+
+    [[nodiscard]] Pose pose() const;
+    void setPose(const Pose& pose);
+    void moveTo(const Pose& pose, float seconds);
+    // Distance and orthographic size that frame a sphere of `radius`.
+    [[nodiscard]] float fitDistance(float radius) const;
     [[nodiscard]] float aspect() const {
         return width_ / height_;
     }
@@ -86,6 +119,7 @@ class Camera {
     Vec3 eye_{10.0F, -10.0F, 10.0F};
     Vec3 target_{0.0F, 0.0F, 0.0F};
     Bounds scene_;
+    std::optional<Animation> animation_;
 };
 
 }  // namespace facetry::render

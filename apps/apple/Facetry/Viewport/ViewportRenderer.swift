@@ -27,6 +27,31 @@ struct Pick: Equatable, Sendable {
     static let none = Pick()
 }
 
+/// One cell of the ViewCube (facetry_viewcube_cell): each visible face is split into a center,
+/// four edges and four corners.
+struct ViewCubeCell: Equatable, Sendable {
+    static let faceNames = ["Right", "Left", "Back", "Front", "Top", "Bottom"]
+
+    /// The corners in the cube's square, in points.
+    let points: [CGPoint]
+    /// Where a click on the cell looks from.
+    let direction: SIMD3<Float>
+    let face: Int
+    /// 0 center, 1 edge, 2 corner.
+    let region: Int
+
+    init(_ cell: facetry_viewcube_cell) {
+        let p = cell.points
+        points = [
+            CGPoint(x: Double(p.0), y: Double(p.1)), CGPoint(x: Double(p.2), y: Double(p.3)),
+            CGPoint(x: Double(p.4), y: Double(p.5)), CGPoint(x: Double(p.6), y: Double(p.7)),
+        ]
+        direction = SIMD3(cell.direction.0, cell.direction.1, cell.direction.2)
+        face = Int(cell.face)
+        region = Int(cell.region)
+    }
+}
+
 /// The shared C++ viewport renderer on Metal. Only one can exist at a time.
 @MainActor
 final class ViewportRenderer {
@@ -90,7 +115,32 @@ final class ViewportRenderer {
         facetry_renderer_set_viewport(handle, Float(width), Float(height), Float(pixelRatio))
     }
 
+    /// Frames the whole model from the current direction (F).
     func fit() { facetry_camera_fit(handle) }
+
+    /// Frames the selection, or the whole model (Shift+F).
+    func fitSelection() { facetry_camera_fit_selection(handle) }
+
+    /// The home view: the whole model from the front right, above.
+    func home(animated: Bool) { facetry_camera_home(handle, animated ? 1 : 0) }
+
+    /// Turns the view to look from `direction` (from the model toward the eye).
+    func view(from direction: SIMD3<Float>, animated: Bool) {
+        facetry_camera_view_from(handle, direction.x, direction.y, direction.z, animated ? 1 : 0)
+    }
+
+    /// The visible ViewCube cells for a cube in a square of `size` points, far to near.
+    func viewCubeCells(size: Double) -> [ViewCubeCell] {
+        var cells = [facetry_viewcube_cell](repeating: facetry_viewcube_cell(), count: 27)
+        let count = Int(facetry_viewcube_cells(handle, Float(size), &cells, UInt32(cells.count)))
+        return cells.prefix(min(count, cells.count)).map(ViewCubeCell.init)
+    }
+
+    /// Index in ``viewCubeCells(size:)`` of the cell under `point`, or nil.
+    func viewCubeHit(size: Double, at point: CGPoint) -> Int? {
+        let index = facetry_viewcube_hit(handle, Float(size), Float(point.x), Float(point.y))
+        return index < 0 ? nil : Int(index)
+    }
 
     func setOrthographic(_ orthographic: Bool) {
         facetry_camera_set_orthographic(handle, orthographic ? 1 : 0)

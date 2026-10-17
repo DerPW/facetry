@@ -4,7 +4,8 @@ add_library(facetry-render STATIC
     src/camera.cpp
     src/math.cpp
     src/navigation.cpp
-    src/pick.cpp)
+    src/pick.cpp
+    src/viewcube.cpp)
 add_library(facetry::render ALIAS facetry-render)
 target_include_directories(facetry-render PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 facetry_set_warnings(facetry-render)
@@ -37,7 +38,8 @@ if(FACETRY_BUILD_TESTS)
         tests/main.cpp
         tests/camera_test.cpp
         tests/navigation_test.cpp
-        tests/pick_test.cpp)
+        tests/pick_test.cpp
+        tests/viewcube_test.cpp)
     target_link_libraries(facetry-render-tests PRIVATE facetry::render facetry-doctest)
     facetry_set_warnings(facetry-render-tests)
     if(EMSCRIPTEN)

@@ -16,6 +16,8 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Pan | two-finger drag | — | right or middle drag, Shift + left drag | Shift + two-finger scroll |
 | Zoom toward the pointer | pinch | — | wheel | pinch |
 | Fit the view | two-finger double-tap | — | `F` | two-finger double-tap (smart zoom, Mac) |
+| Turn the view to a face, edge or corner | tap the ViewCube | tap the ViewCube | click the ViewCube | click the ViewCube |
+| Orbit with the ViewCube | drag it | drag it | drag it | drag it |
 | Select | tap | tap | click | click |
 | Highlight what is under the pointer | — | hover (supported iPads) | move | move |
 
@@ -63,7 +65,10 @@ Mac, iPad with a hardware keyboard, and the web app:
 
 | Key | Action |
 |---|---|
-| `F` | Fit the model into the view |
+| `F` | Fit the model into the view, keeping the view direction (like Fusion's Fit) |
+| `Shift+F` | Fit the selection into the view |
+| `Home` | Home view: the whole model from the front right, above |
+| Numpad `1`, `3`, `7` | Front, right and top view; with `Ctrl` back, left and bottom (as in Blender) |
 | `O` | Toggle orthographic / perspective |
 | `Esc` | Clear the selection |
 | `⌘Z` / `Ctrl+Z` | Undo the last step (its name is shown on the Undo button) |

@@ -27,7 +27,12 @@ struct ContentView: View {
                     }
                 }
             }
-            .overlay(alignment: .topTrailing) { controls }
+            .overlay(alignment: .topTrailing) {
+                VStack(alignment: .trailing, spacing: 0) {
+                    controls
+                    ViewCubeView(model: viewport)
+                }
+            }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 8) {
                     if model?.repair != nil {

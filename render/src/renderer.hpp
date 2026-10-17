@@ -4,6 +4,7 @@
 #include "facetry/render/camera.hpp"
 #include "facetry/render/pick.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -51,6 +52,8 @@ class Renderer {
 
     void orbitBegin(float x, float y);
     void orbit(float dx, float dy);
+    // Frames the selected element, or the whole model if nothing is selected.
+    void fitSelection();
 
     Highlight& highlight() {
         return highlight_;
@@ -72,6 +75,7 @@ class Renderer {
     Highlight highlight_;
     FrameStats stats_;
     float pixelRatio_ = 1.0F;
+    std::chrono::steady_clock::time_point lastDraw_;
     int sampleCount_ = 1;
     bool zeroToOneDepth_ = false;
 };
