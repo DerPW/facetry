@@ -27,6 +27,8 @@ export interface FacetryRenderModule {
   _facetry_camera_orbit(renderer: number, dx: number, dy: number): void;
   _facetry_camera_pan(renderer: number, dx: number, dy: number): void;
   _facetry_camera_zoom(renderer: number, factor: number, x: number, y: number): void;
+  _facetry_navigation_drag(preset: number, button: number, modifiers: number): number;
+  _facetry_navigation_scroll(preset: number, modifiers: number, trackpad: number): number;
   _facetry_renderer_pick(
     renderer: number,
     x: number,

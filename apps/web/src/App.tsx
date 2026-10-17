@@ -19,7 +19,15 @@ import {
 import { recoverable, tabLock, type AutosaveEntry } from "./core/autosave";
 import { CoreClient } from "./core/client";
 import { postBenchmark } from "./dev/bench";
-import { PickKind, type FrameStats, type Pick, type Viewport } from "./render/viewport";
+import {
+  DEFAULT_NAVIGATION,
+  NavigationPreset,
+  PickKind,
+  type FrameStats,
+  type NavigationSettings,
+  type Pick,
+  type Viewport,
+} from "./render/viewport";
 
 declare const __APP_VERSION__: string;
 
@@ -67,6 +75,29 @@ const tabId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `$
 if ("locks" in navigator) {
   void navigator.locks.request(tabLock(tabId), () => new Promise<never>(() => {}));
 }
+// Navigation settings belong to the device, not the document.
+const navigationKey = "facetry.navigation";
+
+function loadNavigation(): NavigationSettings {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(navigationKey) ?? "null");
+    if (typeof saved === "object" && saved !== null) {
+      const { preset, oneFinger } = saved as Partial<NavigationSettings>;
+      return {
+        preset: Object.values(NavigationPreset).includes(preset as NavigationPreset)
+          ? (preset as NavigationPreset)
+          : DEFAULT_NAVIGATION.preset,
+        oneFinger: oneFinger === "pan" ? "pan" : "orbit",
+      };
+    }
+  } catch {
+    // No storage here (private window) or a damaged value: the defaults.
+  }
+  return DEFAULT_NAVIGATION;
+}
+
+const hasTouch = navigator.maxTouchPoints > 0;
+
 // An autosave follows the first unsaved change by at most this long.
 const autosaveDelay = 1000;
 
@@ -109,6 +140,7 @@ export function App() {
   // Shown while a regeneration takes longer than a step; the last model stays on screen.
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [recovery, setRecovery] = useState<AutosaveEntry[]>([]);
+  const [navigation, setNavigation] = useState(loadNavigation);
   const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
@@ -367,6 +399,15 @@ export function App() {
     viewport?.setOrthographic(orthographic);
   }, [viewport, orthographic]);
 
+  useEffect(() => {
+    viewport?.setNavigation(navigation);
+    try {
+      localStorage.setItem(navigationKey, JSON.stringify(navigation));
+    } catch {
+      // Not stored; the setting lasts until the page is closed.
+    }
+  }, [viewport, navigation]);
+
   // Keyboard shortcuts (docs/INPUT.md).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -474,6 +515,36 @@ export function App() {
           >
             {orthographic ? "Perspective" : "Orthographic"}
           </button>
+          <select
+            aria-label="Mouse and trackpad navigation"
+            title="Mouse and trackpad navigation (docs/INPUT.md)"
+            value={navigation.preset}
+            onChange={(event) =>
+              setNavigation({
+                ...navigation,
+                preset: Number(event.currentTarget.value) as NavigationPreset,
+              })
+            }
+          >
+            <option value={NavigationPreset.Facetry}>Facetry navigation</option>
+            <option value={NavigationPreset.Fusion}>Fusion navigation</option>
+            <option value={NavigationPreset.Trackpad}>Trackpad navigation</option>
+          </select>
+          {hasTouch && (
+            <select
+              aria-label="One-finger drag"
+              value={navigation.oneFinger}
+              onChange={(event) =>
+                setNavigation({
+                  ...navigation,
+                  oneFinger: event.currentTarget.value === "pan" ? "pan" : "orbit",
+                })
+              }
+            >
+              <option value="orbit">One finger orbits</option>
+              <option value="pan">One finger pans</option>
+            </select>
+          )}
           <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
         </div>
         {model && (

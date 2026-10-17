@@ -286,6 +286,7 @@ body {
 }
 
 .controls button,
+.controls select,
 .controls a {
   font: inherit;
   color: var(--fg);

@@ -15,6 +15,10 @@ final class ViewportModel {
     var mesh: MeshData?
     var orthographic = false
     var selection = Pick.none
+    /// Mouse and trackpad preset; the app stores it per device.
+    var navigation = NavigationPreset.facetry
+    /// One finger pans and two fingers orbit, instead of the other way round.
+    var oneFingerPans = false
     /// Frame statistics, updated about once per second.
     var frameMilliseconds = 0.0
     var drawMilliseconds = 0.0
@@ -155,13 +159,18 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
 }
 
 #if os(macOS)
-    /// Mouse and trackpad: left drag orbits, right/middle or Shift+left drag pans, scroll and
-    /// pinch zoom toward the pointer, clicks select, the pointer highlights what it is over.
+    /// Mouse and trackpad: buttons and scrolling follow the navigation preset, pinch zooms toward
+    /// the pointer, smart zoom fits, clicks select, the pointer highlights what it is over.
     final class ViewportMTKView: MTKView {
         weak var coordinator: ViewportCoordinator?
         private var dragStart: CGPoint?
         private var lastPoint: CGPoint = .zero
-        private var panning = false
+        private var dragAction = NavigationPreset.Action.none
+        private var lastScroll: TimeInterval = 0
+
+        private var navigation: NavigationPreset {
+            coordinator?.model.navigation ?? .facetry
+        }
 
         override var isFlipped: Bool { true }  // top-left origin, like the renderer
         override var acceptsFirstResponder: Bool { true }
@@ -183,11 +192,12 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             coordinator?.hover(at: location(event), radius: PickRadius.mouse)
         }
 
-        override func mouseDown(with event: NSEvent) {
-            begin(event, pan: event.modifierFlags.contains(.shift))
+        override func mouseDown(with event: NSEvent) { begin(event, button: .left) }
+        override func rightMouseDown(with event: NSEvent) { begin(event, button: .right) }
+        override func otherMouseDown(with event: NSEvent) {
+            // Button 2 is the middle button; further buttons pan like it.
+            begin(event, button: .middle)
         }
-        override func rightMouseDown(with event: NSEvent) { begin(event, pan: true) }
-        override func otherMouseDown(with event: NSEvent) { begin(event, pan: true) }
         override func mouseDragged(with event: NSEvent) { drag(event) }
         override func rightMouseDragged(with event: NSEvent) { drag(event) }
         override func otherMouseDragged(with event: NSEvent) { drag(event) }
@@ -202,19 +212,32 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         override func rightMouseUp(with event: NSEvent) { dragStart = nil }
         override func otherMouseUp(with event: NSEvent) { dragStart = nil }
 
-        // Trackpads (precise deltas): two-finger scroll orbits, with Shift it pans.
-        // Mouse wheels (line deltas): zoom toward the pointer. See docs/INPUT.md.
+        // Trackpads report precise deltas, mouse wheels line deltas; the preset decides what
+        // each does (docs/INPUT.md).
         override func scrollWheel(with event: NSEvent) {
             guard let renderer = coordinator?.renderer else { return }
-            if event.hasPreciseScrollingDeltas {
-                if event.phase == .began { renderer.orbitBegin(at: location(event)) }
-                if event.modifierFlags.contains(.shift) {
-                    renderer.pan(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY)
-                } else {
-                    renderer.orbit(dx: -event.scrollingDeltaX, dy: -event.scrollingDeltaY)
+            let trackpad = event.hasPreciseScrollingDeltas
+            // Mouse wheels scroll by lines; about ten points each.
+            let scale = trackpad ? 1.0 : 10.0
+            let dx = event.scrollingDeltaX * scale
+            let dy = event.scrollingDeltaY * scale
+            let gap = event.timestamp - lastScroll
+            lastScroll = event.timestamp
+            switch navigation.scroll(
+                modifiers: event.modifierFlags.navigationMask, trackpad: trackpad)
+            {
+            case .orbit:
+                // A trackpad gesture says when it starts; wheel ticks start after a pause.
+                if event.phase == .began || (!trackpad && gap > 0.2) {
+                    renderer.orbitBegin(at: location(event))
                 }
-            } else {
-                renderer.zoom(factor: exp(-event.scrollingDeltaY * 0.06), at: location(event))
+                renderer.orbit(dx: -dx, dy: -dy)
+            case .pan:
+                renderer.pan(dx: dx, dy: dy)
+            case .zoom:
+                renderer.zoom(factor: exp(-dy * 0.006), at: location(event))
+            case .none, .select:
+                break
             }
         }
 
@@ -222,12 +245,18 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             coordinator?.renderer?.zoom(factor: 1 / (1 + event.magnification), at: location(event))
         }
 
-        private func begin(_ event: NSEvent, pan: Bool) {
+        // A two-finger double-tap on the trackpad fits the view, like a two-finger double-tap
+        // on the iPad.
+        override func smartMagnify(with event: NSEvent) {
+            coordinator?.model.fit()
+        }
+
+        private func begin(_ event: NSEvent, button: NavigationPreset.Button) {
             let point = location(event)
             dragStart = point
             lastPoint = point
-            panning = pan
-            if !pan { coordinator?.renderer?.orbitBegin(at: point) }
+            dragAction = navigation.drag(button, modifiers: event.modifierFlags.navigationMask)
+            if dragAction == .orbit { coordinator?.renderer?.orbitBegin(at: point) }
         }
 
         private func drag(_ event: NSEvent) {
@@ -235,10 +264,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             let dx = point.x - lastPoint.x
             let dy = point.y - lastPoint.y
             lastPoint = point
-            if panning {
-                coordinator?.renderer?.pan(dx: dx, dy: dy)
-            } else {
-                coordinator?.renderer?.orbit(dx: dx, dy: dy)
+            switch dragAction {
+            case .orbit: coordinator?.renderer?.orbit(dx: dx, dy: dy)
+            case .pan: coordinator?.renderer?.pan(dx: dx, dy: dy)
+            case .none, .zoom, .select: break  // selection boxes come with #37
             }
         }
     }
@@ -262,12 +291,23 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
 
 #else
     /// Touch and Pencil: one finger (or the Pencil) drags to orbit, two fingers pan and pinch to
-    /// zoom, a tap selects, a hovering Pencil or trackpad pointer highlights what it is over.
+    /// zoom (swapped with "one finger pans"), a two-finger double-tap fits, a tap selects, a
+    /// hovering Pencil or pointer highlights what it is over. Mouse buttons and scrolling follow
+    /// the navigation preset.
     final class ViewportMTKView: MTKView {
         weak var coordinator: ViewportCoordinator?
         private var lastTranslation: CGPoint = .zero
         private var lastPanTranslation: CGPoint = .zero
+        private var lastScrollTranslation: CGPoint = .zero
         private var lastScale: CGFloat = 1
+        private var oneTouchAction = NavigationPreset.Action.orbit
+
+        private var navigation: NavigationPreset {
+            coordinator?.model.navigation ?? .facetry
+        }
+        private var oneFingerPans: Bool {
+            coordinator?.model.oneFingerPans ?? false
+        }
 
         func installGestures() {
             let orbit = UIPanGestureRecognizer(target: self, action: #selector(handleOrbit))
@@ -276,12 +316,21 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             pan.minimumNumberOfTouches = 2
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch))
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            let fit = UITapGestureRecognizer(target: self, action: #selector(handleFit))
+            fit.numberOfTouchesRequired = 2
+            fit.numberOfTapsRequired = 2
             let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover))
-            // Trackpad or mouse scrolling (no touches): orbits, with Shift it pans.
-            let scroll = UIPanGestureRecognizer(target: self, action: #selector(handleScroll))
-            scroll.allowedScrollTypesMask = .all
-            scroll.allowedTouchTypes = []
-            for recognizer in [orbit, pan, pinch, tap, hover, scroll] as [UIGestureRecognizer] {
+            // Scrolling without touches: a trackpad scrolls continuously, a mouse wheel in steps.
+            let trackpad = UIPanGestureRecognizer(
+                target: self, action: #selector(handleTrackpadScroll))
+            trackpad.allowedScrollTypesMask = .continuous
+            trackpad.allowedTouchTypes = []
+            let wheel = UIPanGestureRecognizer(target: self, action: #selector(handleWheelScroll))
+            wheel.allowedScrollTypesMask = .discrete
+            wheel.allowedTouchTypes = []
+            for recognizer in [orbit, pan, pinch, tap, fit, hover, trackpad, wheel]
+                as [UIGestureRecognizer]
+            {
                 recognizer.delegate = gestureDelegate
                 addGestureRecognizer(recognizer)
             }
@@ -297,50 +346,100 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             }
         }
 
+        // One touch: a finger orbits (or pans), the Pencil orbits until drawing tools exist
+        // (M1.3), a mouse button follows the preset.
         @objc private func handleOrbit(_ recognizer: UIPanGestureRecognizer) {
             let translation = recognizer.translation(in: self)
             switch recognizer.state {
             case .began:
                 lastTranslation = .zero
-                coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
+                switch gestureDelegate.lastTouchType {
+                case .indirectPointer:
+                    // The button that started the drag: a mouse's right or middle button too.
+                    let button: NavigationPreset.Button =
+                        recognizer.buttonMask.contains(.secondary)
+                        ? .right : recognizer.buttonMask.contains(.button(3)) ? .middle : .left
+                    oneTouchAction = navigation.drag(
+                        button, modifiers: recognizer.modifierFlags.navigationMask)
+                case .pencil:
+                    oneTouchAction = .orbit
+                default:
+                    oneTouchAction = oneFingerPans ? .pan : .orbit
+                }
+                if oneTouchAction == .orbit {
+                    coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
+                }
             case .changed:
-                coordinator?.renderer?.orbit(
-                    dx: translation.x - lastTranslation.x, dy: translation.y - lastTranslation.y)
-                lastTranslation = translation
+                move(oneTouchAction, by: translation, from: &lastTranslation)
             default:
                 break
             }
         }
 
-        @objc private func handleScroll(_ recognizer: UIPanGestureRecognizer) {
+        private func move(
+            _ action: NavigationPreset.Action, by translation: CGPoint, from last: inout CGPoint
+        ) {
+            let dx = translation.x - last.x
+            let dy = translation.y - last.y
+            last = translation
+            switch action {
+            case .orbit: coordinator?.renderer?.orbit(dx: dx, dy: dy)
+            case .pan: coordinator?.renderer?.pan(dx: dx, dy: dy)
+            case .none, .zoom, .select: break  // selection boxes come with #37
+            }
+        }
+
+        @objc private func handleTrackpadScroll(_ recognizer: UIPanGestureRecognizer) {
+            scroll(recognizer, trackpad: true)
+        }
+
+        @objc private func handleWheelScroll(_ recognizer: UIPanGestureRecognizer) {
+            scroll(recognizer, trackpad: false)
+        }
+
+        private func scroll(_ recognizer: UIPanGestureRecognizer, trackpad: Bool) {
             let translation = recognizer.translation(in: self)
+            let action = navigation.scroll(
+                modifiers: recognizer.modifierFlags.navigationMask, trackpad: trackpad)
             switch recognizer.state {
             case .began:
-                lastTranslation = .zero
-                coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
+                lastScrollTranslation = .zero
+                if action == .orbit {
+                    coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
+                }
             case .changed:
-                let dx = translation.x - lastTranslation.x
-                let dy = translation.y - lastTranslation.y
-                lastTranslation = translation
-                if recognizer.modifierFlags.contains(.shift) {
-                    coordinator?.renderer?.pan(dx: dx, dy: dy)
-                } else {
-                    coordinator?.renderer?.orbit(dx: -dx, dy: -dy)
+                let dx = translation.x - lastScrollTranslation.x
+                let dy = translation.y - lastScrollTranslation.y
+                lastScrollTranslation = translation
+                switch action {
+                case .orbit: coordinator?.renderer?.orbit(dx: -dx, dy: -dy)
+                case .pan: coordinator?.renderer?.pan(dx: dx, dy: dy)
+                case .zoom:
+                    coordinator?.renderer?.zoom(
+                        factor: exp(-dy * 0.006), at: recognizer.location(in: self))
+                case .none, .select: break
                 }
             default:
                 break
             }
         }
 
+        // Two fingers pan, or orbit around their midpoint when one finger pans.
         @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
             let translation = recognizer.translation(in: self)
-            if recognizer.state == .began { lastPanTranslation = .zero }
-            if recognizer.state == .changed {
-                coordinator?.renderer?.pan(
-                    dx: translation.x - lastPanTranslation.x,
-                    dy: translation.y - lastPanTranslation.y)
-                lastPanTranslation = translation
+            if recognizer.state == .began {
+                lastPanTranslation = .zero
+                if oneFingerPans {
+                    coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
+                }
             }
+            if recognizer.state == .changed {
+                move(oneFingerPans ? .orbit : .pan, by: translation, from: &lastPanTranslation)
+            }
+        }
+
+        @objc private func handleFit(_ recognizer: UITapGestureRecognizer) {
+            coordinator?.model.fit()
         }
 
         @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {

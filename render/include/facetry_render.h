@@ -82,6 +82,39 @@ FACETRY_RENDER_API void facetry_camera_pan(facetry_renderer* renderer, float dx,
 FACETRY_RENDER_API void facetry_camera_zoom(facetry_renderer* renderer, float factor, float x,
                                             float y);
 
+/* ---- Navigation presets (docs/INPUT.md) --------------------------------------------------- */
+
+/* What a mouse button or scroll gesture does, the same on every platform. No renderer needed. */
+typedef enum facetry_navigation_preset {
+    FACETRY_NAVIGATION_FACETRY = 0, /* left drag orbits, right/middle drag pans, wheel zooms */
+    FACETRY_NAVIGATION_FUSION = 1,  /* middle drag pans, Shift + middle orbits, left selects */
+    FACETRY_NAVIGATION_TRACKPAD = 2 /* scrolling orbits, Shift + scrolling pans, everywhere */
+} facetry_navigation_preset;
+
+typedef enum facetry_navigation_action {
+    FACETRY_NAVIGATE_NONE = 0,
+    FACETRY_NAVIGATE_ORBIT = 1,
+    FACETRY_NAVIGATE_PAN = 2,
+    FACETRY_NAVIGATE_ZOOM = 3,
+    FACETRY_NAVIGATE_SELECT = 4 /* a click selects; a drag will draw a selection box */
+} facetry_navigation_action;
+
+/* Buttons are numbered like the DOM's MouseEvent.button: 0 left, 1 middle, 2 right. */
+typedef enum facetry_modifier {
+    FACETRY_MODIFIER_SHIFT = 1,
+    FACETRY_MODIFIER_CONTROL = 2,
+    FACETRY_MODIFIER_ALT = 4,
+    FACETRY_MODIFIER_COMMAND = 8
+} facetry_modifier;
+
+/* facetry_navigation_action for dragging with `button`; `modifiers` is a facetry_modifier mask. */
+FACETRY_RENDER_API uint32_t facetry_navigation_drag(uint32_t preset, uint32_t button,
+                                                    uint32_t modifiers);
+/* facetry_navigation_action for scrolling. `trackpad` is 1 when the platform knows the scrolling
+ * comes from a trackpad (precise deltas on Apple), 0 for a mouse wheel or when it cannot tell. */
+FACETRY_RENDER_API uint32_t facetry_navigation_scroll(uint32_t preset, uint32_t modifiers,
+                                                      int trackpad);
+
 /* ---- Picking and highlights --------------------------------------------------------------- */
 
 typedef enum facetry_pick_kind {

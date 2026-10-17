@@ -15,8 +15,38 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Orbit around the point under the pointer | one-finger drag | drag | left drag | two-finger scroll, or click-drag |
 | Pan | two-finger drag | — | right or middle drag, Shift + left drag | Shift + two-finger scroll |
 | Zoom toward the pointer | pinch | — | wheel | pinch |
+| Fit the view | two-finger double-tap | — | `F` | two-finger double-tap (smart zoom, Mac) |
 | Select | tap | tap | click | click |
 | Highlight what is under the pointer | — | hover (supported iPads) | move | move |
+
+The mouse and trackpad columns show the **Facetry** preset, the default.
+
+### Navigation presets
+
+Mouse and trackpad behavior is a preset, chosen in the viewport controls (Navigation) and stored
+per device. The mapping is shared C++ (`render/src/navigation.cpp`), so every platform agrees.
+
+| Input | Facetry | Fusion | Trackpad |
+|---|---|---|---|
+| Left drag | orbit | — (click selects; a drag will box-select, #37) | orbit |
+| Shift + left drag | pan | — | pan |
+| Middle drag | pan | pan | pan |
+| Shift + middle drag | pan | orbit | pan |
+| Right drag | pan | — (context menu later) | pan |
+| Mouse wheel | zoom | zoom | orbit |
+| Shift + wheel | pan | zoom | pan |
+| Two-finger trackpad scroll | orbit | pan | orbit |
+| Shift + two-finger scroll | pan | orbit | pan |
+| Pinch | zoom | zoom | zoom |
+
+Apple tells a trackpad from a mouse wheel (precise deltas); browsers cannot, so on the web all
+scrolling counts as a mouse wheel. **Trackpad** makes two-finger scrolling orbit there too, for
+laptops without a mouse.
+
+### Touch settings
+
+**One finger pans** swaps the finger gestures: one finger pans and two fingers orbit around their
+midpoint; pinch still zooms. The Pencil keeps orbiting until drawing tools exist (M1.3).
 
 **Pick radius**, the distance from the pointer within which edges and vertices are preferred
 over faces:

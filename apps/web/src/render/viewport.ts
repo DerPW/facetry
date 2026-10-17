@@ -21,10 +21,38 @@ export interface FrameStats {
   edgeSegments: number;
 }
 
+/** Mouse and trackpad presets (docs/INPUT.md); the mapping is shared C++ (facetry_render.h). */
+export const NavigationPreset = { Facetry: 0, Fusion: 1, Trackpad: 2 } as const;
+export type NavigationPreset = (typeof NavigationPreset)[keyof typeof NavigationPreset];
+
+export interface NavigationSettings {
+  preset: NavigationPreset;
+  /** What one finger does; two fingers do the other. */
+  oneFinger: "orbit" | "pan";
+}
+
+export const DEFAULT_NAVIGATION: NavigationSettings = {
+  preset: NavigationPreset.Facetry,
+  oneFinger: "orbit",
+};
+
+/** facetry_navigation_action */
+const Action = { None: 0, Orbit: 1, Pan: 2, Zoom: 3, Select: 4 } as const;
+
 /** Pick radius in CSS pixels per input type: fingers need more room than a pen or mouse. */
 const PICK_RADIUS: Record<string, number> = { mouse: 6, pen: 8, touch: 18 };
 /** Pointer movement (CSS pixels) below which a press counts as a click/tap. */
 const CLICK_SLOP = 4;
+/** A two-finger tap lasts at most this long; two of them within the second limit fit the view. */
+const TAP_MILLISECONDS = 300;
+const DOUBLE_TAP_MILLISECONDS = 400;
+/** Wheel events further apart than this start a new orbit around the point under the pointer. */
+const SCROLL_GAP_MILLISECONDS = 200;
+
+/** facetry_modifier mask of an event. */
+function modifiers(e: MouseEvent): number {
+  return (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+}
 
 export class Viewport {
   readonly #m: FacetryRenderModule;
@@ -32,12 +60,18 @@ export class Viewport {
   readonly #canvas: HTMLCanvasElement;
   readonly #scratch: number;
   readonly #pointers = new Map<number, { x: number; y: number; startX: number; startY: number }>();
-  #gesture: "none" | "orbit" | "pan" | "touch" = "none";
+  #gesture: "none" | "orbit" | "pan" | "select" | "touch" = "none";
+  // The current touch sequence, from the first finger down to the last finger up.
+  #touch = { start: 0, fingers: 0, moved: false };
+  #lastTwoFingerTap = 0;
+  #lastWheel = 0;
   #hover: Pick = { kind: PickKind.None, id: 0 };
   #selection: Pick = { kind: PickKind.None, id: 0 };
   #frameTimes: number[] = [];
   #lastFrame = 0;
   #disposed = false;
+
+  #navigation: NavigationSettings = DEFAULT_NAVIGATION;
 
   /** Called whenever the selection changes. */
   onSelectionChange: (selection: Pick) => void = () => {};
@@ -158,6 +192,11 @@ export class Viewport {
     this.#m._facetry_camera_fit(this.#renderer);
   }
 
+  /** Mouse, trackpad and touch settings; the app stores them per device. */
+  setNavigation(navigation: NavigationSettings): void {
+    this.#navigation = navigation;
+  }
+
   setOrthographic(orthographic: boolean): void {
     this.#m._facetry_camera_set_orthographic(this.#renderer, orthographic ? 1 : 0);
   }
@@ -214,6 +253,10 @@ export class Viewport {
     canvas.addEventListener("pointerleave", () => this.#setHover({ kind: PickKind.None, id: 0 }));
     canvas.addEventListener("wheel", (e) => this.#wheel(e), { passive: false });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    // A middle press would start the browser's autoscroll on Windows.
+    canvas.addEventListener("mousedown", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
 
     const frame = (time: number) => {
       if (this.#disposed) return;
@@ -234,14 +277,36 @@ export class Viewport {
     const { x, y } = this.#local(e);
     this.#pointers.set(e.pointerId, { x, y, startX: x, startY: y });
     if (e.pointerType === "touch") {
+      if (this.#pointers.size === 1) this.#touch = { start: e.timeStamp, fingers: 0, moved: false };
+      this.#touch.fingers = Math.max(this.#touch.fingers, this.#pointers.size);
       this.#gesture = "touch";
-      if (this.#pointers.size === 1) this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
+      this.#beginTouchOrbit();
       return;
     }
-    // Mouse and pen: left drag orbits; right/middle drag or Shift + left drag pans.
-    const pan = e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey);
-    this.#gesture = pan ? "pan" : "orbit";
-    if (!pan) this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
+    // A pen drag orbits until drawing tools exist (M1.3); mouse buttons follow the preset.
+    const action =
+      e.pointerType === "pen"
+        ? Action.Orbit
+        : this.#m._facetry_navigation_drag(this.#navigation.preset, e.button, modifiers(e));
+    this.#gesture =
+      action === Action.Orbit
+        ? "orbit"
+        : action === Action.Pan
+          ? "pan"
+          : action === Action.Select
+            ? "select"
+            : "none";
+    if (action === Action.Orbit) this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
+  }
+
+  // Orbits start at the point under one finger, or under the midpoint of two.
+  #beginTouchOrbit(): void {
+    const points = [...this.#pointers.values()];
+    const orbitFingers = this.#navigation.oneFinger === "orbit" ? 1 : 2;
+    if (points.length !== orbitFingers) return;
+    const x = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const y = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
   }
 
   #pointerMove(e: PointerEvent): void {
@@ -261,14 +326,22 @@ export class Viewport {
     }
     pointer.x = x;
     pointer.y = y;
-    if (this.#gesture === "orbit" || this.#gesture === "touch") {
+    if (Math.hypot(x - pointer.startX, y - pointer.startY) > CLICK_SLOP) this.#touch.moved = true;
+    const orbit =
+      this.#gesture === "orbit" ||
+      (this.#gesture === "touch" && this.#navigation.oneFinger === "orbit");
+    const pan =
+      this.#gesture === "pan" ||
+      (this.#gesture === "touch" && this.#navigation.oneFinger === "pan");
+    if (orbit) {
       this.#m._facetry_camera_orbit(this.#renderer, dx, dy);
-    } else if (this.#gesture === "pan") {
+    } else if (pan) {
       this.#m._facetry_camera_pan(this.#renderer, dx, dy);
     }
   }
 
-  // Two fingers: the midpoint pans, the change in distance zooms around the midpoint.
+  // Two fingers: the midpoint pans (or orbits, when one finger pans), the change in distance
+  // zooms around the midpoint.
   #touchPanZoom(id: number, x: number, y: number): void {
     const [a, b] = [...this.#pointers.values()];
     if (!a || !b) return;
@@ -281,9 +354,16 @@ export class Viewport {
     if (moved) {
       moved.x = x;
       moved.y = y;
+      if (Math.hypot(x - moved.startX, y - moved.startY) > CLICK_SLOP) this.#touch.moved = true;
     }
     const after = { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
-    this.#m._facetry_camera_pan(this.#renderer, after.cx - before.cx, after.cy - before.cy);
+    const dx = after.cx - before.cx;
+    const dy = after.cy - before.cy;
+    if (this.#navigation.oneFinger === "pan") {
+      this.#m._facetry_camera_orbit(this.#renderer, dx, dy);
+    } else {
+      this.#m._facetry_camera_pan(this.#renderer, dx, dy);
+    }
     if (before.d > 1 && after.d > 1) {
       this.#m._facetry_camera_zoom(this.#renderer, before.d / after.d, after.cx, after.cy);
     }
@@ -292,32 +372,57 @@ export class Viewport {
   #pointerUp(e: PointerEvent, cancelled = false): void {
     const pointer = this.#pointers.get(e.pointerId);
     this.#pointers.delete(e.pointerId);
+    const touch = e.pointerType === "touch";
+    const lastFinger = touch && this.#pointers.size === 0;
     if (this.#pointers.size === 0) this.#gesture = "none";
     if (!pointer || cancelled) return;
+    if (lastFinger && this.#touchEnded(e.timeStamp)) return;
     const moved = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY);
-    if (moved <= CLICK_SLOP && e.button === 0) {
+    // A tap selects only when one finger touched; lifting two fingers is not a tap.
+    const tap = touch ? lastFinger && this.#touch.fingers === 1 : moved <= CLICK_SLOP;
+    if (tap && moved <= CLICK_SLOP && e.button === 0) {
       const radius = PICK_RADIUS[e.pointerType] ?? 6;
       this.#setSelection(this.pick(pointer.startX, pointer.startY, radius));
     }
-    if (this.#gesture === "touch" && this.#pointers.size === 1) {
-      const [remaining] = [...this.#pointers.values()];
-      if (remaining) this.#m._facetry_camera_orbit_begin(this.#renderer, remaining.x, remaining.y);
+    if (this.#gesture === "touch") this.#beginTouchOrbit();
+  }
+
+  // The last finger went up. Two two-finger taps in a row fit the view. True if it did.
+  #touchEnded(time: number): boolean {
+    const { start, fingers, moved } = this.#touch;
+    if (fingers !== 2 || moved || time - start > TAP_MILLISECONDS) return false;
+    if (time - this.#lastTwoFingerTap <= DOUBLE_TAP_MILLISECONDS) {
+      this.#lastTwoFingerTap = 0;
+      this.fit();
+    } else {
+      this.#lastTwoFingerTap = time;
     }
+    return true;
   }
 
   #wheel(e: WheelEvent): void {
     e.preventDefault();
     const { x, y } = this.#local(e);
     const toPixels = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
-    if (e.shiftKey) {
-      // Shift + wheel or two-finger trackpad scroll pans (docs/INPUT.md). Some browsers report
-      // Shift + vertical wheel as horizontal scrolling.
-      this.#m._facetry_camera_pan(this.#renderer, -e.deltaX * toPixels, -e.deltaY * toPixels);
-      return;
+    const dx = e.deltaX * toPixels;
+    const dy = e.deltaY * toPixels;
+    const gap = e.timeStamp - this.#lastWheel;
+    this.#lastWheel = e.timeStamp;
+    // Trackpad pinch arrives as wheel events with ctrlKey and always zooms. Browsers cannot tell
+    // a trackpad from a mouse wheel, so the preset decides (docs/INPUT.md).
+    const action = e.ctrlKey
+      ? Action.Zoom
+      : this.#m._facetry_navigation_scroll(this.#navigation.preset, modifiers(e), 0);
+    if (action === Action.Pan) {
+      // Some browsers report Shift + vertical wheel as horizontal scrolling; both pan.
+      this.#m._facetry_camera_pan(this.#renderer, -dx, -dy);
+    } else if (action === Action.Orbit) {
+      if (gap > SCROLL_GAP_MILLISECONDS) this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
+      this.#m._facetry_camera_orbit(this.#renderer, dx, dy);
+    } else if (action === Action.Zoom) {
+      const speed = e.ctrlKey ? 0.01 : 0.0015;
+      this.#m._facetry_camera_zoom(this.#renderer, Math.exp(dy * speed), x, y);
     }
-    // Wheel zooms toward the pointer; trackpad pinch arrives as wheel events with ctrlKey.
-    const speed = e.ctrlKey ? 0.01 : 0.0015;
-    this.#m._facetry_camera_zoom(this.#renderer, Math.exp(e.deltaY * toPixels * speed), x, y);
   }
 
   #setHover(pick: Pick): void {
