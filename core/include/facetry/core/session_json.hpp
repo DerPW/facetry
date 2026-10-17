@@ -29,6 +29,7 @@ namespace facetry::core {
 //   {"op": "setBodyOpacity", "id": "f2", "opacity": 0.5}     (1 opaque … 0 invisible)
 //   {"op": "setOriginVisible", "id": "xy", "visible": true}
 //   {"op": "setUnits", "units": "in"}       ("mm", "cm", "m" or "in"; converts every length)
+//   {"op": "setConstruction", "sketch": "f1", "entities": ["l2", "c5"], "construction": true}
 //
 // Features use the document's JSON form. In "addFeature", "id", "name", "suppressed" and
 // "namingVersion" may be left out: the feature gets a fresh ID and a default name. Without an

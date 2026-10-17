@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,6 +45,14 @@ struct SketchGeometry {
 // arcs and circles stay within `deflection` of the true curve; point i is vertex ID i + 1. There
 // are no triangles.
 [[nodiscard]] Mesh sketchMesh(const SketchGeometry& sketch, double deflection);
+
+// The same for any curves and points on a sketch plane (sketch coordinates in millimeters).
+[[nodiscard]] Mesh curvesMesh(const SketchFrame& frame, std::span<const ProfileSegment> curves,
+                              std::span<const Vec3> points, double deflection);
+
+// A length value in millimeters: a literal or a parameter, in the document's units. Throws
+// Error(InvalidArgument) for a parameter that does not exist.
+[[nodiscard]] double lengthInMillimeters(const Value& value, const Document& document);
 
 // The model at one point of the timeline. Results are shared between cache entries, not copied.
 struct ModelState {

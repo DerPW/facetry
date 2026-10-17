@@ -202,6 +202,30 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
         }
         return;
     }
+    if (op == "setConstruction") {
+        Feature* feature = document.findFeature(reader.at("sketch").string());
+        auto* sketch = feature != nullptr ? std::get_if<Sketch>(&feature->data) : nullptr;
+        if (sketch == nullptr) {
+            invalidEdit(path + ": \"sketch\" is not a sketch of the document");
+        }
+        const bool construction = reader.at("construction").boolean();
+        for (const Reader& entity : reader.at("entities").items()) {
+            const std::string id = entity.string();
+            const auto mark = [&](auto& curves) {
+                for (auto& curve : curves) {
+                    if (curve.id == id) {
+                        curve.construction = construction;
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if (!mark(sketch->lines) && !mark(sketch->arcs) && !mark(sketch->circles)) {
+                invalidEdit(path + ": " + id + " is not a curve of sketch " + feature->id);
+            }
+        }
+        return;
+    }
     if (op == "setRollback") {
         if (!edit.contains("index")) {
             invalidEdit(path + ": missing \"index\"");
@@ -313,6 +337,8 @@ std::string stepName(const Json& edit) {
         return flag("visible") ? "Show origin item" : "Hide origin item";
     if (op == "setUnits")
         return "Change units";
+    if (op == "setConstruction")
+        return flag("construction") ? "Make construction" : "Make normal";
     return "Edit";
 }
 

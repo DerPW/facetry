@@ -1,7 +1,7 @@
 // The core runs here, off the UI thread. Calls arrive as CallRequest messages; mesh buffers are
 // transferred back without copying.
 
-import { CoreError, FacetryCore, Status, type TessellationOptions } from "./api";
+import { CoreError, FacetryCore, Status, type TessellationOptions, type ToolEvent } from "./api";
 import { type AutosaveEntry, openAutosaveStore } from "./autosave";
 import type { CallRequest, CoreMethod, WorkerMessage } from "./protocol";
 import { regenerateInSteps } from "./regenerate";
@@ -48,6 +48,18 @@ const local = {
       isCurrent: () => latest.get(session) === regeneration,
       onProgress: (done, total) => post({ kind: "progress", done, total }),
     });
+  },
+  sketchToolEvent(
+    core: FacetryCore,
+    session: number,
+    tool: number,
+    event: ToolEvent,
+    u: number,
+    v: number,
+    snapRadius: number,
+  ) {
+    const changed = core.sketchToolPointer(session, tool, event, u, v, snapRadius);
+    return { changed, preview: core.sketchToolPreview(session, tool) };
   },
   releaseSession(core: FacetryCore, session: number) {
     latest.delete(session);

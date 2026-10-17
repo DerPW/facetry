@@ -37,6 +37,25 @@ Cancel keeps the extrusion as it was.
 
 The mouse and trackpad columns show the **Facetry** preset, the default.
 
+### Drawing in sketch mode
+
+With a drawing tool chosen in the sketch palette (docs/adr/0015-sketch-tools.md), the pointer
+draws instead of selecting or orbiting:
+
+| Action | Finger (iPad, web touch) | Apple Pencil / pen | Mouse (Mac, iPad, web) | Trackpad (Mac, iPad) |
+|---|---|---|---|---|
+| Place the next point of the shape | tap | tap | click | click |
+| Draw from one point to the next | drag | drag | left drag | click-drag |
+| Tangent arc from the end of a polyline | drag back from its last point | the same | the same | the same |
+| See what the next point draws | — | hover (supported iPads) | move | move |
+| Orbit | the ViewCube | the ViewCube | `Alt`/`Option` + left drag | two-finger scroll in the presets that orbit |
+| Pan and zoom | two fingers (a second finger before the first moved turns it into navigation) | — | the other buttons and the wheel, as in the preset | as in the preset |
+| End the shape, then leave the tool | choose Select | choose Select | `Esc`, `Esc` | `Esc`, `Esc` |
+
+Points snap to existing sketch points within the pick radius. A polyline ends when it closes on
+its first point. Without a tool (Select), clicks select sketch curves and points before the
+model, for example to toggle them to construction curves.
+
 ### Navigation presets
 
 Mouse and trackpad behavior is a preset, chosen in the viewport controls (Navigation) and stored
@@ -62,7 +81,8 @@ laptops without a mouse.
 ### Touch settings
 
 **One finger pans** swaps the finger gestures: one finger pans and two fingers orbit around their
-midpoint; pinch still zooms. The Pencil keeps orbiting until drawing tools exist (M1.3).
+midpoint; pinch still zooms. Outside sketch mode the Pencil orbits like a finger; with a drawing
+tool it draws.
 
 **Pick radius**, the distance from the pointer within which edges and vertices are preferred
 over faces:
@@ -86,15 +106,16 @@ Mac, iPad with a hardware keyboard, and the web app:
 | `O` | Toggle orthographic / perspective |
 | `G` | Show or hide the ground grid |
 | `1` … `5` | Select vertices, edges, faces, bodies, or everything (like Plasticity's selection modes) |
-| `Esc` | Clear the selection |
+| `Esc` | Clear the selection; with a drawing tool, end the shape, then leave the tool |
+| `L`, `R`, `C`, `A`, `P` | In sketch mode: line, rectangle (2 corners), circle (center), arc (3 points), point |
+| `X` | In sketch mode: construction curves (the selected ones, or the next ones drawn) |
 | `⌘Z` / `Ctrl+Z` | Undo the last step (its name is shown on the Undo button) |
 | `⇧⌘Z` / `Shift+Ctrl+Z` / `Ctrl+Y` | Redo |
 
 On Apple, undo goes through the system's undo manager: the Edit menu and, on iPad, the
 three-finger undo and redo gestures work too.
 
-The full shortcut set close to Fusion 360 (`L` line, `E` extrude, `S` command search, …) comes
-with M1.8.
+The full shortcut set close to Fusion 360 (`E` extrude, `S` command search, …) comes with M1.8.
 
 ## Platform notes
 

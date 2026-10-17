@@ -79,6 +79,21 @@ FACETRY_RENDER_API facetry_render_status
 facetry_renderer_set_sketch(facetry_renderer* renderer, const facetry_render_mesh* mesh,
                             const uint32_t* construction_edge_ids, uint32_t construction_count);
 
+/* What a sketch tool would draw next (facetry_sketch_tool_preview), drawn like the sketch in a
+ * lighter color. NULL hides it. */
+FACETRY_RENDER_API facetry_render_status
+facetry_renderer_set_sketch_preview(facetry_renderer* renderer, const facetry_render_mesh* mesh);
+
+/* The point of a sketch plane under (x, y), for sketch tools: out[0] and out[1] are its
+ * coordinates along the plane's axes, out[2] how far one point on screen reaches on the plane
+ * there (to turn a radius in points into a snap radius). `plane` holds 9 floats: the origin and
+ * the unit x and y axes (a sketch's frame). Fails with FACETRY_RENDER_ERROR_INVALID_ARGUMENT
+ * when the plane is seen edge-on or lies behind the camera. */
+FACETRY_RENDER_API facetry_render_status facetry_renderer_sketch_point(facetry_renderer* renderer,
+                                                                       float x, float y,
+                                                                       const float* plane,
+                                                                       float* out);
+
 FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer, float width,
                                                       float height, float pixel_ratio);
 
@@ -190,13 +205,17 @@ typedef enum facetry_pick_kind {
     FACETRY_PICK_FACE = 1,
     FACETRY_PICK_EDGE = 2,
     FACETRY_PICK_VERTEX = 3,
-    FACETRY_PICK_BODY = 4,  /* the shown model is body 1 until there are several */
-    FACETRY_PICK_REGION = 5 /* a sketch region (facetry_renderer_set_regions) */
+    FACETRY_PICK_BODY = 4,         /* the shown model is body 1 until there are several */
+    FACETRY_PICK_REGION = 5,       /* a sketch region (facetry_renderer_set_regions) */
+    FACETRY_PICK_SKETCH_CURVE = 6, /* a curve of the sketch (facetry_renderer_set_sketch): its
+                                      edge ID */
+    FACETRY_PICK_SKETCH_POINT = 7  /* a point of the sketch: its vertex ID */
 } facetry_pick_kind;
 
 /* What picking and hovering look for (selection modes). */
 typedef enum facetry_pick_filter {
-    FACETRY_PICK_EVERYTHING = 0, /* vertices before edges before faces, by the radius */
+    FACETRY_PICK_EVERYTHING = 0, /* regions, then sketch points and curves, then vertices before
+                                    edges before faces, by the radius */
     FACETRY_PICK_VERTICES = 1,
     FACETRY_PICK_EDGES = 2,
     FACETRY_PICK_FACES = 3,

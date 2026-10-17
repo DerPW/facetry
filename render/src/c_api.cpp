@@ -71,7 +71,7 @@ facetry_render_status create(facetry_renderer** out, Create&& makeRenderer) {
 }
 
 PickKind toKind(uint32_t kind) {
-    return kind <= 5 ? static_cast<PickKind>(kind) : PickKind::None;
+    return kind <= 7 ? static_cast<PickKind>(kind) : PickKind::None;
 }
 
 template <typename T>
@@ -158,6 +158,31 @@ facetry_render_status facetry_renderer_set_sketch(facetry_renderer* renderer,
         const auto construction = copy(construction_edge_ids, construction_count);
         r.setSketch(mesh == nullptr ? facetry::render::RenderMesh{} : renderMesh(mesh),
                     construction);
+    });
+}
+
+facetry_render_status facetry_renderer_set_sketch_preview(facetry_renderer* renderer,
+                                                          const facetry_render_mesh* mesh) {
+    return run(renderer, [&](Renderer& r) {
+        r.setSketchPreview(mesh == nullptr ? facetry::render::RenderMesh{} : renderMesh(mesh));
+    });
+}
+
+facetry_render_status facetry_renderer_sketch_point(facetry_renderer* renderer, float x, float y,
+                                                    const float* plane, float* out) {
+    return run(renderer, [&](Renderer& r) {
+        if (plane == nullptr || out == nullptr) {
+            throw std::invalid_argument("plane and out must not be null");
+        }
+        const auto point =
+            r.camera().planePoint(x, y, {plane[0], plane[1], plane[2]},
+                                  {plane[3], plane[4], plane[5]}, {plane[6], plane[7], plane[8]});
+        if (!point) {
+            throw std::invalid_argument("The sketch plane is seen edge-on or lies behind");
+        }
+        out[0] = point->u;
+        out[1] = point->v;
+        out[2] = point->perPoint;
     });
 }
 

@@ -12,6 +12,7 @@ import {
   BooleanOp,
   ElementKind,
   MILLIMETERS_PER,
+  SketchTool,
   sketchCurves,
   type Edit,
   type FeatureJson,
@@ -22,6 +23,7 @@ import {
 } from "./core/api";
 import { recoverable, tabLock, type AutosaveEntry } from "./core/autosave";
 import { CoreClient } from "./core/client";
+import { ToolQueue } from "./core/toolQueue";
 import { postBenchmark } from "./dev/bench";
 import {
   DEFAULT_NAVIGATION,
@@ -56,9 +58,26 @@ const kindNames: [PickKind, string, string][] = [
   [PickKind.Face, "Face", "faces"],
   [PickKind.Body, "Body", "bodies"],
   [PickKind.Region, "Profile", "profiles"],
+  [PickKind.SketchCurve, "Sketch curve", "sketch curves"],
+  [PickKind.SketchPoint, "Sketch point", "sketch points"],
 ];
 
 const NO_REGIONS: string[] = [];
+
+/** The drawing tools in the sketch palette, and their keys (docs/INPUT.md). */
+const SKETCH_TOOLS: { tool: SketchTool; label: string; key?: string }[] = [
+  { tool: SketchTool.Line, label: "Line", key: "l" },
+  { tool: SketchTool.RectangleTwoPoint, label: "Rectangle: 2 corners", key: "r" },
+  { tool: SketchTool.RectangleThreePoint, label: "Rectangle: 3 points" },
+  { tool: SketchTool.RectangleCenter, label: "Rectangle: center" },
+  { tool: SketchTool.CircleCenter, label: "Circle: center", key: "c" },
+  { tool: SketchTool.CircleTwoPoint, label: "Circle: 2 points" },
+  { tool: SketchTool.CircleThreePoint, label: "Circle: 3 points" },
+  { tool: SketchTool.ArcThreePoint, label: "Arc: 3 points", key: "a" },
+  { tool: SketchTool.ArcCenter, label: "Arc: center" },
+  { tool: SketchTool.ArcTangent, label: "Arc: tangent" },
+  { tool: SketchTool.Point, label: "Point", key: "p" },
+];
 
 function describe(selection: Pick[]): string {
   const [only] = selection;
@@ -196,6 +215,10 @@ export function App() {
   // transaction), so Cancel restores the document from before.
   const [sketching, setSketching] = useState<string | null>(null);
   const sketchMeshes = useRef<Record<string, MeshData>>({});
+  // The drawing tool in sketch mode (null: selecting), and whether it draws construction curves.
+  const [tool, setTool] = useState<SketchTool | null>(null);
+  const [construction, setConstruction] = useState(false);
+  const toolQueue = useRef<{ handle: Promise<number>; queue: ToolQueue } | null>(null);
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   // Shown while a regeneration takes longer than a step; the last model stays on screen.
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -543,8 +566,95 @@ export function App() {
     });
   };
 
+  // The tool lives in the core worker while it is chosen; its pointer events go there in order,
+  // also those that arrive before the worker has made it.
+  const sketchId = sketchFeature?.id ?? null;
+  useEffect(() => {
+    const current = session.current;
+    if (!current || !viewport || sketchId === null || tool === null) return;
+    const handle = current.core.call("createSketchTool", sketchId, tool, construction);
+    const queue = new ToolQueue(
+      async (p) =>
+        current.core.call(
+          "sketchToolEvent",
+          current.handle,
+          await handle,
+          p.event,
+          p.u,
+          p.v,
+          p.snapRadius,
+        ),
+      (result) => {
+        viewport.setSketchPreview(result.preview);
+        if (result.changed) void change(async () => undefined);
+      },
+      (error) => setEditError(error instanceof Error ? error.message : String(error)),
+    );
+    toolQueue.current = { handle, queue };
+    return () => {
+      queue.close();
+      void handle.then((created) => current.core.call("releaseSketchTool", created));
+      toolQueue.current = null;
+      viewport.setSketchPreview(null);
+    };
+  }, [viewport, sketchId, tool, construction, change]);
+
+  const sketchFrame = sketchFeature?.frame ?? null;
+  useEffect(() => {
+    if (!viewport) return;
+    viewport.setDrawing(
+      sketchFrame && tool !== null
+        ? {
+            plane: sketchFrame,
+            onPointer: (event, u, v, snapRadius) =>
+              toolQueue.current?.queue.push({ event, u, v, snapRadius }),
+          }
+        : null,
+    );
+  }, [viewport, sketchFrame, tool]);
+
+  // Esc drops the shape in progress, or leaves the tool when nothing is in progress.
+  const cancelTool = useCallback(async () => {
+    const current = session.current;
+    const active = toolQueue.current;
+    viewport?.setSketchPreview(null);
+    if (
+      !current ||
+      !active ||
+      !(await current.core.call("cancelSketchTool", await active.handle))
+    ) {
+      setTool(null);
+    }
+  }, [viewport]);
+
+  // The construction toggle changes the selected curves, or else what the tool draws next.
+  const selectedCurves = sketchFeature
+    ? selection
+        .filter((pick) => pick.kind === PickKind.SketchCurve)
+        .flatMap((pick) => sketchCurves(sketchFeature.definition)[pick.id - 1] ?? [])
+    : [];
+  const toggleConstruction = () => {
+    if (!sketchFeature || selectedCurves.length === 0) {
+      setConstruction((on) => !on);
+      return;
+    }
+    edit({
+      op: "setConstruction",
+      sketch: sketchFeature.id,
+      entities: selectedCurves.map((curve) => curve.id),
+      construction: !selectedCurves.every((curve) => curve.construction),
+    });
+  };
+
+  // The keyboard handler calls the current toggle.
+  const toggleConstructionRef = useRef(toggleConstruction);
+  useEffect(() => {
+    toggleConstructionRef.current = toggleConstruction;
+  });
+
   // Finish keeps what was done as one undo step; Cancel restores the document from before.
   const finishSketch = (keep: boolean) => {
+    setTool(null);
     setSketching(null);
     void change(({ core, handle }) => core.call("endTransaction", handle, keep));
   };
@@ -625,6 +735,21 @@ export function App() {
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (sketching) {
+        const chosen = SKETCH_TOOLS.find((entry) => entry.key === event.key);
+        if (chosen) {
+          setTool(chosen.tool);
+          return;
+        }
+        if (event.key === "x") {
+          toggleConstructionRef.current();
+          return;
+        }
+        if (event.key === "Escape" && tool !== null) {
+          void cancelTool();
+          return;
+        }
+      }
       const filter = filterKeys[event.code];
       if (filter !== undefined) setPickFilter(filter);
       else if (event.key === "Home") viewport?.home();
@@ -636,7 +761,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [viewport, change]);
+  }, [viewport, change, sketching, tool, cancelTool]);
 
   return (
     <>
@@ -690,6 +815,29 @@ export function App() {
             {sketchFeature ? (
               <>
                 <span>Sketching {sketchFeature.name}</span>
+                <select
+                  aria-label="Sketch tool"
+                  value={tool ?? ""}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setTool(value === "" ? null : (Number(value) as SketchTool));
+                  }}
+                >
+                  <option value="">Select</option>
+                  {SKETCH_TOOLS.map(({ tool: kind, label, key }) => (
+                    <option key={kind} value={kind}>
+                      {key ? `${label} (${key.toUpperCase()})` : label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  aria-pressed={construction}
+                  title="Construction curves (X): new ones, or the selected ones"
+                  onClick={toggleConstruction}
+                >
+                  Construction
+                </button>
                 <button type="button" onClick={() => finishSketch(true)}>
                   Finish sketch
                 </button>

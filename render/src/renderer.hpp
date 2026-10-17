@@ -57,6 +57,9 @@ class Renderer {
     // The sketch being edited, drawn over everything: its curves (edge polylines), the ones in
     // `construction` dashed, and its points (vertices) as dots. An empty mesh hides it.
     void setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction);
+    // What the sketch tool would draw next, drawn like the sketch in a lighter color. An empty
+    // mesh hides it.
+    void setSketchPreview(const RenderMesh& mesh);
     void setViewport(float width, float height, float pixelRatio);
 
     Camera& camera() {
@@ -115,6 +118,7 @@ class Renderer {
     Camera camera_;
     PickIndex pick_;
     PickIndex regions_;
+    PickIndex sketch_;
     Vec3 orbitPivot_;
     Highlight highlight_;
     Selection selection_;

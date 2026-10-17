@@ -127,13 +127,15 @@ and with a mouse on the first or second attempt.
 - [x] Create a sketch on an origin plane or a planar face; the view turns to face the sketch;
       sketch mode draws its curves and points, and a sketch is one undo step
       ([#48](https://github.com/DerPW/facetry/issues/48))
-- [ ] Drawing tools:
-  - [ ] line / polyline (with tangent arc by dragging back from the last point)
-  - [ ] rectangle: 2-point, 3-point, center
-  - [ ] circle: center + diameter, 2-point, 3-point
-  - [ ] arc: 3-point, center-point, tangent
-  - [ ] point
-  - [ ] construction toggle for any entity
+- [x] Drawing tools, in the core for every platform
+      ([#49](https://github.com/DerPW/facetry/issues/49),
+      [ADR-0015](../adr/0015-sketch-tools.md)):
+  - [x] line / polyline (with tangent arc by dragging back from the last point)
+  - [x] rectangle: 2-point, 3-point, center
+  - [x] circle: center + diameter, 2-point, 3-point
+  - [x] arc: 3-point, center-point, tangent
+  - [x] point
+  - [x] construction toggle for any entity
 - [ ] Editing tools: trim, extend, sketch fillet, delete, move/copy entities
 - [ ] Snapping: endpoints, midpoints, centers, quadrants, intersections, on-curve, origin,
       optional grid snap

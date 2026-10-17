@@ -9,6 +9,7 @@
 #include "facetry/core/session.hpp"
 #include "facetry/core/session_json.hpp"
 #include "facetry/core/shape.hpp"
+#include "facetry/core/sketch_tool.hpp"
 #include "facetry/core/version.hpp"
 
 #include "facetry_core.h"
@@ -27,6 +28,7 @@ using facetry::core::ErrorCode;
 using facetry::core::Mesh;
 using facetry::core::Session;
 using facetry::core::Shape;
+using facetry::core::SketchTool;
 
 static_assert(static_cast<int>(ErrorCode::InvalidArgument) == FACETRY_ERROR_INVALID_ARGUMENT);
 static_assert(static_cast<int>(ErrorCode::InvalidHandle) == FACETRY_ERROR_INVALID_HANDLE);
@@ -44,7 +46,8 @@ static_assert(sizeof(facetry_shape_properties) == 12 * sizeof(double),
 struct facetry_context {
     // Meshes are held by pointer so their buffers never move while a shell reads them; sessions
     // because they are large.
-    using Object = std::variant<Shape, std::unique_ptr<Mesh>, std::unique_ptr<Session>>;
+    using Object = std::variant<Shape, std::unique_ptr<Mesh>, std::unique_ptr<Session>,
+                                std::unique_ptr<SketchTool>>;
 
     std::mutex mutex;
     std::unordered_map<facetry_handle, Object> objects;
@@ -549,6 +552,65 @@ facetry_status facetry_session_make_reference(facetry_context* context, facetry_
 facetry_status facetry_session_release(facetry_context* context, facetry_handle session) {
     return run(context, [&](facetry_context& ctx) {
         ctx.release<std::unique_ptr<Session>>(session, "session");
+    });
+}
+
+facetry_status facetry_sketch_tool_create(facetry_context* context, const char* sketch_id,
+                                          uint32_t kind, int construction,
+                                          facetry_handle* out_tool) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_tool, "out_tool");
+        if (kind > FACETRY_TOOL_POINT) {
+            throw Error(ErrorCode::InvalidArgument, "Unknown sketch tool");
+        }
+        out = ctx.add(std::make_unique<SketchTool>(
+            static_cast<facetry::core::SketchToolKind>(kind),
+            std::string(requireString(sketch_id, "sketch_id")), construction != 0));
+    });
+}
+
+facetry_status facetry_sketch_tool_pointer(facetry_context* context, facetry_handle session,
+                                           facetry_handle tool, uint32_t event, double u, double v,
+                                           double snap_radius, int* out_changed) {
+    return run(context, [&](facetry_context& ctx) {
+        if (event > FACETRY_POINTER_UP) {
+            throw Error(ErrorCode::InvalidArgument, "Unknown pointer event");
+        }
+        Session& target = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        const bool changed = ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")
+                                 ->pointer(target, static_cast<facetry::core::PointerEvent>(event),
+                                           u, v, snap_radius);
+        if (out_changed != nullptr) {
+            *out_changed = changed ? 1 : 0;
+        }
+    });
+}
+
+facetry_status facetry_sketch_tool_cancel(facetry_context* context, facetry_handle tool,
+                                          int* out_was_busy) {
+    return run(context, [&](facetry_context& ctx) {
+        const bool busy = ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")->cancel();
+        if (out_was_busy != nullptr) {
+            *out_was_busy = busy ? 1 : 0;
+        }
+    });
+}
+
+facetry_status facetry_sketch_tool_preview(facetry_context* context, facetry_handle session,
+                                           facetry_handle tool, double linear_deflection,
+                                           facetry_handle* out_mesh) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_mesh, "out_mesh");
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        out = ctx.add(std::make_unique<Mesh>(
+            ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")
+                ->preview(source, linear_deflection > 0.0 ? linear_deflection : 0.01)));
+    });
+}
+
+facetry_status facetry_sketch_tool_release(facetry_context* context, facetry_handle tool) {
+    return run(context, [&](facetry_context& ctx) {
+        ctx.release<std::unique_ptr<SketchTool>>(tool, "sketch tool");
     });
 }
 

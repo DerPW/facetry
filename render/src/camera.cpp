@@ -281,6 +281,30 @@ Camera::Projected Camera::project(Vec3 world) const {
     return {(ndcX + 1.0F) * 0.5F * width_, (1.0F - ndcY) * 0.5F * height_, clip.w};
 }
 
+std::optional<Camera::PlanePoint> Camera::planePoint(float xPoints, float yPoints, Vec3 origin,
+                                                     Vec3 xAxis, Vec3 yAxis) const {
+    const Vec3 normal = cross(xAxis, yAxis);
+    const auto hit = [&](float x, float y) -> std::optional<Vec3> {
+        const Ray ray = rayAt(x, y);
+        const float facing = dot(ray.direction, normal);
+        if (std::abs(facing) < 1e-6F) {
+            return std::nullopt;
+        }
+        const float t = dot(origin - ray.origin, normal) / facing;
+        if (t < 0.0F) {
+            return std::nullopt;
+        }
+        return ray.origin + ray.direction * t;
+    };
+    const auto at = hit(xPoints, yPoints);
+    const auto next = hit(xPoints + 1.0F, yPoints);
+    if (!at || !next) {
+        return std::nullopt;
+    }
+    const Vec3 offset = *at - origin;
+    return PlanePoint{dot(offset, xAxis), dot(offset, yAxis), length(*next - *at)};
+}
+
 Vec3 Camera::pointOnTargetPlane(float xPoints, float yPoints) const {
     const Ray ray = rayAt(xPoints, yPoints);
     const Vec3 f = forward();

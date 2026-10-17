@@ -66,11 +66,15 @@ PickIndex::PickIndex(const RenderMesh& mesh) {
         for (std::uint32_t k = mesh.edgeOffsets[e]; k + 1 < mesh.edgeOffsets[e + 1]; ++k) {
             segments_.push_back(
                 {point3(mesh.edgePoints, k), point3(mesh.edgePoints, k + 1), mesh.edgeIds[e]});
+            // A mesh of only curves (a sketch) has its bounds from them.
+            bounds_.add(segments_.back().a);
+            bounds_.add(segments_.back().b);
         }
     }
     for (std::size_t v = 0; v < mesh.vertexIds.size(); ++v) {
         vertexPoints_.push_back(point3(mesh.vertexPositions, v));
         vertexIds_.push_back(mesh.vertexIds[v]);
+        bounds_.add(vertexPoints_.back());
     }
 }
 
@@ -324,7 +328,9 @@ Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
                 bounds = bounds_;
             }
             break;
-        case PickKind::Region:  // regions have an index of their own (Renderer::setRegions)
+        case PickKind::Region:  // regions and sketches have indexes of their own
+        case PickKind::SketchCurve:
+        case PickKind::SketchPoint:
         case PickKind::None:
             break;
     }
@@ -578,27 +584,50 @@ std::optional<PickResult> pickRegion(const PickIndex& regions, const Camera& cam
 
 }  // namespace
 
-PickResult pickWithRegions(const PickIndex& model, const PickIndex& regions, const Camera& camera,
-                           float x, float y, float radiusPoints, bool throughFaces,
-                           PickFilter filter) {
-    if (const auto region = pickRegion(regions, camera, x, y, filter)) {
+// The sketch's points and curves within the radius of (x, y), points first.
+std::vector<PickResult> sketchCandidates(const PickIndex& sketch, const Camera& camera, float x,
+                                         float y, float radiusPoints, PickFilter filter) {
+    if (filter != PickFilter::Everything || sketch.bounds().isEmpty()) {
+        return {};
+    }
+    std::vector<PickResult> result =
+        sketch.candidates(camera, x, y, radiusPoints, /*throughFaces=*/true, filter);
+    std::erase_if(result, [](const PickResult& pick) {
+        return pick.kind != PickKind::Vertex && pick.kind != PickKind::Edge;
+    });
+    for (PickResult& pick : result) {
+        pick.kind = pick.kind == PickKind::Vertex ? PickKind::SketchPoint : PickKind::SketchCurve;
+    }
+    return result;
+}
+
+PickResult pickWithOverlays(const PickIndex& model, Overlays overlays, const Camera& camera,
+                            float x, float y, float radiusPoints, bool throughFaces,
+                            PickFilter filter) {
+    if (const auto region = pickRegion(overlays.regions, camera, x, y, filter)) {
         return *region;
     }
     if (filter == PickFilter::Regions) {
         return {};
     }
+    const auto sketch = sketchCandidates(overlays.sketch, camera, x, y, radiusPoints, filter);
+    if (!sketch.empty()) {
+        return sketch.front();
+    }
     return model.pick(camera, x, y, radiusPoints, throughFaces, filter);
 }
 
-std::vector<PickResult> candidatesWithRegions(const PickIndex& model, const PickIndex& regions,
-                                              const Camera& camera, float x, float y,
-                                              float radiusPoints, bool throughFaces,
-                                              PickFilter filter) {
+std::vector<PickResult> candidatesWithOverlays(const PickIndex& model, Overlays overlays,
+                                               const Camera& camera, float x, float y,
+                                               float radiusPoints, bool throughFaces,
+                                               PickFilter filter) {
     std::vector<PickResult> result;
-    if (const auto region = pickRegion(regions, camera, x, y, filter)) {
+    if (const auto region = pickRegion(overlays.regions, camera, x, y, filter)) {
         result.push_back(*region);
     }
     if (filter != PickFilter::Regions) {
+        const auto sketch = sketchCandidates(overlays.sketch, camera, x, y, radiusPoints, filter);
+        result.insert(result.end(), sketch.begin(), sketch.end());
         const auto rest = model.candidates(camera, x, y, radiusPoints, throughFaces, filter);
         result.insert(result.end(), rest.begin(), rest.end());
     }

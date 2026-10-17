@@ -89,3 +89,25 @@ TEST_CASE("depth range follows the backend convention") {
     CHECK(metal.z / metal.w > 0.0F);
     CHECK(metal.z / metal.w < 1.0F);
 }
+
+TEST_CASE("screen points land on sketch planes") {
+    Camera camera;
+    camera.setViewport(400, 400);
+    camera.setProjection(Camera::Projection::Orthographic);
+    camera.setSceneBounds({{-10, -10, -10}, {10, 10, 10}});
+    camera.lookAt({0, 0, 50}, {0, 0, 0});  // the top view
+    const Vec3 x{1, 0, 0};
+    const Vec3 y{0, 1, 0};
+    const auto center = camera.planePoint(200, 200, {0, 0, 0}, x, y);
+    REQUIRE(center);
+    CHECK(center->u == doctest::Approx(0).epsilon(1e-4));
+    CHECK(center->v == doctest::Approx(0).epsilon(1e-4));
+    CHECK(center->perPoint > 0.0F);
+    // Right on screen is +x, up is +y; one point reaches perPoint on the plane.
+    const auto right = camera.planePoint(210, 190, {0, 0, 0}, x, y);
+    REQUIRE(right);
+    CHECK(right->u == doctest::Approx(10 * center->perPoint).epsilon(1e-3));
+    CHECK(right->v == doctest::Approx(10 * center->perPoint).epsilon(1e-3));
+    // A plane seen edge-on has no point.
+    CHECK_FALSE(camera.planePoint(200, 200, {0, 0, 0}, x, Vec3{0, 0, 1}));
+}

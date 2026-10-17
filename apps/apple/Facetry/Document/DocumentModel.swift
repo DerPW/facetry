@@ -78,6 +78,29 @@ actor DocumentEngine {
         try core.endTransaction(session, commit: commit)
     }
 
+    // Sketch tools (docs/adr/0015-sketch-tools.md).
+
+    func makeTool(sketch: String, kind: SketchToolKind, construction: Bool) throws -> ToolHandle {
+        try core.createSketchTool(sketch: sketch, kind: kind, construction: construction)
+    }
+
+    /// A pointer event for the tool: whether the document changed, and the tool's preview.
+    func toolEvent(
+        _ tool: ToolHandle, _ event: ToolEvent, u: Double, v: Double, snapRadius: Double
+    ) throws -> (changed: Bool, preview: MeshData) {
+        let changed = try core.sketchToolPointer(
+            session, tool: tool, event: event, u: u, v: v, snapRadius: snapRadius)
+        return (changed, try core.sketchToolPreview(session, tool: tool))
+    }
+
+    func cancelTool(_ tool: ToolHandle) throws -> Bool {
+        try core.cancelSketchTool(tool)
+    }
+
+    func releaseTool(_ tool: ToolHandle) throws {
+        try core.releaseSketchTool(tool)
+    }
+
     /// The document as a .facetry file.
     func saveFile() throws -> Data {
         try core.saveFile(session)
@@ -290,8 +313,10 @@ final class DocumentModel {
     /// Ends sketch mode, keeping what was done as one undo step or restoring the document.
     func finishSketch(keep: Bool) async {
         guard sketching != nil else { return }
+        tool = nil
         sketching = nil
         viewport.sketch = nil
+        viewport.drawing = nil
         await run { try await $0.endTransaction(commit: keep) }
         if keep { registerUndo(after: stepsBeforeSketch) }
     }
@@ -308,8 +333,127 @@ final class DocumentModel {
             curve.construction ? UInt32(index + 1) : nil
         }
         viewport.sketch = SketchDisplay(mesh: mesh, construction: construction)
+        updateDrawing()
         if turning, let normal = feature.frame?.normal, normal.count == 3 {
             viewport.view(from: SIMD3(Float(normal[0]), Float(normal[1]), Float(normal[2])))
+        }
+    }
+
+    // MARK: - Drawing
+
+    /// The drawing tool in sketch mode (nil: selecting), and whether it draws construction
+    /// curves.
+    var tool: SketchToolKind? {
+        didSet { if tool != oldValue { configureTool() } }
+    }
+    var construction = false {
+        didSet { if construction != oldValue { configureTool() } }
+    }
+
+    /// Everything a tool does goes through one queue, so its creation, pointer events and
+    /// release reach the engine in order. Moves that pile up collapse into the latest.
+    private enum ToolCommand {
+        case configure(SketchToolKind?, construction: Bool)
+        case pointer(ToolEvent, u: Double, v: Double, snapRadius: Double)
+        case cancel
+    }
+    private var toolCommands: [ToolCommand] = []
+    private var toolRunning = false
+    private var toolHandle: ToolHandle?
+
+    private func configureTool() {
+        queueTool(.configure(sketching != nil ? tool : nil, construction: construction))
+        updateDrawing()
+    }
+
+    /// Routes the pointer to the tool while one is chosen.
+    private func updateDrawing() {
+        guard sketching != nil, tool != nil,
+            let frame = state?.features.first(where: { $0.id == sketching })?.frame,
+            frame.origin.count == 3, frame.xAxis.count == 3, frame.yAxis.count == 3
+        else {
+            viewport.drawing = nil
+            return
+        }
+        let vector = { (v: [Double]) in SIMD3(Float(v[0]), Float(v[1]), Float(v[2])) }
+        let plane = SketchPlane(
+            origin: vector(frame.origin), xAxis: vector(frame.xAxis), yAxis: vector(frame.yAxis))
+        viewport.drawing = DrawingInput(plane: plane) { [weak self] event, u, v, snapRadius in
+            self?.queueTool(.pointer(event, u: u, v: v, snapRadius: snapRadius))
+        }
+    }
+
+    /// Esc: drops the shape in progress, or leaves the tool when nothing is in progress.
+    func cancelTool() {
+        queueTool(.cancel)
+    }
+
+    /// The construction toggle: changes the selected sketch curves, or else what the tool draws
+    /// next.
+    func toggleConstruction() async {
+        guard let sketching, let feature = state?.features.first(where: { $0.id == sketching })
+        else { return }
+        let curves = feature.sketchCurves
+        let selected = viewport.selected.filter { $0.kind == .sketchCurve }.compactMap {
+            pick -> (id: String, construction: Bool)? in
+            let index = Int(pick.id) - 1
+            return curves.indices.contains(index) ? curves[index] : nil
+        }
+        guard !selected.isEmpty else {
+            construction.toggle()
+            return
+        }
+        await edit([
+            .setConstruction(
+                sketch: sketching, entities: selected.map(\.id),
+                construction: !selected.allSatisfy(\.construction))
+        ])
+    }
+
+    private func queueTool(_ command: ToolCommand) {
+        if case .pointer(.move, _, _, _) = command,
+            case .pointer(.move, _, _, _)? = toolCommands.last
+        {
+            toolCommands[toolCommands.count - 1] = command
+        } else {
+            toolCommands.append(command)
+        }
+        guard !toolRunning else { return }
+        toolRunning = true
+        Task { await runToolCommands() }
+    }
+
+    private func runToolCommands() async {
+        defer { toolRunning = false }
+        while !toolCommands.isEmpty {
+            let command = toolCommands.removeFirst()
+            guard let engine else { continue }
+            do {
+                switch command {
+                case .configure(let kind, let construction):
+                    if let old = toolHandle {
+                        toolHandle = nil
+                        try? await engine.releaseTool(old)
+                    }
+                    viewport.sketchPreview = nil
+                    if let kind, let sketching {
+                        toolHandle = try await engine.makeTool(
+                            sketch: sketching, kind: kind, construction: construction)
+                    }
+                case .pointer(let event, let u, let v, let snapRadius):
+                    guard let toolHandle else { continue }
+                    let result = try await engine.toolEvent(
+                        toolHandle, event, u: u, v: v, snapRadius: snapRadius)
+                    viewport.sketchPreview = result.preview
+                    if result.changed { await run { _ in } }
+                case .cancel:
+                    viewport.sketchPreview = nil
+                    if let toolHandle, try await engine.cancelTool(toolHandle) { continue }
+                    tool = nil
+                }
+            } catch {
+                self.error = "\(error)"
+            }
         }
     }
 

@@ -61,6 +61,16 @@ class Camera {
     void zoom(float factor, Vec3 anchor);
 
     [[nodiscard]] Ray rayAt(float xPoints, float yPoints) const;
+    // Where (x, y) on screen lies on the plane through `origin` spanned by the unit axes `xAxis`
+    // and `yAxis` (a sketch plane): its coordinates along the axes, and how far one point on
+    // screen reaches on the plane there. Nothing if the plane is seen edge-on or lies behind.
+    struct PlanePoint {
+        float u = 0.0F;
+        float v = 0.0F;
+        float perPoint = 0.0F;
+    };
+    [[nodiscard]] std::optional<PlanePoint> planePoint(float xPoints, float yPoints, Vec3 origin,
+                                                       Vec3 xAxis, Vec3 yAxis) const;
     // Screen position (points) and clip-space w of a world point; w <= 0 means behind the camera.
     struct Projected {
         float x = 0.0F;
