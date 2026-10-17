@@ -4,13 +4,17 @@
 import type { MeshData } from "../core/api";
 import createFacetryRender, { type FacetryRenderModule } from "./wasm/facetry-render.mjs";
 
-export const PickKind = { None: 0, Face: 1, Edge: 2, Vertex: 3 } as const;
+export const PickKind = { None: 0, Face: 1, Edge: 2, Vertex: 3, Body: 4 } as const;
 export type PickKind = (typeof PickKind)[keyof typeof PickKind];
 
 export interface Pick {
   kind: PickKind;
   id: number;
 }
+
+/** What picking and hovering look for (facetry_pick_filter); keys 1–5. */
+export const PickFilter = { Everything: 0, Vertices: 1, Edges: 2, Faces: 3, Bodies: 4 } as const;
+export type PickFilter = (typeof PickFilter)[keyof typeof PickFilter];
 
 /** How the model is drawn (facetry_visual_style). */
 export const VisualStyle = {
@@ -104,7 +108,9 @@ export class Viewport {
   #lastTwoFingerTap = 0;
   #lastWheel = 0;
   #hover: Pick = { kind: PickKind.None, id: 0 };
-  #selection: Pick = { kind: PickKind.None, id: 0 };
+  #selection: Pick[] = [];
+  // Every tap or click adds to the selection or removes from it (for touch, without keys).
+  #multiSelect = false;
   #frameTimes: number[] = [];
   #lastFrame = 0;
   #disposed = false;
@@ -112,7 +118,7 @@ export class Viewport {
   #navigation: NavigationSettings = DEFAULT_NAVIGATION;
 
   /** Called whenever the selection changes. */
-  onSelectionChange: (selection: Pick) => void = () => {};
+  onSelectionChange: (selection: Pick[], picked: Pick) => void = () => {};
   /** Called about once per second with frame statistics. */
   onStats: (stats: FrameStats) => void = () => {};
 
@@ -203,19 +209,19 @@ export class Viewport {
       pointers.forEach((pointer) => m._free(pointer));
     }
     this.#hover = { kind: PickKind.None, id: 0 };
-    this.#selection = { kind: PickKind.None, id: 0 };
+    // The renderer clears the selection with a new mesh: element IDs change with the geometry.
+    this.#selection = [];
     m._facetry_renderer_set_hover(this.#renderer, 0, 0);
-    m._facetry_renderer_set_selection(this.#renderer, 0, 0);
   }
 
-  /** The current selection (one element; multi-selection comes with M1.2). */
-  get selection(): Pick {
+  /** The selected elements, in the order selected. */
+  get selection(): Pick[] {
     return this.#selection;
   }
 
   /** Sets the selection and statistics callbacks. */
   setListeners(listeners: {
-    onSelectionChange?: (selection: Pick) => void;
+    onSelectionChange?: (selection: Pick[], picked: Pick) => void;
     onStats?: (stats: FrameStats) => void;
   }): void {
     if (listeners.onSelectionChange) this.onSelectionChange = listeners.onSelectionChange;
@@ -224,7 +230,22 @@ export class Viewport {
 
   /** Clears the selection (Esc). */
   clearSelection(): void {
-    this.#setSelection({ kind: PickKind.None, id: 0 });
+    this.#select({ kind: PickKind.None, id: 0 }, false);
+  }
+
+  /** Selects the shown body (from the browser panel). */
+  selectBody(): void {
+    this.#select({ kind: PickKind.Body, id: 1 }, false);
+  }
+
+  /** What clicks and hovering pick (keys 1–5). */
+  setPickFilter(filter: PickFilter): void {
+    this.#m._facetry_renderer_set_pick_filter(this.#renderer, filter);
+  }
+
+  /** With multi-select on, every tap adds to the selection or removes from it. */
+  setMultiSelect(on: boolean): void {
+    this.#multiSelect = on;
   }
 
   /**
@@ -489,7 +510,9 @@ export class Viewport {
     const tap = touch ? lastFinger && this.#touch.fingers === 1 : moved <= CLICK_SLOP;
     if (tap && moved <= CLICK_SLOP && e.button === 0) {
       const radius = PICK_RADIUS[e.pointerType] ?? 6;
-      this.#setSelection(this.pick(pointer.startX, pointer.startY, radius));
+      // Shift, Cmd or Ctrl add to the selection or remove from it, like in Fusion.
+      const toggle = this.#multiSelect || e.shiftKey || e.metaKey || e.ctrlKey;
+      this.#select(this.pick(pointer.startX, pointer.startY, radius), toggle);
     }
     if (this.#gesture === "touch") this.#beginTouchOrbit();
   }
@@ -539,10 +562,23 @@ export class Viewport {
     this.#canvas.style.cursor = pick.kind === PickKind.None ? "default" : "pointer";
   }
 
-  #setSelection(pick: Pick): void {
-    this.#selection = pick;
-    this.#m._facetry_renderer_set_selection(this.#renderer, pick.kind, pick.id);
-    this.onSelectionChange(pick);
+  // `toggle`: add or remove the element; otherwise select only it (nothing clears).
+  #select(pick: Pick, toggle: boolean): void {
+    const m = this.#m;
+    m._facetry_renderer_select(this.#renderer, pick.kind, pick.id, toggle ? 1 : 0);
+    const count = m._facetry_renderer_selection(this.#renderer, 0, 0);
+    const pairs = m._malloc(Math.max(count, 1) * 8);
+    try {
+      m._facetry_renderer_selection(this.#renderer, pairs, count);
+      const words = m.HEAPU32;
+      this.#selection = Array.from({ length: count }, (_, i) => ({
+        kind: (words[(pairs >> 2) + i * 2] ?? 0) as PickKind,
+        id: words[(pairs >> 2) + i * 2 + 1] ?? 0,
+      }));
+    } finally {
+      m._free(pairs);
+    }
+    this.onSelectionChange(this.#selection, pick);
   }
 
   #recordFrame(time: number): void {

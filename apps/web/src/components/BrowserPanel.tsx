@@ -7,13 +7,15 @@ interface Props {
   onEdit: (edits: Edit | Edit[]) => void;
   /** Opens a feature's details in the timeline. */
   onSelectFeature: (feature: string) => void;
+  /** Selects the shown body in the viewport. */
+  onSelectBody?: () => void;
 }
 
 /** The browser: the document as a tree of origin, bodies and sketches (Fusion's browser). */
 
 /** Opacities offered for a body; other values from a file show as they are. */
 const OPACITIES = [1, 0.75, 0.5, 0.25];
-export function BrowserPanel({ state, onEdit, onSelectFeature }: Props) {
+export function BrowserPanel({ state, onEdit, onSelectFeature, onSelectBody }: Props) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const sketches = state.features.filter((f) => f.type === "sketch");
 
@@ -73,7 +75,10 @@ export function BrowserPanel({ state, onEdit, onSelectFeature }: Props) {
                   type="button"
                   className="item"
                   title="Double-click to rename"
-                  onClick={() => onSelectFeature(body.id)}
+                  onClick={() => {
+                    onSelectFeature(body.id);
+                    if (body.visible) onSelectBody?.();
+                  }}
                   onDoubleClick={() => setRenaming(body.id)}
                 >
                   {body.name}

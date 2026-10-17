@@ -19,6 +19,7 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Turn the view to a face, edge or corner | tap the ViewCube | tap the ViewCube | click the ViewCube | click the ViewCube |
 | Orbit with the ViewCube | drag it | drag it | drag it | drag it |
 | Select | tap | tap | click | click |
+| Add to or remove from the selection | tap with **Multi** on | tap with **Multi** on | Shift/Cmd/Ctrl + click | Shift/Cmd + click |
 | Highlight what is under the pointer | — | hover (supported iPads) | move | move |
 
 The mouse and trackpad columns show the **Facetry** preset, the default.
@@ -71,6 +72,7 @@ Mac, iPad with a hardware keyboard, and the web app:
 | Numpad `1`, `3`, `7` | Front, right and top view; with `Ctrl` back, left and bottom (as in Blender) |
 | `O` | Toggle orthographic / perspective |
 | `G` | Show or hide the ground grid |
+| `1` … `5` | Select vertices, edges, faces, bodies, or everything (like Plasticity's selection modes) |
 | `Esc` | Clear the selection |
 | `⌘Z` / `Ctrl+Z` | Undo the last step (its name is shown on the Undo button) |
 | `⇧⌘Z` / `Shift+Ctrl+Z` / `Ctrl+Y` | Redo |

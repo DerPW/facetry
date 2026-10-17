@@ -101,6 +101,15 @@ struct Renderer::Gpu {
     sg_buffer triangles{};
     sg_buffer segments{};
     sg_buffer vertices{};
+    // Selection flags (1 selected): per mesh vertex, per edge segment and per vertex dot.
+    // Buffers are immutable, so they are made anew when the selection changes (rarely, and
+    // small next to the mesh). The IDs behind them stay on the CPU.
+    sg_buffer faceSelected{};
+    sg_buffer segmentSelected{};
+    sg_buffer vertexSelected{};
+    std::vector<std::uint32_t> meshFaceIds;
+    std::vector<std::uint32_t> segmentEdgeIds;
+    std::vector<std::uint32_t> dotVertexIds;
     std::uint32_t indexCount = 0;
     std::uint32_t segmentCount = 0;
     std::uint32_t vertexCount = 0;
@@ -112,6 +121,12 @@ struct Renderer::Gpu {
         destroy(triangles);
         destroy(segments);
         destroy(vertices);
+        destroy(faceSelected);
+        destroy(segmentSelected);
+        destroy(vertexSelected);
+        meshFaceIds.clear();
+        segmentEdgeIds.clear();
+        dotVertexIds.clear();
         indexCount = segmentCount = vertexCount = 0;
     }
 };
@@ -157,6 +172,9 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.layout.attrs[ATTR_mesh_normal].format = SG_VERTEXFORMAT_FLOAT3;
         desc.layout.attrs[ATTR_mesh_face_id].buffer_index = 2;
         desc.layout.attrs[ATTR_mesh_face_id].format = SG_VERTEXFORMAT_FLOAT;
+        desc.layout.buffers[3].stride = 4;
+        desc.layout.attrs[ATTR_mesh_selected].buffer_index = 3;
+        desc.layout.attrs[ATTR_mesh_selected].format = SG_VERTEXFORMAT_FLOAT;
         desc.index_type = SG_INDEXTYPE_UINT32;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
@@ -192,6 +210,9 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.layout.attrs[ATTR_edge_p0] = {1, 0, SG_VERTEXFORMAT_FLOAT3};
         desc.layout.attrs[ATTR_edge_p1] = {1, 12, SG_VERTEXFORMAT_FLOAT3};
         desc.layout.attrs[ATTR_edge_edge_id] = {1, 24, SG_VERTEXFORMAT_FLOAT};
+        desc.layout.buffers[2].stride = 4;
+        desc.layout.buffers[2].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+        desc.layout.attrs[ATTR_edge_edge_selected] = {2, 0, SG_VERTEXFORMAT_FLOAT};
         desc.index_type = SG_INDEXTYPE_UINT16;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
@@ -218,6 +239,9 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.layout.attrs[ATTR_point_corner].format = SG_VERTEXFORMAT_FLOAT2;
         desc.layout.attrs[ATTR_point_center] = {1, 0, SG_VERTEXFORMAT_FLOAT3};
         desc.layout.attrs[ATTR_point_vertex_id] = {1, 12, SG_VERTEXFORMAT_FLOAT};
+        desc.layout.buffers[2].stride = 4;
+        desc.layout.buffers[2].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+        desc.layout.attrs[ATTR_point_vertex_selected] = {2, 0, SG_VERTEXFORMAT_FLOAT};
         desc.index_type = SG_INDEXTYPE_UINT16;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
@@ -357,6 +381,10 @@ void Renderer::setMesh(const RenderMesh& mesh) {
         g.faceIds = makeBuffer(faceIds, false, "face ids");
         g.triangles = makeBuffer(mesh.triangles, true, "triangles");
         g.indexCount = static_cast<std::uint32_t>(mesh.triangles.size());
+        g.meshFaceIds.reserve(vertexCount);
+        for (const float id : faceIds) {
+            g.meshFaceIds.push_back(static_cast<std::uint32_t>(id));
+        }
     }
 
     std::vector<float> segments;
@@ -365,6 +393,7 @@ void Renderer::setMesh(const RenderMesh& mesh) {
             const float* a = &mesh.edgePoints[std::size_t{k} * 3];
             segments.insert(segments.end(), {a[0], a[1], a[2], a[3], a[4], a[5],
                                              static_cast<float>(mesh.edgeIds[e])});
+            g.segmentEdgeIds.push_back(mesh.edgeIds[e]);
         }
     }
     if (!segments.empty()) {
@@ -376,11 +405,15 @@ void Renderer::setMesh(const RenderMesh& mesh) {
     for (std::size_t v = 0; v < mesh.vertexIds.size(); ++v) {
         const float* p = &mesh.vertexPositions[v * 3];
         vertices.insert(vertices.end(), {p[0], p[1], p[2], static_cast<float>(mesh.vertexIds[v])});
+        g.dotVertexIds.push_back(mesh.vertexIds[v]);
     }
     if (!vertices.empty()) {
         g.vertices = makeBuffer(vertices, false, "vertices");
         g.vertexCount = static_cast<std::uint32_t>(mesh.vertexIds.size());
     }
+    // Element IDs change with the geometry, so an old selection would point elsewhere.
+    selection_.clear();
+    shownSelection_ = ~std::uint64_t{0};
 
     stats_.triangles = g.indexCount / 3;
     stats_.edgeSegments = g.segmentCount;
@@ -400,6 +433,25 @@ void Renderer::orbit(float dx, float dy) {
     camera_.orbit(dx, dy, orbitPivot_);
 }
 
+void Renderer::updateSelectionFlags() {
+    Gpu& g = *gpu_;
+    const auto update = [this](sg_buffer& buffer, const std::vector<std::uint32_t>& ids,
+                               PickKind kind, const char* label) {
+        destroy(buffer);
+        if (ids.empty()) {
+            return;
+        }
+        std::vector<float> flags(ids.size());
+        for (std::size_t i = 0; i < ids.size(); ++i) {
+            flags[i] = selection_.contains({kind, ids[i]}) ? 1.0F : 0.0F;
+        }
+        buffer = makeBuffer(flags, false, label);
+    };
+    update(g.faceSelected, g.meshFaceIds, PickKind::Face, "selected faces");
+    update(g.segmentSelected, g.segmentEdgeIds, PickKind::Edge, "selected edges");
+    update(g.vertexSelected, g.dotVertexIds, PickKind::Vertex, "selected vertices");
+}
+
 void Renderer::setStyle(VisualStyle style, float opacity) {
     style_ = style;
     opacity_ = std::clamp(opacity, 0.0F, 1.0F);
@@ -410,7 +462,13 @@ bool Renderer::picksThroughFaces() const {
 }
 
 void Renderer::fitSelection() {
-    Bounds bounds = pick_.elementBounds(highlight_.selectKind, highlight_.selectId);
+    Bounds bounds;
+    for (const Element& element : selection_.elements()) {
+        const Bounds element_bounds = pick_.elementBounds(element.kind, element.id);
+        if (!element_bounds.isEmpty()) {
+            bounds.merge(element_bounds);
+        }
+    }
     if (bounds.isEmpty()) {
         camera_.fit();
         return;
@@ -459,6 +517,11 @@ void Renderer::draw(const FrameTarget& target) {
     const float viewport[4] = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
     const Highlight& h = highlight_;
 
+    if (selection_.version() != shownSelection_) {
+        updateSelectionFlags();
+        shownSelection_ = selection_.version();
+    }
+
     const bool drawFaces = style_ != VisualStyle::Wireframe && opacity_ > 0.001F;
     const bool transparent = opacity_ < kOpaque;
 
@@ -476,12 +539,13 @@ void Renderer::draw(const FrameTarget& target) {
         copy4(fs.hover_color, kFaceHoverTint);
         copy4(fs.select_color, kFaceSelectTint);
         fs.ids[0] = idFor(h.hoverKind, PickKind::Face, h.hoverId);
-        fs.ids[1] = idFor(h.selectKind, PickKind::Face, h.selectId);
+        fs.ids[2] = h.hoverKind == PickKind::Body ? 1.0F : 0.0F;
 
         sg_bindings bindings{};
         bindings.vertex_buffers[0] = g.positions;
         bindings.vertex_buffers[1] = g.normals;
         bindings.vertex_buffers[2] = g.faceIds;
+        bindings.vertex_buffers[3] = g.faceSelected;
         bindings.index_buffer = g.triangles;
         sg_apply_pipeline(pipeline);
         sg_apply_bindings(&bindings);
@@ -499,19 +563,18 @@ void Renderer::draw(const FrameTarget& target) {
         vs.viewport[2] = kEdgeHalfWidth * pixelRatio_;
         vs.viewport[3] = kEdgeHalfWidthHighlighted * pixelRatio_;
         vs.ids[0] = idFor(h.hoverKind, PickKind::Edge, h.hoverId);
-        vs.ids[1] = idFor(h.selectKind, PickKind::Edge, h.selectId);
         edge_fs_params_t fs{};
         copy4(fs.color, hidden ? kHiddenEdgeColor : kEdgeColor);
         copy4(fs.hover_color, kHoverColor);
         copy4(fs.select_color, kSelectColor);
         fs.ids[0] = vs.ids[0];
-        fs.ids[1] = vs.ids[1];
         fs.ids[2] = hidden ? kDashPeriod * pixelRatio_ : 0.0F;
         fs.ids[3] = onlyHighlighted ? 1.0F : 0.0F;
 
         sg_bindings bindings{};
         bindings.vertex_buffers[0] = g.edgeQuad;
         bindings.vertex_buffers[1] = g.segments;
+        bindings.vertex_buffers[2] = g.segmentSelected;
         bindings.index_buffer = g.quadIndices;
         sg_apply_pipeline(hidden ? g.hiddenEdgePipeline : g.edgePipeline);
         sg_apply_bindings(&bindings);
@@ -582,18 +645,17 @@ void Renderer::draw(const FrameTarget& target) {
         vs.viewport[2] = kVertexRadius * pixelRatio_;
         vs.viewport[3] = kVertexRadiusHighlighted * pixelRatio_;
         vs.ids[0] = idFor(h.hoverKind, PickKind::Vertex, h.hoverId);
-        vs.ids[1] = idFor(h.selectKind, PickKind::Vertex, h.selectId);
         point_fs_params_t fs{};
         copy4(fs.color, kVertexColor);
         copy4(fs.hover_color, kHoverColor);
         copy4(fs.select_color, kSelectColor);
         fs.ids[0] = vs.ids[0];
-        fs.ids[1] = vs.ids[1];
         fs.ids[2] = style_ == VisualStyle::Shaded ? 1.0F : 0.0F;
 
         sg_bindings bindings{};
         bindings.vertex_buffers[0] = g.pointQuad;
         bindings.vertex_buffers[1] = g.vertices;
+        bindings.vertex_buffers[2] = g.vertexSelected;
         bindings.index_buffer = g.quadIndices;
         sg_apply_pipeline(g.pointPipeline);
         sg_apply_bindings(&bindings);

@@ -24,8 +24,12 @@ struct ContentView: View {
                     header
                     if let model, let state = model.state {
                         ModelPanel(state: state, model: model)
-                        BrowserPanel(state: state, model: model) { selectedFeature = $0 }
-                            .panel()
+                        BrowserPanel(
+                            state: state, model: model,
+                            selectFeature: { selectedFeature = $0 },
+                            selectBody: { viewport.selectBody() }
+                        )
+                        .panel()
                     }
                 }
             }
@@ -112,20 +116,14 @@ struct ContentView: View {
                 .help(model?.state?.redoName.map { "Redo \($0)" } ?? "Redo")
             Button("Fit") { viewport.fit() }
                 .keyboardShortcut("f", modifiers: [])
-            Button(viewport.orthographic ? "Perspective" : "Orthographic") {
-                viewport.orthographic.toggle()
-            }
-            .keyboardShortcut("o", modifiers: [])
-            Picker("Style", selection: $style) {
-                ForEach(VisualStyle.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.menu)
-            .fixedSize()
-            Toggle("Grid", isOn: $grid)
-                .toggleStyle(.button)
-                .keyboardShortcut("g", modifiers: [])
-            Menu("Navigation") {
-                Picker("Mouse and trackpad", selection: $navigationPreset) {
+            // How the view looks; kept in one menu so the controls fit next to the panels.
+            Menu("Display") {
+                Toggle("Orthographic", isOn: $viewport.orthographic)
+                Toggle("Grid", isOn: $grid)
+                Picker("Style", selection: $style) {
+                    ForEach(VisualStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Navigation", selection: $navigationPreset) {
                     ForEach(NavigationPreset.allCases) { Text($0.title).tag($0) }
                 }
                 #if os(iOS)
@@ -133,11 +131,34 @@ struct ContentView: View {
                 #endif
             }
             .fixedSize()
+            Picker("Select", selection: $viewport.pickFilter) {
+                ForEach(PickFilter.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            Toggle("Multi", isOn: $viewport.multiSelect)
+                .toggleStyle(.button)
+            // Shortcuts of the menu items (docs/INPUT.md): O projection, G grid.
+            Button("Toggle projection") { viewport.orthographic.toggle() }
+                .keyboardShortcut("o", modifiers: [])
+                .hidden()
+                .frame(width: 0, height: 0)
+            Button("Toggle grid") { grid.toggle() }
+                .keyboardShortcut("g", modifiers: [])
+                .hidden()
+                .frame(width: 0, height: 0)
             // Esc clears the selection (docs/INPUT.md).
             Button("Clear selection") { viewport.selection = .none }
                 .keyboardShortcut(.escape, modifiers: [])
                 .hidden()
                 .frame(width: 0, height: 0)
+            // Keys 1–5 choose what clicks select.
+            ForEach(PickFilter.allCases) { filter in
+                Button(filter.title) { viewport.pickFilter = filter }
+                    .keyboardShortcut(filter.key, modifiers: [])
+                    .hidden()
+                    .frame(width: 0, height: 0)
+            }
         }
         .panel()
     }
@@ -155,16 +176,26 @@ struct ContentView: View {
     }
 
     private var selection: some View {
-        Text(describe(viewport.selection)).font(.caption).panel()
+        Text(describe(viewport.selected)).font(.caption).panel()
     }
 
-    private func describe(_ pick: Pick) -> String {
-        switch pick.kind {
-        case .none: "Nothing selected"
-        case .face: "Face \(pick.id) selected"
-        case .edge: "Edge \(pick.id) selected"
-        case .vertex: "Vertex \(pick.id) selected"
+    private func describe(_ selection: [Pick]) -> String {
+        let names: [(Pick.Kind, String, String)] = [
+            (.vertex, "Vertex", "vertices"), (.edge, "Edge", "edges"), (.face, "Face", "faces"),
+            (.body, "Body", "bodies"),
+        ]
+        guard let only = selection.first else { return "Nothing selected" }
+        if selection.count == 1 {
+            if only.kind == .body { return "Body selected" }
+            let name = names.first { $0.0 == only.kind }?.1 ?? "Element"
+            return "\(name) \(only.id) selected"
         }
+        let parts = names.compactMap { kind, singular, plural -> String? in
+            let count = selection.filter { $0.kind == kind }.count
+            guard count > 0 else { return nil }
+            return "\(count) \(count == 1 ? singular.lowercased() : plural)"
+        }
+        return parts.joined(separator: ", ") + " selected"
     }
 }
 

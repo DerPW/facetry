@@ -167,13 +167,16 @@ bool PickIndex::isVisible(const Camera& camera, Vec3 point) const {
 }
 
 PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusPoints,
-                           bool throughFaces) const {
+                           bool throughFaces, PickFilter filter) const {
     const float radius2 = radiusPoints * radiusPoints;
+    const bool vertices = filter == PickFilter::Everything || filter == PickFilter::Vertices;
+    const bool edges = filter == PickFilter::Everything || filter == PickFilter::Edges;
+    const bool faces = filter != PickFilter::Vertices && filter != PickFilter::Edges;
 
     // Vertices first: they are the smallest targets.
     PickResult vertexPick;
     float best = radius2;
-    for (std::size_t i = 0; i < vertexPoints_.size(); ++i) {
+    for (std::size_t i = 0; vertices && i < vertexPoints_.size(); ++i) {
         const auto p = camera.project(vertexPoints_[i]);
         if (p.w <= 0.0F) {
             continue;
@@ -192,6 +195,9 @@ PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusP
     PickResult edgePick;
     best = radius2;
     for (const Segment& segment : segments_) {
+        if (!edges) {
+            break;
+        }
         const auto a = camera.project(segment.a);
         const auto b = camera.project(segment.b);
         if (a.w <= 0.0F || b.w <= 0.0F) {
@@ -222,9 +228,16 @@ PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusP
         return edgePick;
     }
 
+    if (!faces) {
+        return {};
+    }
     const Ray ray = camera.rayAt(x, y);
     if (const auto hit = raycast(ray)) {
-        return {PickKind::Face, hit->faceId, ray.origin + ray.direction * hit->distance, 0.0F};
+        const Vec3 point = ray.origin + ray.direction * hit->distance;
+        if (filter == PickFilter::Bodies) {
+            return {PickKind::Body, 1, point, 0.0F};
+        }
+        return {PickKind::Face, hit->faceId, point, 0.0F};
     }
     return {};
 }
@@ -262,6 +275,11 @@ Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
                 if (vertexIds_[v] == id) {
                     bounds.add(vertexPoints_[v]);
                 }
+            }
+            break;
+        case PickKind::Body:
+            if (id == 1) {
+                bounds = bounds_;
             }
             break;
         case PickKind::None:

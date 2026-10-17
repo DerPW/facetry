@@ -4,6 +4,7 @@
 import CFacetryCore
 import Metal
 import QuartzCore
+import SwiftUI
 
 struct RenderError: Error, CustomStringConvertible {
     let status: facetry_render_status
@@ -19,12 +20,46 @@ struct Pick: Equatable, Sendable {
         case face = 1
         case edge = 2
         case vertex = 3
+        /// The shown model is body 1 until there are several (M1.5).
+        case body = 4
     }
 
     var kind: Kind = .none
     var id: UInt32 = 0
 
     static let none = Pick()
+}
+
+/// What clicks and hovering pick (facetry_pick_filter); keys 1–5 like Plasticity's modes.
+enum PickFilter: Int, CaseIterable, Identifiable, Sendable {
+    case everything = 0
+    case vertices = 1
+    case edges = 2
+    case faces = 3
+    case bodies = 4
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .everything: "All"
+        case .vertices: "Vertices"
+        case .edges: "Edges"
+        case .faces: "Faces"
+        case .bodies: "Bodies"
+        }
+    }
+
+    /// The key that chooses it.
+    var key: KeyEquivalent {
+        switch self {
+        case .vertices: "1"
+        case .edges: "2"
+        case .faces: "3"
+        case .bodies: "4"
+        case .everything: "5"
+        }
+    }
 }
 
 /// How the model is drawn (facetry_visual_style).
@@ -202,6 +237,22 @@ final class ViewportRenderer {
 
     func setSelection(_ pick: Pick) {
         facetry_renderer_set_selection(handle, pick.kind.rawValue, pick.id)
+    }
+
+    /// Selects only `pick` (none clears), or with `toggle` adds or removes it. Returns the
+    /// selection in the order selected.
+    func select(_ pick: Pick, toggle: Bool) -> [Pick] {
+        facetry_renderer_select(handle, pick.kind.rawValue, pick.id, toggle ? 1 : 0)
+        let count = Int(facetry_renderer_selection(handle, nil, 0))
+        var pairs = [UInt32](repeating: 0, count: count * 2)
+        _ = facetry_renderer_selection(handle, &pairs, UInt32(count))
+        return (0..<count).map {
+            Pick(kind: Pick.Kind(rawValue: pairs[$0 * 2]) ?? .none, id: pairs[$0 * 2 + 1])
+        }
+    }
+
+    func setPickFilter(_ filter: PickFilter) {
+        facetry_renderer_set_pick_filter(handle, UInt32(filter.rawValue))
     }
 
     func draw(drawable: CAMetalDrawable, depthStencil: MTLTexture, multisampleColor: MTLTexture?)

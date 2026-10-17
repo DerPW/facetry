@@ -102,9 +102,11 @@ Back to the [roadmap overview](../ROADMAP.md).
       1, 2 or 5 × 10ⁿ document units, major lines on powers of ten, red and green axes
 - [ ] Selection:
   - [x] faces, edges, vertices (M0.4)
-  - [ ] bodies, sketch entities
-  - [ ] selection filters
-  - [ ] multi-select (Shift/Cmd on Mac, toggle mode on iPad)
+  - [x] bodies ([#36](https://github.com/DerPW/facetry/issues/36)); sketch entities join with
+        sketching (M1.3)
+  - [x] selection filters, keys 1–5 ([#36](https://github.com/DerPW/facetry/issues/36))
+  - [x] multi-select (Shift/Cmd on Mac, toggle mode on iPad)
+        ([#36](https://github.com/DerPW/facetry/issues/36))
   - [ ] window and crossing box selection
   - [ ] cycling through overlapping candidates; magnifier for precise touch picks
 - [x] Hover pre-highlight with mouse and with Pencil hover (M0.5; checked on a real iPad in
