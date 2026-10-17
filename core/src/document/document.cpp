@@ -35,24 +35,81 @@ void checkValue(const Value& value, const std::string& what) {
 
 void validateSketch(const Feature& feature, const Sketch& sketch) {
     const std::string context = "Sketch " + feature.id;
-    std::set<std::string> points;
-    for (const SketchPoint& point : sketch.points) {
-        if (point.id.empty() || !points.insert(point.id).second) {
-            invalid(context + ": point IDs must be unique and not empty (\"" + point.id + "\")");
-        }
-        checkValue(point.x, context + ": point " + point.id + " x");
-        checkValue(point.y, context + ": point " + point.id + " y");
+    const bool onFace = sketch.plane == "face";
+    if (!onFace && sketch.plane != "xy" && sketch.plane != "xz" && sketch.plane != "yz") {
+        invalid(context + ": \"" + sketch.plane + "\" is not a sketch plane");
     }
-    std::set<std::string> lines;
+    if (sketch.face.size() != (onFace ? 1U : 0U)) {
+        invalid(context + (onFace ? ": a sketch on a face needs one face reference"
+                                  : ": only a sketch on a face has a face reference"));
+    }
+    if (onFace && sketch.face[0].kind != ElementKind::Face) {
+        invalid(context + ": the sketch plane must be a face");
+    }
+    // Every entity ID is unique within the sketch; points and curves share one namespace.
+    std::set<std::string> ids;
+    std::set<std::string> geometry;  // points and curves, what constraints can bind
+    std::set<std::string> points;
+    const auto add = [&](const std::string& id, const char* what) {
+        if (id.empty() || !ids.insert(id).second) {
+            invalid(context + ": " + what + " IDs must be unique and not empty (\"" + id + "\")");
+        }
+        if (std::string_view(what) != "constraint") {
+            geometry.insert(id);
+        }
+    };
+    const auto point = [&](const std::string& id, const std::string& curve) {
+        if (!points.contains(id)) {
+            invalid(context + ": " + curve + " uses the point " + id + ", which does not exist");
+        }
+    };
+    for (const SketchPoint& p : sketch.points) {
+        add(p.id, "point");
+        points.insert(p.id);
+        checkValue(p.x, context + ": point " + p.id + " x");
+        checkValue(p.y, context + ": point " + p.id + " y");
+    }
     for (const SketchLine& line : sketch.lines) {
-        if (line.id.empty() || !lines.insert(line.id).second) {
-            invalid(context + ": line IDs must be unique and not empty (\"" + line.id + "\")");
-        }
-        if (!points.contains(line.start) || !points.contains(line.end)) {
-            invalid(context + ": line " + line.id + " uses a point that does not exist");
-        }
+        add(line.id, "line");
+        point(line.start, "line " + line.id);
+        point(line.end, "line " + line.id);
         if (line.start == line.end) {
             invalid(context + ": line " + line.id + " starts and ends at the same point");
+        }
+    }
+    for (const SketchArc& arc : sketch.arcs) {
+        add(arc.id, "arc");
+        for (const std::string* p : {&arc.center, &arc.start, &arc.end}) {
+            point(*p, "arc " + arc.id);
+        }
+        if (arc.start == arc.end || arc.center == arc.start || arc.center == arc.end) {
+            invalid(context + ": arc " + arc.id + " needs three different points");
+        }
+    }
+    for (const SketchCircle& circle : sketch.circles) {
+        add(circle.id, "circle");
+        point(circle.center, "circle " + circle.id);
+        checkValue(circle.radius, context + ": circle " + circle.id + " radius");
+    }
+    for (const SketchConstraint& constraint : sketch.constraints) {
+        add(constraint.id, "constraint");
+        const auto* type =
+            std::find_if(std::begin(kSketchConstraintTypes), std::end(kSketchConstraintTypes),
+                         [&](const SketchConstraintType& t) { return t.name == constraint.type; });
+        if (type == std::end(kSketchConstraintTypes)) {
+            invalid(context + ": constraint " + constraint.id + " has the unknown type \"" +
+                    constraint.type + "\"");
+        }
+        if (constraint.entities.size() < type->minEntities ||
+            constraint.entities.size() > type->maxEntities) {
+            invalid(context + ": constraint " + constraint.id + " (" + constraint.type +
+                    ") binds the wrong number of entities");
+        }
+        for (const std::string& entity : constraint.entities) {
+            if (!geometry.contains(entity)) {
+                invalid(context + ": constraint " + constraint.id + " binds " + entity +
+                        ", which is not a point or curve of the sketch");
+            }
         }
     }
 }
@@ -72,6 +129,9 @@ std::vector<Reference>* Feature::references() noexcept {
     if (auto* fillet = std::get_if<Fillet>(&data)) {
         return &fillet->edges;
     }
+    if (auto* sketch = std::get_if<Sketch>(&data)) {
+        return &sketch->face;
+    }
     return nullptr;
 }
 
@@ -79,7 +139,26 @@ const std::vector<Reference>* Feature::references() const noexcept {
     if (const auto* fillet = std::get_if<Fillet>(&data)) {
         return &fillet->edges;
     }
+    if (const auto* sketch = std::get_if<Sketch>(&data)) {
+        return &sketch->face;
+    }
     return nullptr;
+}
+
+void Feature::forEachValue(const std::function<void(Value&)>& visit) {
+    if (auto* sketch = std::get_if<Sketch>(&data)) {
+        for (SketchPoint& point : sketch->points) {
+            visit(point.x);
+            visit(point.y);
+        }
+        for (SketchCircle& circle : sketch->circles) {
+            visit(circle.radius);
+        }
+    } else if (auto* extrude = std::get_if<Extrude>(&data)) {
+        visit(extrude->distance);
+    } else if (auto* fillet = std::get_if<Fillet>(&data)) {
+        visit(fillet->radius);
+    }
 }
 
 std::string Document::newId(std::string_view prefix) {
@@ -93,6 +172,15 @@ std::string Document::newId(std::string_view prefix) {
             }
             for (const SketchLine& line : sketch->lines) {
                 used = std::max(used, idNumber(line.id));
+            }
+            for (const SketchArc& arc : sketch->arcs) {
+                used = std::max(used, idNumber(arc.id));
+            }
+            for (const SketchCircle& circle : sketch->circles) {
+                used = std::max(used, idNumber(circle.id));
+            }
+            for (const SketchConstraint& constraint : sketch->constraints) {
+                used = std::max(used, idNumber(constraint.id));
             }
         }
     }
@@ -183,16 +271,7 @@ void convertUnits(Document& document, LengthUnit units) {
         parameter.value *= factor;
     }
     for (Feature& feature : document.root.timeline) {
-        if (auto* sketch = std::get_if<Sketch>(&feature.data)) {
-            for (SketchPoint& point : sketch->points) {
-                convert(point.x);
-                convert(point.y);
-            }
-        } else if (auto* extrude = std::get_if<Extrude>(&feature.data)) {
-            convert(extrude->distance);
-        } else if (auto* fillet = std::get_if<Fillet>(&feature.data)) {
-            convert(fillet->radius);
-        }
+        feature.forEachValue(convert);
     }
 }
 

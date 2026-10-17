@@ -10,6 +10,7 @@ add_executable(facetry-core-tests
     naming_test.cpp
     occt_smoke_test.cpp
     session_json_test.cpp
+    sketch_test.cpp
     version_test.cpp)
 
 # The OCCT smoke tests use OpenCASCADE directly, so the test binary links it explicitly.

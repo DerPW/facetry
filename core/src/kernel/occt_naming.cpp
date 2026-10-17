@@ -19,7 +19,10 @@
 #include <BRepGProp.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRep_Tool.hxx>
+#include <GC_MakeArcOfCircle.hxx>
 #include <GProp_GProps.hxx>
+#include <GeomAbs_SurfaceType.hxx>
+#include <Geom_TrimmedCurve.hxx>
 #include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_List.hxx>
 #include <TopExp.hxx>
@@ -28,6 +31,10 @@
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
+#include <gp_Ax2.hxx>
+#include <gp_Ax3.hxx>
+#include <gp_Circ.hxx>
+#include <gp_Dir.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Vec.hxx>
@@ -271,18 +278,46 @@ bool samePoint(double x0, double y0, double x1, double y1) {
 }
 
 void checkLoop(std::span<const ProfileSegment> loop) {
-    if (loop.size() < 3) {
+    using Kind = ProfileSegment::Kind;
+    if (loop.size() == 1 && loop[0].kind == Kind::Circle) {
+        for (const double value : {loop[0].cx, loop[0].cy, loop[0].radius}) {
+            kernel::requireFinite(value, "Profile coordinate");
+        }
+        kernel::requirePositive(loop[0].radius, "Circle radius");
+        return;
+    }
+    const bool curved = std::any_of(loop.begin(), loop.end(), [](const ProfileSegment& segment) {
+        return segment.kind == Kind::Arc;
+    });
+    if (loop.size() < (curved ? 2U : 3U)) {
         throw Error(ErrorCode::InvalidArgument, "A profile needs at least three edges");
     }
     for (std::size_t i = 0; i < loop.size(); ++i) {
         const ProfileSegment& segment = loop[i];
         const ProfileSegment& next = loop[(i + 1) % loop.size()];
-        for (const double value : {segment.x0, segment.y0, segment.x1, segment.y1}) {
+        if (segment.kind == Kind::Circle) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "Circle " + segment.name + " is a profile on its own");
+        }
+        for (const double value :
+             {segment.x0, segment.y0, segment.x1, segment.y1, segment.cx, segment.cy}) {
             kernel::requireFinite(value, "Profile coordinate");
         }
-        if (samePoint(segment.x0, segment.y0, segment.x1, segment.y1)) {
+        if (segment.kind == Kind::Line &&
+            samePoint(segment.x0, segment.y0, segment.x1, segment.y1)) {
             throw Error(ErrorCode::InvalidArgument,
                         "Profile edge " + segment.name + " has zero length");
+        }
+        if (segment.kind == Kind::Arc) {
+            const double r0 = std::hypot(segment.x0 - segment.cx, segment.y0 - segment.cy);
+            const double r1 = std::hypot(segment.x1 - segment.cx, segment.y1 - segment.cy);
+            if (r0 < kPointTolerance || samePoint(segment.x0, segment.y0, segment.x1, segment.y1)) {
+                throw Error(ErrorCode::InvalidArgument, "Arc " + segment.name + " is degenerate");
+            }
+            if (std::abs(r1 - r0) > kPointTolerance * std::max(1.0, r0)) {
+                throw Error(ErrorCode::InvalidArgument,
+                            "Arc " + segment.name + " ends off its circle");
+            }
         }
         if (!samePoint(segment.x1, segment.y1, next.x0, next.y0)) {
             throw Error(ErrorCode::InvalidArgument, "Profile edge " + segment.name +
@@ -307,36 +342,111 @@ ElementGeometry elementGeometry(const Shape& shape, ElementKind kind, std::uint3
                          [&] { return geometryOf(elements(static_cast<int>(id))); });
 }
 
+Vec3 SketchFrame::normal() const noexcept {
+    return {xAxis.y * yAxis.z - xAxis.z * yAxis.y, xAxis.z * yAxis.x - xAxis.x * yAxis.z,
+            xAxis.x * yAxis.y - xAxis.y * yAxis.x};
+}
+
+Vec3 SketchFrame::at(double x, double y) const noexcept {
+    return {origin.x + xAxis.x * x + yAxis.x * y, origin.y + xAxis.y * x + yAxis.y * y,
+            origin.z + xAxis.z * x + yAxis.z * y};
+}
+
+SketchFrame originPlaneFrame(std::string_view plane) {
+    if (plane == "xy") {
+        return {};
+    }
+    if (plane == "xz") {
+        return {.origin = {}, .xAxis = {1.0, 0.0, 0.0}, .yAxis = {0.0, 0.0, 1.0}};
+    }
+    if (plane == "yz") {
+        return {.origin = {}, .xAxis = {0.0, 1.0, 0.0}, .yAxis = {0.0, 0.0, 1.0}};
+    }
+    throw Error(ErrorCode::InvalidArgument,
+                "\"" + std::string(plane) + "\" is not an origin plane (xy, xz or yz)");
+}
+
+namespace {
+
+gp_Pnt point(const Vec3& p) {
+    return {p.x, p.y, p.z};
+}
+
+gp_Dir direction(const Vec3& d) {
+    return {d.x, d.y, d.z};
+}
+
+// The point halfway along an arc, in sketch coordinates.
+std::pair<double, double> arcMiddle(const ProfileSegment& arc) {
+    const double start = std::atan2(arc.y0 - arc.cy, arc.x0 - arc.cx);
+    const double end = std::atan2(arc.y1 - arc.cy, arc.x1 - arc.cx);
+    double sweep = arc.clockwise ? start - end : end - start;
+    while (sweep <= 0.0) {
+        sweep += 2.0 * M_PI;
+    }
+    const double middle = start + (arc.clockwise ? -sweep : sweep) / 2.0;
+    const double radius = std::hypot(arc.x0 - arc.cx, arc.y0 - arc.cy);
+    return {arc.cx + radius * std::cos(middle), arc.cy + radius * std::sin(middle)};
+}
+
+}  // namespace
+
 NamedShape extrudeProfile(std::span<const ProfileSegment> loop, double distance,
-                          std::string_view feature) {
+                          std::string_view feature, const SketchFrame& frame) {
     checkLoop(loop);
     kernel::requireFinite(distance, "Extrude distance");
     if (std::abs(distance) < kPointTolerance) {
         throw Error(ErrorCode::InvalidArgument, "Extrude distance must not be zero");
     }
     return kernel::guard("Extruding a profile", [&] {
-        // One vertex per corner, shared by the two edges meeting there, so the wire is closed
-        // without copying edges and every edge of the face is one of ours.
-        std::vector<TopoDS_Vertex> corners;
-        for (const ProfileSegment& segment : loop) {
-            corners.push_back(BRepBuilderAPI_MakeVertex(gp_Pnt(segment.x0, segment.y0, 0.0)));
-        }
-        BRepBuilderAPI_MakeWire wire;
+        const Vec3 n = frame.normal();
         std::vector<TopoDS_Edge> edges;
-        for (std::size_t i = 0; i < loop.size(); ++i) {
-            edges.push_back(BRepBuilderAPI_MakeEdge(corners[i], corners[(i + 1) % loop.size()]));
+        BRepBuilderAPI_MakeWire wire;
+        if (loop.size() == 1 && loop[0].kind == ProfileSegment::Kind::Circle) {
+            const ProfileSegment& circle = loop[0];
+            const gp_Ax2 axis(point(frame.at(circle.cx, circle.cy)), direction(n),
+                              direction(frame.xAxis));
+            edges.push_back(BRepBuilderAPI_MakeEdge(gp_Circ(axis, circle.radius)));
             wire.Add(edges.back());
+        } else {
+            // One vertex per corner, shared by the two edges meeting there, so the wire is
+            // closed without copying edges and every edge of the face is one of ours.
+            std::vector<TopoDS_Vertex> corners;
+            for (const ProfileSegment& segment : loop) {
+                corners.push_back(
+                    BRepBuilderAPI_MakeVertex(point(frame.at(segment.x0, segment.y0))));
+            }
+            for (std::size_t i = 0; i < loop.size(); ++i) {
+                const ProfileSegment& segment = loop[i];
+                const TopoDS_Vertex& from = corners[i];
+                const TopoDS_Vertex& to = corners[(i + 1) % loop.size()];
+                if (segment.kind == ProfileSegment::Kind::Arc) {
+                    // Through its middle, so the arc runs the right way round.
+                    const auto [mx, my] = arcMiddle(segment);
+                    const GC_MakeArcOfCircle arc(BRep_Tool::Pnt(from), point(frame.at(mx, my)),
+                                                 BRep_Tool::Pnt(to));
+                    if (!arc.IsDone()) {
+                        throw Error(ErrorCode::Kernel, "Arc " + segment.name + " is degenerate");
+                    }
+                    edges.push_back(BRepBuilderAPI_MakeEdge(arc.Value(), from, to));
+                } else {
+                    edges.push_back(BRepBuilderAPI_MakeEdge(from, to));
+                }
+                wire.Add(edges.back());
+            }
         }
         if (!wire.IsDone()) {
             throw Error(ErrorCode::Kernel, "The profile edges do not form a wire");
         }
         // Inside = true orients the face to the area enclosed by the wire, whichever direction
         // the profile runs.
-        BRepBuilderAPI_MakeFace face(gp_Pln(gp::XOY()), wire.Wire(), /*Inside=*/true);
+        const gp_Pln plane(gp_Ax3(point(frame.origin), direction(n), direction(frame.xAxis)));
+        BRepBuilderAPI_MakeFace face(plane, wire.Wire(), /*Inside=*/true);
         if (!face.IsDone()) {
             throw Error(ErrorCode::Kernel, "The profile does not bound a face");
         }
-        BRepPrimAPI_MakePrism prism(face.Face(), gp_Vec(0.0, 0.0, distance));
+        BRepPrimAPI_MakePrism prism(face.Face(),
+                                    gp_Vec(n.x * distance, n.y * distance, n.z * distance));
         prism.Build();
         if (!prism.IsDone()) {
             throw Error(ErrorCode::Kernel, "Extruding the profile failed");
@@ -351,6 +461,32 @@ NamedShape extrudeProfile(std::span<const ProfileSegment> loop, double distance,
         names.add(prism.FirstShape(), prefix + ":start");
         names.add(prism.LastShape(), prefix + ":end");
         return nameTopology(std::move(result), names.finish(feature));
+    });
+}
+
+SketchFrame planarFaceFrame(const NamedShape& body, std::uint32_t faceId) {
+    const Shape::Impl& data = body.shape.impl();
+    if (faceId == 0 || faceId > static_cast<std::uint32_t>(data.faces.Extent())) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "Face " + std::to_string(faceId) + " does not exist");
+    }
+    return kernel::guard("Finding a face's plane", [&] {
+        const TopoDS_Face& face = TopoDS::Face(data.faces(static_cast<int>(faceId)));
+        const BRepAdaptor_Surface surface(face);
+        if (surface.GetType() != GeomAbs_Plane) {
+            throw Error(ErrorCode::InvalidArgument, "Sketches need a planar face");
+        }
+        const gp_Ax3 position = surface.Plane().Position();
+        gp_Dir normal = position.Direction();
+        if (face.Orientation() == TopAbs_REVERSED) {
+            normal.Reverse();  // out of the body
+        }
+        const gp_Dir x = position.XDirection();
+        const gp_Dir y = normal.Crossed(x);
+        const gp_Pnt origin = position.Location();
+        return SketchFrame{.origin = {origin.X(), origin.Y(), origin.Z()},
+                           .xAxis = {x.X(), x.Y(), x.Z()},
+                           .yAxis = {y.X(), y.Y(), y.Z()}};
     });
 }
 

@@ -5,7 +5,9 @@
 
 #include "facetry/core/naming.hpp"
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -17,8 +19,9 @@
 namespace facetry::core {
 
 // Version of the JSON written by toJson(). Older versions are migrated when they are read:
-// version 1 has no units and is in millimeters.
-inline constexpr int kDocumentFormatVersion = 2;
+// version 1 has no units and is in millimeters; up to version 2 sketches lie on XY and hold only
+// points and lines.
+inline constexpr int kDocumentFormatVersion = 3;
 
 // Version of the naming scheme (ADR-0006). Each feature records the version it was created with,
 // so a later change to the scheme can migrate old documents instead of silently renaming.
@@ -76,19 +79,77 @@ struct SketchPoint {
     friend bool operator==(const SketchPoint&, const SketchPoint&) = default;
 };
 
+// Curves refer to their points by ID. Construction curves help drawing but never bound a profile.
 struct SketchLine {
     std::string id;
     std::string start;  // point IDs
     std::string end;
+    bool construction = false;
 
     friend bool operator==(const SketchLine&, const SketchLine&) = default;
 };
 
-// A sketch on the XY plane whose lines form one closed loop, its profile. Sketch planes,
-// constraints and profile detection arrive with M1.3 and M1.4.
+// An arc around `center`, counter-clockwise from `start` to `end` as seen from the side the
+// sketch's normal points to. `end` lies on the circle through `start`.
+struct SketchArc {
+    std::string id;
+    std::string center;  // point IDs
+    std::string start;
+    std::string end;
+    bool construction = false;
+
+    friend bool operator==(const SketchArc&, const SketchArc&) = default;
+};
+
+struct SketchCircle {
+    std::string id;
+    std::string center;  // point ID
+    Value radius;
+    bool construction = false;
+
+    friend bool operator==(const SketchCircle&, const SketchCircle&) = default;
+};
+
+// A geometric constraint, kept for the solver (M1.4, ADR-0005): its type and the IDs of the
+// points and curves it binds. Types: see kSketchConstraintTypes.
+struct SketchConstraint {
+    std::string id;
+    std::string type;
+    std::vector<std::string> entities;
+
+    friend bool operator==(const SketchConstraint&, const SketchConstraint&) = default;
+};
+
+// Constraint types and how many entities each binds (at least, at most).
+struct SketchConstraintType {
+    std::string_view name;
+    std::size_t minEntities;
+    std::size_t maxEntities;
+};
+inline constexpr SketchConstraintType kSketchConstraintTypes[] = {
+    {"coincident", 2, 2},     // two points, or a point on a curve
+    {"horizontal", 1, 2},     // a line, or two points
+    {"vertical", 1, 2},       // a line, or two points
+    {"parallel", 2, 2},       // two lines
+    {"perpendicular", 2, 2},  // two lines
+    {"tangent", 2, 2},        // two curves
+    {"equal", 2, 2},          // two lines (length) or two arcs or circles (radius)
+    {"midpoint", 2, 2},       // a point and a line
+    {"concentric", 2, 2},     // two arcs or circles
+    {"fix", 1, 1},            // any entity
+};
+
+// A sketch (ADR-0013): points and curves with stable IDs (ADR-0006) on a plane. Its profiles are
+// the regions its curves enclose.
 struct Sketch {
+    // An origin plane ("xy", "xz" or "yz"), or "face": the planar face `face` refers to.
+    std::string plane = "xy";
+    std::vector<Reference> face;  // one reference when `plane` is "face", empty otherwise
     std::vector<SketchPoint> points;
     std::vector<SketchLine> lines;
+    std::vector<SketchArc> arcs;
+    std::vector<SketchCircle> circles;
+    std::vector<SketchConstraint> constraints;
 
     friend bool operator==(const Sketch&, const Sketch&) = default;
 };
@@ -120,9 +181,12 @@ struct Feature {
     FeatureData data;
 
     // The references the feature depends on, in a fixed order; nullptr for features without
-    // references (sketches, extrudes).
+    // references (extrudes). A sketch's are its face, if it lies on one.
     [[nodiscard]] std::vector<Reference>* references() noexcept;
     [[nodiscard]] const std::vector<Reference>* references() const noexcept;
+
+    // Calls `visit` on every value of the feature; all of them are lengths.
+    void forEachValue(const std::function<void(Value&)>& visit);
 
     friend bool operator==(const Feature&, const Feature&) = default;
 };

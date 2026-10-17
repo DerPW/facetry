@@ -37,17 +37,10 @@ std::string cacheKey(Feature feature, const Document& document) {
             value = Value(parameter->value);
         }
     };
-    if (auto* sketch = std::get_if<Sketch>(&feature.data)) {
-        for (SketchPoint& point : sketch->points) {
-            fill(point.x);
-            fill(point.y);
-        }
-    } else if (auto* extrude = std::get_if<Extrude>(&feature.data)) {
-        fill(extrude->distance);
-    } else if (auto* fillet = std::get_if<Fillet>(&feature.data)) {
-        fill(fillet->radius);
-        for (Reference& edge : fillet->edges) {
-            edge.shadow.reset();
+    feature.forEachValue(fill);
+    if (auto* references = feature.references()) {
+        for (Reference& reference : *references) {
+            reference.shadow.reset();
         }
     }
     feature.name.clear();
@@ -64,51 +57,141 @@ std::string describe(const ElementGeometry& geometry, LengthUnit units) {
     return text.str();
 }
 
-// The sketch's lines, walked as one closed loop starting with the first line.
-std::vector<ProfileSegment> sketchProfile(const Feature& feature, const Sketch& sketch,
-                                          const Document& document) {
-    if (sketch.lines.empty()) {
-        throw Error(ErrorCode::InvalidArgument, "The sketch has no lines");
+std::optional<std::uint32_t> resolveReference(const NamedShape& body, const Reference& reference,
+                                              LengthUnit units, FeatureResult& result);
+
+// The sketch's plane: an origin plane, or the face its reference names (resolved like a
+// fillet's edges, with the shadow as a fallback).
+SketchFrame sketchFrame(const Sketch& sketch, const Document& document, const ModelState& model,
+                        FeatureResult& result) {
+    if (sketch.plane != "face") {
+        return originPlaneFrame(sketch.plane);
     }
+    const Reference& face = sketch.face.at(0);
+    result.resolved.assign(1, std::nullopt);
+    const auto body = model.bodies.find(face.body);
+    std::optional<std::uint32_t> id;
+    if (body == model.bodies.end()) {
+        result.messages.push_back("The body " + face.body + " does not exist.");
+    } else {
+        id = resolveReference(*body->second, face, document.units, result);
+    }
+    if (!id) {
+        result.brokenReferences.push_back(0);
+        throw Error(ErrorCode::InvalidArgument, "Select the face the sketch lies on again.");
+    }
+    result.resolved[0] =
+        Shadow{.id = *id, .geometry = elementGeometry(body->second->shape, face.kind, *id)};
+    return planarFaceFrame(*body->second, *id);
+}
+
+SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
+                              const Document& document, const ModelState& model,
+                              FeatureResult& result) {
+    SketchGeometry geometry{.frame = sketchFrame(sketch, document, model, result), .curves = {}};
     std::map<std::string, std::pair<double, double>> points;
     for (const SketchPoint& point : sketch.points) {
         points[point.id] = {length(point.x, document), length(point.y, document)};
     }
-    std::map<std::string, std::vector<std::size_t>> linesAt;
-    for (std::size_t i = 0; i < sketch.lines.size(); ++i) {
-        linesAt[sketch.lines[i].start].push_back(i);
-        linesAt[sketch.lines[i].end].push_back(i);
+    const auto name = [&](const std::string& curve) { return feature.id + "/" + curve; };
+    for (const SketchLine& line : sketch.lines) {
+        const auto [x0, y0] = points.at(line.start);
+        const auto [x1, y1] = points.at(line.end);
+        geometry.curves.push_back(
+            {.segment = {.name = name(line.id), .x0 = x0, .y0 = y0, .x1 = x1, .y1 = y1},
+             .start = line.start,
+             .end = line.end,
+             .construction = line.construction});
     }
-    for (const auto& [point, lines] : linesAt) {
-        if (lines.size() != 2) {
+    for (const SketchArc& arc : sketch.arcs) {
+        const auto [cx, cy] = points.at(arc.center);
+        const auto [x0, y0] = points.at(arc.start);
+        const auto [x1, y1] = points.at(arc.end);
+        geometry.curves.push_back({.segment = {.name = name(arc.id),
+                                               .x0 = x0,
+                                               .y0 = y0,
+                                               .x1 = x1,
+                                               .y1 = y1,
+                                               .kind = ProfileSegment::Kind::Arc,
+                                               .cx = cx,
+                                               .cy = cy},
+                                   .start = arc.start,
+                                   .end = arc.end,
+                                   .construction = arc.construction});
+    }
+    for (const SketchCircle& circle : sketch.circles) {
+        const auto [cx, cy] = points.at(circle.center);
+        geometry.curves.push_back({.segment = {.name = name(circle.id),
+                                               .kind = ProfileSegment::Kind::Circle,
+                                               .cx = cx,
+                                               .cy = cy,
+                                               .radius = length(circle.radius, document)},
+                                   .start = {},
+                                   .end = {},
+                                   .construction = circle.construction});
+    }
+    return geometry;
+}
+
+// The profile an extrusion takes: the sketch's curves (not construction) as one closed loop of
+// lines and arcs, or a single circle. Several profiles come with profile selection (#47).
+std::vector<ProfileSegment> profileLoop(const SketchGeometry& sketch) {
+    std::vector<const SketchCurve*> curves;
+    std::size_t circles = 0;
+    for (const SketchCurve& curve : sketch.curves) {
+        if (!curve.construction) {
+            curves.push_back(&curve);
+            circles += curve.segment.kind == ProfileSegment::Kind::Circle ? 1 : 0;
+        }
+    }
+    if (curves.empty()) {
+        throw Error(ErrorCode::InvalidArgument, "The sketch has nothing to extrude");
+    }
+    if (circles > 0) {
+        if (curves.size() == 1) {
+            return {curves[0]->segment};
+        }
+        throw Error(ErrorCode::InvalidArgument,
+                    "The sketch has several profiles; choosing one comes with profile selection");
+    }
+    std::map<std::string, std::vector<std::size_t>> curvesAt;
+    for (std::size_t i = 0; i < curves.size(); ++i) {
+        curvesAt[curves[i]->start].push_back(i);
+        curvesAt[curves[i]->end].push_back(i);
+    }
+    for (const auto& [point, at] : curvesAt) {
+        if (at.size() != 2) {
             throw Error(ErrorCode::InvalidArgument,
-                        "The sketch lines must form one closed loop, but point " + point +
-                            " is shared by " + std::to_string(lines.size()) + " lines");
+                        "The sketch curves must form one closed loop, but point " + point +
+                            " is shared by " + std::to_string(at.size()) + " curves");
         }
     }
 
     std::vector<ProfileSegment> loop;
-    const std::string& first = sketch.lines.front().start;
+    const std::string& first = curves.front()->start;
     std::string at = first;
     std::size_t current = 0;
     while (true) {
-        const SketchLine& line = sketch.lines[current];
-        const std::string& next = line.start == at ? line.end : line.start;
-        const auto [x0, y0] = points.at(at);
-        const auto [x1, y1] = points.at(next);
-        loop.push_back({feature.id + "/" + line.id, x0, y0, x1, y1});
-        at = next;
+        const SketchCurve& curve = *curves[current];
+        ProfileSegment segment = curve.segment;
+        if (curve.start != at) {
+            // Walked from its end to its start: swap the ends; an arc then runs clockwise.
+            std::swap(segment.x0, segment.x1);
+            std::swap(segment.y0, segment.y1);
+            segment.clockwise = !segment.clockwise;
+        }
+        loop.push_back(segment);
+        at = curve.start == at ? curve.end : curve.start;
         if (at == first) {
             break;
         }
-        const std::vector<std::size_t>& candidates = linesAt.at(at);
+        const std::vector<std::size_t>& candidates = curvesAt.at(at);
         current = candidates[0] == current ? candidates[1] : candidates[0];
     }
-    if (loop.size() != sketch.lines.size()) {
+    if (loop.size() != curves.size()) {
         throw Error(ErrorCode::InvalidArgument,
-                    "The sketch lines must form one closed loop, but " +
-                        std::to_string(sketch.lines.size() - loop.size()) +
-                        " lines are not part of it");
+                    "The sketch curves must form one closed loop, but " +
+                        std::to_string(curves.size() - loop.size()) + " curves are not part of it");
     }
     return loop;
 }
@@ -196,16 +279,17 @@ FeatureResult execute(const Feature& feature, const Document& document, ModelSta
     ModelState after = model;
     try {
         if (const auto* sketch = std::get_if<Sketch>(&feature.data)) {
-            after.profiles[feature.id] = std::make_shared<const std::vector<ProfileSegment>>(
-                sketchProfile(feature, *sketch, document));
+            after.sketches[feature.id] = std::make_shared<const SketchGeometry>(
+                sketchGeometry(feature, *sketch, document, model, result));
         } else if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
-            const auto profile = model.profiles.find(extrude->profile);
-            if (profile == model.profiles.end()) {
+            const auto profile = model.sketches.find(extrude->profile);
+            if (profile == model.sketches.end()) {
                 throw Error(ErrorCode::InvalidArgument,
                             "The sketch " + extrude->profile + " has no profile to extrude");
             }
             after.bodies[feature.id] = std::make_shared<const NamedShape>(
-                extrudeProfile(*profile->second, length(extrude->distance, document), feature.id));
+                extrudeProfile(profileLoop(*profile->second), length(extrude->distance, document),
+                               feature.id, profile->second->frame));
         } else if (const auto* fillet = std::get_if<Fillet>(&feature.data)) {
             executeFillet(feature, *fillet, document, after, result);
         }

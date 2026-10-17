@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <numbers>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -72,12 +73,32 @@ TEST_CASE("the checked-in example documents still load and regenerate") {
     expectRoundAt(session.regenerate(), kFillet, kWidth, kDepth, kHeight, kRadius,
                   kWidth * kDepth * kHeight);
 
-    // Version 2, in inches: 1 × 0.5 × 0.25 in, rounded by 0.125 in.
+    // Version 2, in inches: 1 × 0.5 × 0.25 in, rounded by 0.125 in. Its sketch moves to XY.
     const std::string inches = example("corner-fillet-inch.json");
-    CHECK(toJson(parseDocument(inches)) == inches);
+    const Document inchDocument = parseDocument(inches);
+    CHECK(std::get<Sketch>(inchDocument.root.timeline[0].data).plane == "xy");
+    CHECK(parseDocument(toJson(inchDocument)) == inchDocument);
     Session inchSession = Session::load(inches);
     CHECK(inchSession.document().units == LengthUnit::Inch);
     expectRoundAt(inchSession.regenerate(), kFillet, 25.4, 12.7, 6.35, 3.175, 25.4 * 12.7 * 6.35);
+
+    // Version 3: a 20 × 10 slot of arcs and lines on XZ, 8 deep; a boss of radius 3 on its end
+    // face, 4 high; a pin of radius 2 on YZ, 30 long, with a construction circle around it.
+    const std::string sketches = example("sketch-planes.json");
+    CHECK(toJson(parseDocument(sketches)) == sketches);
+    Session sketchSession = Session::load(sketches);
+    const Regeneration& regenerated = sketchSession.regenerate();
+    CHECK(statuses(regenerated) == std::vector<FeatureStatus>(6, FeatureStatus::Ok));
+    const auto volume = [&](const char* body) {
+        return regenerated.model.bodies.at(body)->shape.properties().volume;
+    };
+    const double pi = std::numbers::pi;
+    CHECK(volume("f2") == doctest::Approx((20 * 10 + pi * 25) * 8));
+    CHECK(volume("f4") == doctest::Approx(pi * 9 * 4));
+    CHECK(volume("f6") == doctest::Approx(pi * 4 * 30));
+    const BoundingBox boss = regenerated.model.bodies.at("f4")->shape.properties().bounds;
+    CHECK(boss.min.y == doctest::Approx(-12));
+    CHECK(boss.max.y == doctest::Approx(-8));
 }
 
 TEST_CASE("a document in inches regenerates the same geometry as its millimeter equivalent") {
@@ -135,7 +156,7 @@ TEST_CASE("malformed and newer documents are rejected") {
     };
     CHECK(errorCode(load("not json")) == ErrorCode::InvalidArgument);
     CHECK(errorCode(load(R"({"format": "something-else"})")) == ErrorCode::InvalidArgument);
-    CHECK(errorCode(load(replaced("\"formatVersion\": 2", "\"formatVersion\": 3"))) ==
+    CHECK(errorCode(load(replaced("\"formatVersion\": 3", "\"formatVersion\": 4"))) ==
           ErrorCode::Unsupported);
     CHECK(errorCode(load(replaced("\"units\": \"mm\"", "\"units\": \"ft\""))) ==
           ErrorCode::InvalidArgument);
@@ -239,18 +260,18 @@ TEST_CASE("suppressed and failing features pass the model through") {
           std::vector{FeatureStatus::Ok, FeatureStatus::Ok, FeatureStatus::Suppressed});
     CHECK(roundFace(*suppressed.model.bodies.at("f2"), kFillet) == 0);
 
-    // An open sketch fails; the extrude has no profile and fails; the fillet has no body.
+    // An open sketch is fine on its own, but the extrude finds no closed profile and fails, and
+    // the fillet has no body.
     session.edit([](Document& document) {
         document.root.timeline[2].suppressed = false;
         std::get<Sketch>(document.root.timeline[0].data).lines.pop_back();
     });
     const Regeneration& failed = session.regenerate();
     CHECK(statuses(failed) ==
-          std::vector{FeatureStatus::Error, FeatureStatus::Error, FeatureStatus::Error});
+          std::vector{FeatureStatus::Ok, FeatureStatus::Error, FeatureStatus::Error});
     CHECK(failed.model.bodies.empty());
-    for (const FeatureResult& result : failed.features) {
-        CHECK_FALSE(result.messages.empty());
-    }
+    CHECK(failed.features[1].messages.at(0).find("closed loop") != std::string::npos);
+    CHECK_FALSE(failed.features[2].messages.empty());
 
     REQUIRE(session.undo());
     REQUIRE(session.undo());
