@@ -27,6 +27,8 @@ final class ViewportModel {
     var boxMode = false
     /// The selection box being dragged, in view points; drawn by ``SelectionBoxOverlay``.
     fileprivate(set) var selectionBox: (start: CGPoint, end: CGPoint)?
+    /// Where the precision selector's crosshair points (#38), above the finger.
+    fileprivate(set) var crosshair: CGPoint?
     /// Mouse and trackpad preset; the app stores it per device.
     var navigation = NavigationPreset.facetry
     /// One finger pans and two fingers orbit, instead of the other way round.
@@ -230,10 +232,30 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         renderer.setHover(renderer.pick(at: point, radius: radius))
     }
 
-    /// `toggle`: add or remove the picked element; otherwise select only it (nothing clears).
+    /// A click or tap: selects the first candidate at `point`, or the next one when the same
+    /// spot is clicked again; `toggle` adds or removes it instead.
     func select(at point: CGPoint, radius: Double, toggle: Bool) {
         guard let renderer else { return }
-        select(renderer.pick(at: point, radius: radius), toggle: toggle || model.multiSelect)
+        let (pick, selected) = renderer.click(
+            at: point, radius: radius, toggle: toggle || model.multiSelect)
+        model.selected = selected
+        // The element just added, for repairs; nothing when it was just removed.
+        model.selection = selected.contains(pick) ? pick : .none
+        shownSelection = model.selection
+    }
+
+    /// Shows the precision selector's crosshair at `point` and highlights what it is over, or
+    /// hides it (nil).
+    func updateCrosshair(_ point: CGPoint?) {
+        model.crosshair = point
+        guard let renderer else { return }
+        renderer.setHover(point.map { renderer.pick(at: $0, radius: PickRadius.pencil) } ?? .none)
+    }
+
+    /// Whether there is geometry under `point` (a long press there starts the precision
+    /// selector rather than a box).
+    func hasGeometry(at point: CGPoint) -> Bool {
+        renderer?.pick(at: point, radius: PickRadius.finger).kind != Pick.Kind.none
     }
 
     /// Shows the box being dragged, or hides it (nil).
@@ -278,6 +300,22 @@ struct SelectionBoxOverlay: View {
             context.stroke(
                 Path(rect), with: .color(color),
                 style: StrokeStyle(lineWidth: 1, dash: crossing ? [5, 3] : []))
+        }
+        .overlay {
+            // The precision selector: a crosshair above the finger.
+            Canvas { context, _ in
+                guard let point = model.crosshair else { return }
+                let ring = Path(
+                    ellipseIn: CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28))
+                var cross = Path()
+                cross.move(to: CGPoint(x: point.x - 22, y: point.y))
+                cross.addLine(to: CGPoint(x: point.x + 22, y: point.y))
+                cross.move(to: CGPoint(x: point.x, y: point.y - 22))
+                cross.addLine(to: CGPoint(x: point.x, y: point.y + 22))
+                context.stroke(ring, with: .color(.white.opacity(0.8)), lineWidth: 4)
+                context.stroke(ring, with: .color(.accentColor), lineWidth: 2)
+                context.stroke(cross, with: .color(.accentColor), lineWidth: 1)
+            }
         }
         .allowsHitTesting(false)
     }
@@ -439,6 +477,8 @@ struct SelectionBoxOverlay: View {
         private var lastScale: CGFloat = 1
         private var oneTouchAction = NavigationPreset.Action.orbit
         private var boxStart: CGPoint?
+        /// The precision selector is running (a long press over geometry).
+        private var precise = false
 
         private var navigation: NavigationPreset {
             coordinator?.model.navigation ?? .facetry
@@ -508,8 +548,11 @@ struct SelectionBoxOverlay: View {
                 default:
                     oneTouchAction = oneFingerPans ? .pan : .orbit
                 }
-                // The Box toggle (or a long press already running) makes the drag a box.
-                if coordinator?.model.boxMode == true || boxStart != nil {
+                // The precision selector owns the finger while it runs.
+                if precise {
+                    oneTouchAction = .none
+                } else if coordinator?.model.boxMode == true || boxStart != nil {
+                    // The Box toggle (or a long press already running) makes the drag a box.
                     oneTouchAction = .select
                     boxStart =
                         boxStart
@@ -539,27 +582,46 @@ struct SelectionBoxOverlay: View {
             }
         }
 
+        // A finger held still: over geometry the precision selector (a crosshair above the
+        // finger, selecting where it points on release), over empty space a selection box.
         @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            let location = recognizer.location(in: self)
+            let aim = CGPoint(x: location.x, y: location.y - Self.precisionOffset)
             switch recognizer.state {
             case .began:
-                boxStart = recognizer.location(in: self)
-                coordinator?.updateBox(from: boxStart, to: recognizer.location(in: self))
+                if coordinator?.hasGeometry(at: location) == true {
+                    precise = true
+                    coordinator?.updateCrosshair(aim)
+                } else {
+                    boxStart = location
+                    coordinator?.updateBox(from: boxStart, to: location)
+                }
             case .changed:
-                if let boxStart {
-                    coordinator?.updateBox(from: boxStart, to: recognizer.location(in: self))
+                if precise {
+                    coordinator?.updateCrosshair(aim)
+                } else if let boxStart {
+                    coordinator?.updateBox(from: boxStart, to: location)
                 }
             case .ended:
-                // Without a drag the pan recognizer never ran: finish the box here.
-                if let start = boxStart {
-                    coordinator?.finishBox(
-                        from: start, to: recognizer.location(in: self), add: false)
+                if precise {
+                    coordinator?.updateCrosshair(nil)
+                    coordinator?.select(at: aim, radius: PickRadius.pencil, toggle: false)
+                } else if let start = boxStart {
+                    // Without a drag the pan recognizer never ran: finish the box here.
+                    coordinator?.finishBox(from: start, to: location, add: false)
                 }
                 boxStart = nil
+                precise = false
             default:
                 coordinator?.updateBox(from: nil)
+                coordinator?.updateCrosshair(nil)
                 boxStart = nil
+                precise = false
             }
         }
+
+        /// The precision selector's crosshair sits this far above the finger.
+        private static let precisionOffset = 60.0
 
         private func move(
             _ action: NavigationPreset.Action, by translation: CGPoint, from last: inout CGPoint

@@ -150,6 +150,46 @@ std::optional<RayHit> PickIndex::raycast(const Ray& ray) const {
     return best;
 }
 
+std::vector<RayHit> PickIndex::raycastAll(const Ray& ray) const {
+    std::vector<RayHit> hits;
+    if (nodes_.empty()) {
+        return hits;
+    }
+    std::uint32_t stack[64];
+    int top = 0;
+    stack[top++] = 0;
+    while (top > 0) {
+        const Node& node = nodes_[stack[--top]];
+        if (intersect(ray, node.box, std::numeric_limits<float>::max()) < 0.0F) {
+            continue;
+        }
+        if (node.count > 0) {
+            for (std::uint32_t i = node.first; i < node.first + node.count; ++i) {
+                const std::uint32_t t = order_[i];
+                const float d =
+                    intersectTriangle(ray, vertex(t * 3), vertex(t * 3 + 1), vertex(t * 3 + 2));
+                if (d > 0.0F) {
+                    hits.push_back({d, t, t < faceIds_.size() ? faceIds_[t] : 0});
+                }
+            }
+        } else if (top + 2 <= 64) {
+            stack[top++] = node.first;
+            stack[top++] = node.right;
+        }
+    }
+    std::sort(hits.begin(), hits.end(),
+              [](const RayHit& a, const RayHit& b) { return a.distance < b.distance; });
+    // Each face once, where the ray first meets it.
+    std::vector<RayHit> faces;
+    for (const RayHit& hit : hits) {
+        if (std::none_of(faces.begin(), faces.end(),
+                         [&](const RayHit& face) { return face.faceId == hit.faceId; })) {
+            faces.push_back(hit);
+        }
+    }
+    return faces;
+}
+
 bool PickIndex::isVisible(const Camera& camera, Vec3 point) const {
     // Cast a ray from the camera to the point: it is visible if no face is clearly in front.
     Ray ray;
@@ -288,6 +328,87 @@ Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
             break;
     }
     return bounds;
+}
+
+std::vector<PickResult> PickIndex::candidates(const Camera& camera, float x, float y,
+                                              float radiusPoints, bool throughFaces,
+                                              PickFilter filter) const {
+    const float radius2 = radiusPoints * radiusPoints;
+    std::vector<PickResult> result;
+    const auto byDistance = [](const PickResult& a, const PickResult& b) {
+        return a.screenDistance < b.screenDistance;
+    };
+
+    if (filter == PickFilter::Everything || filter == PickFilter::Vertices) {
+        std::vector<PickResult> vertices;
+        for (std::size_t i = 0; i < vertexPoints_.size(); ++i) {
+            const auto p = camera.project(vertexPoints_[i]);
+            const float d2 = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+            if (p.w > 0.0F && d2 <= radius2 &&
+                (throughFaces || isVisible(camera, vertexPoints_[i]))) {
+                vertices.push_back(
+                    {PickKind::Vertex, vertexIds_[i], vertexPoints_[i], std::sqrt(d2)});
+            }
+        }
+        std::stable_sort(vertices.begin(), vertices.end(), byDistance);
+        result.insert(result.end(), vertices.begin(), vertices.end());
+    }
+
+    if (filter == PickFilter::Everything || filter == PickFilter::Edges) {
+        // The nearest visible point of each edge within the radius.
+        std::map<std::uint32_t, PickResult> edges;
+        for (const Segment& segment : segments_) {
+            const auto a = camera.project(segment.a);
+            const auto b = camera.project(segment.b);
+            if (a.w <= 0.0F || b.w <= 0.0F) {
+                continue;
+            }
+            const float abx = b.x - a.x;
+            const float aby = b.y - a.y;
+            const float lengthSquared = abx * abx + aby * aby;
+            float t = 0.0F;
+            if (lengthSquared > 1e-12F) {
+                t = std::clamp(((x - a.x) * abx + (y - a.y) * aby) / lengthSquared, 0.0F, 1.0F);
+            }
+            const float px = a.x + abx * t - x;
+            const float py = a.y + aby * t - y;
+            const float d2 = px * px + py * py;
+            if (d2 > radius2) {
+                continue;
+            }
+            const auto known = edges.find(segment.edgeId);
+            if (known != edges.end() && known->second.screenDistance <= std::sqrt(d2)) {
+                continue;
+            }
+            const Vec3 point = lerp(segment.a, segment.b, t);
+            if (throughFaces || isVisible(camera, point)) {
+                edges[segment.edgeId] = {PickKind::Edge, segment.edgeId, point, std::sqrt(d2)};
+            }
+        }
+        std::vector<PickResult> sorted;
+        for (const auto& [id, edge] : edges) {
+            sorted.push_back(edge);
+        }
+        std::stable_sort(sorted.begin(), sorted.end(), byDistance);
+        result.insert(result.end(), sorted.begin(), sorted.end());
+    }
+
+    if (filter != PickFilter::Vertices && filter != PickFilter::Edges) {
+        const Ray ray = camera.rayAt(x, y);
+        const auto hits = raycastAll(ray);
+        if (filter == PickFilter::Bodies) {
+            if (!hits.empty()) {
+                result.push_back(
+                    {PickKind::Body, 1, ray.origin + ray.direction * hits[0].distance, 0.0F});
+            }
+        } else {
+            for (const RayHit& hit : hits) {
+                result.push_back(
+                    {PickKind::Face, hit.faceId, ray.origin + ray.direction * hit.distance, 0.0F});
+            }
+        }
+    }
+    return result;
 }
 
 namespace {

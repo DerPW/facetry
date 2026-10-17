@@ -251,6 +251,17 @@ final class ViewportRenderer {
         }
     }
 
+    /// Selects what a click at `point` picks: the first candidate there, or the next one when the
+    /// same spot is clicked again (#38); `toggle` adds or removes instead. Returns the picked
+    /// element and the selection.
+    func click(at point: CGPoint, radius: Double, toggle: Bool) -> (Pick, [Pick]) {
+        var result = facetry_pick_result()
+        _ = facetry_renderer_click(
+            handle, Float(point.x), Float(point.y), Float(radius), toggle ? 1 : 0, &result)
+        let pick = Pick(kind: Pick.Kind(rawValue: result.kind) ?? .none, id: result.id)
+        return (pick, select(.none, toggle: true))  // reads the selection without changing it
+    }
+
     /// Selects what lies in the box dragged from `start` to `end` (a window to the right, a
     /// crossing box to the left); `add` keeps the current selection.
     func boxSelect(from start: CGPoint, to end: CGPoint, add: Bool) -> [Pick] {

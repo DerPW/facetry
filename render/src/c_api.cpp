@@ -274,6 +274,22 @@ void facetry_renderer_select(facetry_renderer* renderer, uint32_t kind, uint32_t
     });
 }
 
+facetry_render_status facetry_renderer_click(facetry_renderer* renderer, float x, float y,
+                                             float radius, uint32_t mode,
+                                             facetry_pick_result* out) {
+    return run(renderer, [&](Renderer& r) {
+        const auto result = r.click(x, y, radius, mode == FACETRY_SELECT_TOGGLE);
+        if (out != nullptr) {
+            out->kind = static_cast<uint32_t>(result.kind);
+            out->id = result.id;
+            out->point[0] = result.point.x;
+            out->point[1] = result.point.y;
+            out->point[2] = result.point.z;
+            out->screen_distance = result.screenDistance;
+        }
+    });
+}
+
 uint32_t facetry_renderer_box_select(facetry_renderer* renderer, float x0, float y0, float x1,
                                      float y1, uint32_t mode) {
     uint32_t count = 0;

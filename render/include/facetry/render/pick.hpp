@@ -73,6 +73,8 @@ class PickIndex {
         return bounds_;
     }
     [[nodiscard]] std::optional<RayHit> raycast(const Ray& ray) const;
+    // Every face the ray passes, nearest first, each once.
+    [[nodiscard]] std::vector<RayHit> raycastAll(const Ray& ray) const;
     // Bounds of one face, edge or vertex; empty if there is no such element.
     [[nodiscard]] Bounds elementBounds(PickKind kind, std::uint32_t id) const;
 
@@ -82,6 +84,13 @@ class PickIndex {
     [[nodiscard]] PickResult pick(const Camera& camera, float x, float y, float radiusPoints,
                                   bool throughFaces = false,
                                   PickFilter filter = PickFilter::Everything) const;
+
+    // Everything a click at (x, y) could mean, best first (#38): vertices, then edges, by their
+    // distance within `radiusPoints`, then the faces along the ray from front to back, also the
+    // hidden ones. The first candidate is what pick() returns.
+    [[nodiscard]] std::vector<PickResult> candidates(
+        const Camera& camera, float x, float y, float radiusPoints, bool throughFaces = false,
+        PickFilter filter = PickFilter::Everything) const;
 
     // The elements in the screen box between (x0, y0) and (x1, y1), in ID order. "Everything"
     // takes edges, the usual reason for a box (fillets); the other filters take their kind.
