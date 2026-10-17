@@ -71,7 +71,16 @@ FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer
 
 /* ---- Camera ------------------------------------------------------------------------------- */
 
+/* Frames the whole model from the current view direction (Fusion's Fit). */
 FACETRY_RENDER_API void facetry_camera_fit(facetry_renderer* renderer);
+/* Frames the selected element (facetry_renderer_set_selection), or the whole model. */
+FACETRY_RENDER_API void facetry_camera_fit_selection(facetry_renderer* renderer);
+/* The home view: the whole model from the front right, above. */
+FACETRY_RENDER_API void facetry_camera_home(facetry_renderer* renderer, int animate);
+/* Turns the camera around its target to look from direction (x, y, z), pointing from the model
+ * toward the eye: (0, 0, 1) is the top view, (0, -1, 0) the front view, (1, -1, 1) a corner. */
+FACETRY_RENDER_API void facetry_camera_view_from(facetry_renderer* renderer, float x, float y,
+                                                 float z, int animate);
 FACETRY_RENDER_API void facetry_camera_set_orthographic(facetry_renderer* renderer,
                                                         int orthographic);
 /* Starts an orbit around the model point under (x, y), or the view center if there is none. */
@@ -114,6 +123,35 @@ FACETRY_RENDER_API uint32_t facetry_navigation_drag(uint32_t preset, uint32_t bu
  * comes from a trackpad (precise deltas on Apple), 0 for a mouse wheel or when it cannot tell. */
 FACETRY_RENDER_API uint32_t facetry_navigation_scroll(uint32_t preset, uint32_t modifiers,
                                                       int trackpad);
+
+/* ---- ViewCube ---------------------------------------------------------------------------- */
+
+typedef enum facetry_cube_face {
+    FACETRY_CUBE_RIGHT = 0, /* +X */
+    FACETRY_CUBE_LEFT = 1,  /* -X */
+    FACETRY_CUBE_BACK = 2,  /* +Y */
+    FACETRY_CUBE_FRONT = 3, /* -Y */
+    FACETRY_CUBE_TOP = 4,   /* +Z */
+    FACETRY_CUBE_BOTTOM = 5 /* -Z */
+} facetry_cube_face;
+
+/* One cell of the ViewCube. Each visible face is split into a 3 × 3 grid: the center, four edges
+ * and four corners; a click turns the view to `direction` (facetry_camera_view_from). */
+typedef struct facetry_viewcube_cell {
+    float points[8];    /* x0 y0 … x3 y3 in points inside the cube's square, origin top-left */
+    float direction[3]; /* a face normal, or the sum of two (edge) or three (corner) */
+    float depth;        /* larger is nearer to the viewer */
+    uint32_t face;      /* facetry_cube_face */
+    uint32_t region;    /* 0 center, 1 edge, 2 corner */
+} facetry_viewcube_cell;
+
+/* The visible cells for a cube drawn in a square of `size` points, far to near (draw them in
+ * this order). Writes at most `capacity` cells (27 are enough) and returns how many there are. */
+FACETRY_RENDER_API uint32_t facetry_viewcube_cells(const facetry_renderer* renderer, float size,
+                                                   facetry_viewcube_cell* out, uint32_t capacity);
+/* Index of the cell under (x, y) in the square, in the order of facetry_viewcube_cells, or -1. */
+FACETRY_RENDER_API int32_t facetry_viewcube_hit(const facetry_renderer* renderer, float size,
+                                                float x, float y);
 
 /* ---- Picking and highlights --------------------------------------------------------------- */
 

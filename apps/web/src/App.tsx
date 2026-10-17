@@ -6,6 +6,7 @@ import { BrowserPanel } from "./components/BrowserPanel";
 import { ModelPanel } from "./components/ModelPanel";
 import { RecoveryPanel } from "./components/RecoveryPanel";
 import { Timeline, type Repair } from "./components/Timeline";
+import { ViewCube } from "./components/ViewCube";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import {
   BooleanOp,
@@ -21,6 +22,7 @@ import { CoreClient } from "./core/client";
 import { postBenchmark } from "./dev/bench";
 import {
   DEFAULT_NAVIGATION,
+  NAMED_VIEWS,
   NavigationPreset,
   PickKind,
   type FrameStats,
@@ -190,7 +192,7 @@ export function App() {
           session.current = { core, handle };
           mesh = show(snapshot);
         }
-        viewport.fit();
+        viewport.home(false);
         setStatus(`Core ${versions.core} · OpenCASCADE ${versions.kernel} · ${versions.platform}`);
         setReady(true);
         if (handle !== undefined) {
@@ -334,7 +336,7 @@ export function App() {
         const snapshot = await current.core.call("regenerateModel", handle, tessellation);
         if (snapshot) {
           show(snapshot);
-          viewport.fit();
+          viewport.home(false);
         }
         return true;
       } catch (error) {
@@ -421,8 +423,22 @@ export function App() {
         void change(({ core, handle }) => core.call(redo ? "redo" : "undo", handle));
         return;
       }
+      // Named views on the numeric keypad, as in Blender: 1 front, 3 right, 7 top; with Ctrl
+      // the opposite side.
+      const numpad: Record<string, [keyof typeof NAMED_VIEWS, keyof typeof NAMED_VIEWS]> = {
+        Numpad1: ["Front", "Back"],
+        Numpad3: ["Right", "Left"],
+        Numpad7: ["Top", "Bottom"],
+      };
+      const view = numpad[event.code];
+      if (view && !event.metaKey && !event.altKey) {
+        viewport?.viewFrom(NAMED_VIEWS[event.ctrlKey ? view[1] : view[0]]);
+        return;
+      }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === "f") viewport?.fit();
+      if (event.key === "Home") viewport?.home();
+      else if (event.key === "F") viewport?.fitSelection();
+      else if (event.key === "f") viewport?.fit();
       else if (event.key === "o") setOrthographic((value) => !value);
       else if (event.key === "Escape") viewport?.clearSelection();
     };
@@ -433,6 +449,7 @@ export function App() {
   return (
     <>
       <ViewportCanvas onReady={setViewport} onError={onError} />
+      {viewport && <ViewCube viewport={viewport} />}
       <div
         id="app"
         data-core-ready={ready === undefined ? undefined : String(ready)}

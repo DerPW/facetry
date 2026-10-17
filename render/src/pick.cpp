@@ -236,4 +236,37 @@ Vec3 PickIndex::anchorAt(const Camera& camera, float x, float y) const {
     return camera.pointOnTargetPlane(x, y);
 }
 
+Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
+    Bounds bounds;
+    switch (kind) {
+        case PickKind::Face:
+            for (std::size_t t = 0; t < faceIds_.size(); ++t) {
+                if (faceIds_[t] == id) {
+                    for (std::uint32_t corner = 0; corner < 3; ++corner) {
+                        bounds.add(vertex(static_cast<std::uint32_t>(t * 3) + corner));
+                    }
+                }
+            }
+            break;
+        case PickKind::Edge:
+            for (const Segment& segment : segments_) {
+                if (segment.edgeId == id) {
+                    bounds.add(segment.a);
+                    bounds.add(segment.b);
+                }
+            }
+            break;
+        case PickKind::Vertex:
+            for (std::size_t v = 0; v < vertexIds_.size(); ++v) {
+                if (vertexIds_[v] == id) {
+                    bounds.add(vertexPoints_[v]);
+                }
+            }
+            break;
+        case PickKind::None:
+            break;
+    }
+    return bounds;
+}
+
 }  // namespace facetry::render

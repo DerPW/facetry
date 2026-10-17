@@ -22,6 +22,17 @@ export interface FacetryRenderModule {
     pixelRatio: number,
   ): void;
   _facetry_camera_fit(renderer: number): void;
+  _facetry_camera_fit_selection(renderer: number): void;
+  _facetry_camera_home(renderer: number, animate: number): void;
+  _facetry_camera_view_from(
+    renderer: number,
+    x: number,
+    y: number,
+    z: number,
+    animate: number,
+  ): void;
+  _facetry_viewcube_cells(renderer: number, size: number, out: number, capacity: number): number;
+  _facetry_viewcube_hit(renderer: number, size: number, x: number, y: number): number;
   _facetry_camera_set_orthographic(renderer: number, orthographic: number): void;
   _facetry_camera_orbit_begin(renderer: number, x: number, y: number): void;
   _facetry_camera_orbit(renderer: number, dx: number, dy: number): void;

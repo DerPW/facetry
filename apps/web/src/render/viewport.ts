@@ -12,6 +12,34 @@ export interface Pick {
   id: number;
 }
 
+/** Faces of the ViewCube, in the order of ViewCubeCell.face (facetry_cube_face). */
+export const CUBE_FACES = ["Right", "Left", "Back", "Front", "Top", "Bottom"] as const;
+
+/** One cell of the ViewCube (facetry_viewcube_cell); see ViewCube.tsx. */
+export interface ViewCubeCell {
+  /** Four corners [x, y] in the cube's square, in CSS pixels. */
+  points: [number, number][];
+  /** Where a click on the cell looks from. */
+  direction: [number, number, number];
+  face: number;
+  /** 0 center, 1 edge, 2 corner. */
+  region: number;
+}
+
+/** Directions of the named views, from the model toward the eye. */
+export const NAMED_VIEWS = {
+  Top: [0, 0, 1],
+  Bottom: [0, 0, -1],
+  Front: [0, -1, 0],
+  Back: [0, 1, 0],
+  Left: [-1, 0, 0],
+  Right: [1, 0, 0],
+} as const satisfies Record<string, readonly [number, number, number]>;
+export type NamedView = keyof typeof NAMED_VIEWS;
+
+const CELL_BYTES = 56; // facetry_viewcube_cell: 12 floats and 2 uint32s
+const MAX_CELLS = 27;
+
 export interface FrameStats {
   /** Average time between frames over the last second, in milliseconds. */
   frameMilliseconds: number;
@@ -59,6 +87,7 @@ export class Viewport {
   readonly #renderer: number;
   readonly #canvas: HTMLCanvasElement;
   readonly #scratch: number;
+  readonly #cells: number;
   readonly #pointers = new Map<number, { x: number; y: number; startX: number; startY: number }>();
   #gesture: "none" | "orbit" | "pan" | "select" | "touch" = "none";
   // The current touch sequence, from the first finger down to the last finger up.
@@ -83,6 +112,7 @@ export class Viewport {
     this.#renderer = renderer;
     this.#canvas = canvas;
     this.#scratch = m._malloc(64);
+    this.#cells = m._malloc(CELL_BYTES * MAX_CELLS);
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<Viewport> {
@@ -188,6 +218,7 @@ export class Viewport {
     this.#setSelection({ kind: PickKind.None, id: 0 });
   }
 
+  /** Frames the whole model from the current direction (F). */
   fit(): void {
     this.#m._facetry_camera_fit(this.#renderer);
   }
@@ -195,6 +226,59 @@ export class Viewport {
   /** Mouse, trackpad and touch settings; the app stores them per device. */
   setNavigation(navigation: NavigationSettings): void {
     this.#navigation = navigation;
+  }
+
+  /** Frames the selection, or the whole model (Shift+F). */
+  fitSelection(): void {
+    this.#m._facetry_camera_fit_selection(this.#renderer);
+  }
+
+  /** The home view: the whole model from the front right, above. */
+  home(animate = true): void {
+    this.#m._facetry_camera_home(this.#renderer, animate ? 1 : 0);
+  }
+
+  /** Turns the view to look from `direction` (from the model toward the eye). */
+  viewFrom(direction: readonly [number, number, number], animate = true): void {
+    const [x, y, z] = direction;
+    this.#m._facetry_camera_view_from(this.#renderer, x, y, z, animate ? 1 : 0);
+  }
+
+  /** The visible ViewCube cells for a cube in a square of `size` CSS pixels, far to near. */
+  viewCubeCells(size: number): ViewCubeCell[] {
+    const m = this.#m;
+    const count = Math.min(
+      m._facetry_viewcube_cells(this.#renderer, size, this.#cells, MAX_CELLS),
+      MAX_CELLS,
+    );
+    const floats = m.HEAPF32;
+    const words = m.HEAPU32;
+    const cells: ViewCubeCell[] = [];
+    for (let i = 0; i < count; i++) {
+      const base = (this.#cells + i * CELL_BYTES) >> 2;
+      const f = (offset: number) => floats[base + offset] ?? 0;
+      cells.push({
+        points: [0, 1, 2, 3].map((k) => [f(k * 2), f(k * 2 + 1)] as [number, number]),
+        direction: [f(8), f(9), f(10)],
+        face: words[base + 12] ?? 0,
+        region: words[base + 13] ?? 0,
+      });
+    }
+    return cells;
+  }
+
+  /** Index in viewCubeCells(size) of the cell under (x, y), or -1. */
+  viewCubeHit(size: number, x: number, y: number): number {
+    return this.#m._facetry_viewcube_hit(this.#renderer, size, x, y);
+  }
+
+  /** Orbits around the point in the middle of the view (dragging the ViewCube). */
+  orbitFromCenter(dx: number, dy: number, begin: boolean): void {
+    if (begin) {
+      const rect = this.#canvas.getBoundingClientRect();
+      this.#m._facetry_camera_orbit_begin(this.#renderer, rect.width / 2, rect.height / 2);
+    }
+    this.#m._facetry_camera_orbit(this.#renderer, dx, dy);
   }
 
   setOrthographic(orthographic: boolean): void {
@@ -230,6 +314,7 @@ export class Viewport {
     this.#disposed = true;
     this.#m._facetry_renderer_destroy(this.#renderer);
     this.#m._free(this.#scratch);
+    this.#m._free(this.#cells);
   }
 
   #attach(): void {

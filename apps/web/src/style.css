@@ -4,6 +4,9 @@
   --muted: #6e6e73;
   --panel: rgb(255 255 255 / 72%);
   --border: rgb(0 0 0 / 8%);
+  --accent: rgb(10 132 255 / 55%);
+  --cube-face: rgb(250 250 252 / 92%);
+  --cube-line: rgb(0 0 0 / 18%);
   font-family:
     system-ui,
     -apple-system,
@@ -18,6 +21,8 @@
     --muted: #98989d;
     --panel: rgb(30 30 32 / 72%);
     --border: rgb(255 255 255 / 10%);
+    --cube-face: rgb(58 58 60 / 92%);
+    --cube-line: rgb(255 255 255 / 22%);
   }
 }
 
@@ -406,5 +411,37 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 2px 8px;
+  cursor: pointer;
+}
+
+.viewcube {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.viewcube canvas {
+  touch-action: none;
+  cursor: pointer;
+}
+
+.viewcube-actions {
+  display: flex;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.viewcube-actions button,
+.viewcube-actions select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
   cursor: pointer;
 }

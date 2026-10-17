@@ -2,6 +2,7 @@
 
 #include "sokol.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -335,8 +336,30 @@ void Renderer::orbit(float dx, float dy) {
     camera_.orbit(dx, dy, orbitPivot_);
 }
 
+void Renderer::fitSelection() {
+    Bounds bounds = pick_.elementBounds(highlight_.selectKind, highlight_.selectId);
+    if (bounds.isEmpty()) {
+        camera_.fit();
+        return;
+    }
+    // A vertex or a short edge would fill the view; keep some of the model around it.
+    const float minimum = pick_.bounds().radius() * 0.1F;
+    if (bounds.radius() < minimum) {
+        const Vec3 center = bounds.center();
+        bounds.add(center + Vec3{minimum, minimum, minimum} * 0.5F);
+        bounds.add(center - Vec3{minimum, minimum, minimum} * 0.5F);
+    }
+    camera_.fit(bounds);
+}
+
 void Renderer::draw(const FrameTarget& target) {
     const auto started = std::chrono::steady_clock::now();
+    // Camera animations (view changes) advance with the time between frames.
+    if (lastDraw_.time_since_epoch().count() != 0) {
+        const std::chrono::duration<float> elapsed = started - lastDraw_;
+        camera_.advance(std::min(elapsed.count(), 0.1F));
+    }
+    lastDraw_ = started;
     Gpu& g = *gpu_;
     const int width = static_cast<int>(camera_.viewportWidth() * pixelRatio_ + 0.5F);
     const int height = static_cast<int>(camera_.viewportHeight() * pixelRatio_ + 0.5F);

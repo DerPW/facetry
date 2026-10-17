@@ -1,9 +1,11 @@
 // Implementation of facetry_render.h. Every entry point catches all exceptions.
 #include "facetry/render/navigation.hpp"
+#include "facetry/render/viewcube.hpp"
 
 #include "facetry_render.h"
 #include "renderer.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <stdexcept>
@@ -20,6 +22,8 @@ struct facetry_renderer {
 namespace {
 
 std::string lastCreateError;  // reported through facetry_renderer_last_error(NULL)
+// How long a view change (ViewCube, named view, home) takes.
+constexpr float kViewSeconds = 0.35F;
 
 template <typename Function>
 facetry_render_status run(facetry_renderer* r, Function&& function) {
@@ -143,6 +147,55 @@ void facetry_renderer_set_viewport(facetry_renderer* renderer, float width, floa
 
 void facetry_camera_fit(facetry_renderer* renderer) {
     run(renderer, [](Renderer& r) { r.camera().fit(); });
+}
+
+void facetry_camera_fit_selection(facetry_renderer* renderer) {
+    run(renderer, [](Renderer& r) { r.fitSelection(); });
+}
+
+void facetry_camera_home(facetry_renderer* renderer, int animate) {
+    run(renderer, [&](Renderer& r) { r.camera().home(animate != 0 ? kViewSeconds : 0.0F); });
+}
+
+void facetry_camera_view_from(facetry_renderer* renderer, float x, float y, float z, int animate) {
+    run(renderer,
+        [&](Renderer& r) { r.camera().viewFrom({x, y, z}, animate != 0 ? kViewSeconds : 0.0F); });
+}
+
+uint32_t facetry_viewcube_cells(const facetry_renderer* renderer, float size,
+                                facetry_viewcube_cell* out, uint32_t capacity) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return 0;
+    }
+    try {
+        const auto cells = facetry::render::viewCubeCells(renderer->renderer->camera(), size);
+        const auto count = static_cast<uint32_t>(cells.size());
+        for (uint32_t i = 0; out != nullptr && i < count && i < capacity; ++i) {
+            const auto& cell = cells[i];
+            facetry_viewcube_cell& result = out[i];
+            std::copy(cell.points.begin(), cell.points.end(), result.points);
+            result.direction[0] = cell.direction.x;
+            result.direction[1] = cell.direction.y;
+            result.direction[2] = cell.direction.z;
+            result.depth = cell.depth;
+            result.face = static_cast<uint32_t>(cell.face);
+            result.region = cell.region;
+        }
+        return count;
+    } catch (...) {
+        return 0;
+    }
+}
+
+int32_t facetry_viewcube_hit(const facetry_renderer* renderer, float size, float x, float y) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return -1;
+    }
+    try {
+        return facetry::render::viewCubeHit(renderer->renderer->camera(), size, x, y);
+    } catch (...) {
+        return -1;
+    }
 }
 
 void facetry_camera_set_orthographic(facetry_renderer* renderer, int orthographic) {

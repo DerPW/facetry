@@ -52,6 +52,8 @@ class PickIndex {
         return bounds_;
     }
     [[nodiscard]] std::optional<RayHit> raycast(const Ray& ray) const;
+    // Bounds of one face, edge or vertex; empty if there is no such element.
+    [[nodiscard]] Bounds elementBounds(PickKind kind, std::uint32_t id) const;
 
     // Picks the element under (x, y). Vertices win over edges, edges over faces, as long as they
     // are within `radiusPoints` of the pointer and not hidden behind a face.

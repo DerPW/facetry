@@ -90,9 +90,12 @@ Back to the [roadmap overview](../ROADMAP.md).
 - [x] Mouse and trackpad: navigation presets (Fusion-like: middle drag pans, Shift + middle drag
       orbits, wheel zooms; plus a trackpad-friendly preset)
       ([#32](https://github.com/DerPW/facetry/issues/32))
-- [ ] ViewCube: click faces, edges and corners to change the view; drag to orbit
+- [x] ViewCube: click faces, edges and corners to change the view; drag to orbit
+      ([#33](https://github.com/DerPW/facetry/issues/33))
 - [x] Fit all and perspective/orthographic toggle (`F`, `O`; M0.5)
-- [ ] Named views (top, front, right, iso, …), fit selection
+- [x] Named views (top, front, right, iso, …), fit selection
+      ([#33](https://github.com/DerPW/facetry/issues/33)); Home is the iso view, `F` keeps the
+      view direction
 - [ ] Visual styles: shaded, shaded with edges, shaded with hidden edges, wireframe;
       transparency per body
 - [ ] Ground grid with adaptive spacing
