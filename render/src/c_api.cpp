@@ -71,7 +71,7 @@ facetry_render_status create(facetry_renderer** out, Create&& makeRenderer) {
 }
 
 PickKind toKind(uint32_t kind) {
-    return kind <= 3 ? static_cast<PickKind>(kind) : PickKind::None;
+    return kind <= 4 ? static_cast<PickKind>(kind) : PickKind::None;
 }
 
 template <typename T>
@@ -242,7 +242,7 @@ facetry_render_status facetry_renderer_pick(facetry_renderer* renderer, float x,
         if (out == nullptr) {
             throw std::invalid_argument("out must not be null");
         }
-        const auto result = r.pickIndex().pick(r.camera(), x, y, radius, r.picksThroughFaces());
+        const auto result = r.pick(x, y, radius);
         out->kind = static_cast<uint32_t>(result.kind);
         out->id = result.id;
         out->point[0] = result.point.x;
@@ -260,9 +260,39 @@ void facetry_renderer_set_hover(facetry_renderer* renderer, uint32_t kind, uint3
 }
 
 void facetry_renderer_set_selection(facetry_renderer* renderer, uint32_t kind, uint32_t id) {
+    run(renderer, [&](Renderer& r) { r.selection().replace({toKind(kind), id}); });
+}
+
+void facetry_renderer_select(facetry_renderer* renderer, uint32_t kind, uint32_t id,
+                             uint32_t mode) {
     run(renderer, [&](Renderer& r) {
-        r.highlight().selectKind = toKind(kind);
-        r.highlight().selectId = id;
+        if (mode == FACETRY_SELECT_TOGGLE) {
+            r.selection().toggle({toKind(kind), id});
+        } else {
+            r.selection().replace({toKind(kind), id});
+        }
+    });
+}
+
+uint32_t facetry_renderer_selection(const facetry_renderer* renderer, uint32_t* out,
+                                    uint32_t capacity) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return 0;
+    }
+    const auto& elements = renderer->renderer->selection().elements();
+    for (uint32_t i = 0; out != nullptr && i < elements.size() && i < capacity; ++i) {
+        out[i * 2] = static_cast<uint32_t>(elements[i].kind);
+        out[i * 2 + 1] = elements[i].id;
+    }
+    return static_cast<uint32_t>(elements.size());
+}
+
+void facetry_renderer_set_pick_filter(facetry_renderer* renderer, uint32_t filter) {
+    run(renderer, [&](Renderer& r) {
+        if (filter > 4) {
+            throw std::invalid_argument("Unknown pick filter");
+        }
+        r.setPickFilter(static_cast<facetry::render::PickFilter>(filter));
     });
 }
 

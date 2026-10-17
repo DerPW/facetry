@@ -6,6 +6,7 @@ add_library(facetry-render STATIC
     src/math.cpp
     src/navigation.cpp
     src/pick.cpp
+    src/selection.cpp
     src/viewcube.cpp)
 add_library(facetry::render ALIAS facetry-render)
 target_include_directories(facetry-render PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -41,6 +42,7 @@ if(FACETRY_BUILD_TESTS)
         tests/grid_test.cpp
         tests/navigation_test.cpp
         tests/pick_test.cpp
+        tests/selection_test.cpp
         tests/viewcube_test.cpp)
     target_link_libraries(facetry-render-tests PRIVATE facetry::render facetry-doctest)
     facetry_set_warnings(facetry-render-tests)

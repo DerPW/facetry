@@ -25,6 +25,7 @@ import {
   DEFAULT_NAVIGATION,
   NAMED_VIEWS,
   NavigationPreset,
+  PickFilter,
   PickKind,
   VisualStyle,
   type FrameStats,
@@ -35,7 +36,6 @@ import {
 
 declare const __APP_VERSION__: string;
 
-const NOTHING: Pick = { kind: PickKind.None, id: 0 };
 const EMPTY_MESH: MeshData = {
   positions: new Float32Array(),
   normals: new Float32Array(),
@@ -47,17 +47,37 @@ const EMPTY_MESH: MeshData = {
   vertexPositions: new Float32Array(),
   vertexIds: new Uint32Array(),
 };
-const kindName: Record<number, string> = {
-  [PickKind.Face]: "Face",
-  [PickKind.Edge]: "Edge",
-  [PickKind.Vertex]: "Vertex",
-};
+// Singular and plural names per kind, in the order the summary lists them.
+const kindNames: [PickKind, string, string][] = [
+  [PickKind.Vertex, "Vertex", "vertices"],
+  [PickKind.Edge, "Edge", "edges"],
+  [PickKind.Face, "Face", "faces"],
+  [PickKind.Body, "Body", "bodies"],
+];
 
-function describe(pick: Pick): string {
-  return pick.kind === PickKind.None
-    ? "Nothing selected"
-    : `${kindName[pick.kind]} ${pick.id} selected`;
+function describe(selection: Pick[]): string {
+  const [only] = selection;
+  if (!only) return "Nothing selected";
+  if (selection.length === 1) {
+    const name = kindNames.find(([kind]) => kind === only.kind)?.[1] ?? "Element";
+    return only.kind === PickKind.Body ? "Body selected" : `${name} ${only.id} selected`;
+  }
+  const parts = kindNames.flatMap(([kind, singular, plural]) => {
+    const count = selection.filter((pick) => pick.kind === kind).length;
+    if (count === 0) return [];
+    return [`${count} ${count === 1 ? singular.toLowerCase() : plural}`];
+  });
+  return `${parts.join(", ")} selected`;
 }
+
+// Keys 1–5 choose what clicks select, like Plasticity's selection modes.
+const filterKeys: Record<string, PickFilter> = {
+  Digit1: PickFilter.Vertices,
+  Digit2: PickFilter.Edges,
+  Digit3: PickFilter.Faces,
+  Digit4: PickFilter.Bodies,
+  Digit5: PickFilter.Everything,
+};
 
 function formatStats(stats: FrameStats): string {
   const fps = 1000 / stats.frameMilliseconds;
@@ -155,7 +175,9 @@ export function App() {
   const [status, setStatus] = useState("Starting the core…");
   const [ready, setReady] = useState<boolean | undefined>(undefined);
   const [stats, setStats] = useState<FrameStats | null>(null);
-  const [selection, setSelection] = useState<Pick>(NOTHING);
+  const [selection, setSelection] = useState<Pick[]>([]);
+  const [pickFilter, setPickFilter] = useState<PickFilter>(PickFilter.Everything);
+  const [multiSelect, setMultiSelect] = useState(false);
   const [orthographic, setOrthographic] = useState(false);
   const [model, setModel] = useState<SessionState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -314,12 +336,14 @@ export function App() {
   }, [repair, model]);
 
   const onPick = useCallback(
-    (pick: Pick) => {
-      setSelection(pick);
+    (list: Pick[], pick: Pick) => {
+      setSelection(list);
       const pending = repairRef.current;
       const body = modelRef.current?.bodies.find((b) => b.visible)?.id;
       const feature = modelRef.current?.features.find((f) => f.id === pending?.feature);
-      if (!pending || !body || !feature || pick.kind !== PickKind.Edge) return;
+      // The edge just added to the selection (not one just removed from it).
+      const added = list.some((p) => p.kind === pick.kind && p.id === pick.id);
+      if (!pending || !body || !feature || pick.kind !== PickKind.Edge || !added) return;
       repairRef.current = null;
       setRepair(null);
       void change(async ({ core, handle }) => {
@@ -426,6 +450,11 @@ export function App() {
     viewport?.setOrthographic(orthographic);
   }, [viewport, orthographic]);
 
+  useEffect(() => {
+    viewport?.setPickFilter(pickFilter);
+    viewport?.setMultiSelect(multiSelect);
+  }, [viewport, pickFilter, multiSelect]);
+
   // The shown body's opacity comes from the document; the style is a device setting.
   const opacity = model?.bodies.find((body) => body.visible)?.opacity ?? 1;
   useEffect(() => {
@@ -483,7 +512,9 @@ export function App() {
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === "Home") viewport?.home();
+      const filter = filterKeys[event.code];
+      if (filter !== undefined) setPickFilter(filter);
+      else if (event.key === "Home") viewport?.home();
       else if (event.key === "F") viewport?.fitSelection();
       else if (event.key === "f") viewport?.fit();
       else if (event.key === "o") setOrthographic((value) => !value);
@@ -532,7 +563,12 @@ export function App() {
             />
           )}
           {model && (
-            <BrowserPanel state={model} onEdit={edit} onSelectFeature={setSelectedFeature} />
+            <BrowserPanel
+              state={model}
+              onEdit={edit}
+              onSelectFeature={setSelectedFeature}
+              onSelectBody={() => viewport?.selectBody()}
+            />
           )}
         </div>
         <div className="top-right">
@@ -590,6 +626,26 @@ export function App() {
               <option value={VisualStyle.ShadedHiddenEdges}>Hidden edges</option>
               <option value={VisualStyle.Wireframe}>Wireframe</option>
             </select>
+            <select
+              aria-label="Select"
+              title="What clicks select (keys 1–5)"
+              value={pickFilter}
+              onChange={(event) => setPickFilter(Number(event.currentTarget.value) as PickFilter)}
+            >
+              <option value={PickFilter.Everything}>Select: all</option>
+              <option value={PickFilter.Vertices}>Vertices</option>
+              <option value={PickFilter.Edges}>Edges</option>
+              <option value={PickFilter.Faces}>Faces</option>
+              <option value={PickFilter.Bodies}>Bodies</option>
+            </select>
+            <button
+              type="button"
+              aria-pressed={multiSelect}
+              title="Every click or tap adds to the selection (or Shift/Cmd/Ctrl + click)"
+              onClick={() => setMultiSelect((on) => !on)}
+            >
+              Multi
+            </button>
             <button
               type="button"
               aria-pressed={grid}

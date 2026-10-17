@@ -176,8 +176,21 @@ typedef enum facetry_pick_kind {
     FACETRY_PICK_NONE = 0,
     FACETRY_PICK_FACE = 1,
     FACETRY_PICK_EDGE = 2,
-    FACETRY_PICK_VERTEX = 3
+    FACETRY_PICK_VERTEX = 3,
+    FACETRY_PICK_BODY = 4 /* the shown model is body 1 until there are several */
 } facetry_pick_kind;
+
+/* What picking and hovering look for (selection modes). */
+typedef enum facetry_pick_filter {
+    FACETRY_PICK_EVERYTHING = 0, /* vertices before edges before faces, by the radius */
+    FACETRY_PICK_VERTICES = 1,
+    FACETRY_PICK_EDGES = 2,
+    FACETRY_PICK_FACES = 3,
+    FACETRY_PICK_BODIES = 4
+} facetry_pick_filter;
+
+FACETRY_RENDER_API void facetry_renderer_set_pick_filter(facetry_renderer* renderer,
+                                                         uint32_t filter);
 
 typedef struct facetry_pick_result {
     uint32_t kind; /* facetry_pick_kind */
@@ -193,8 +206,22 @@ FACETRY_RENDER_API facetry_render_status facetry_renderer_pick(facetry_renderer*
                                                                facetry_pick_result* out);
 FACETRY_RENDER_API void facetry_renderer_set_hover(facetry_renderer* renderer, uint32_t kind,
                                                    uint32_t id);
+/* Selects only (kind, id); FACETRY_PICK_NONE clears the selection. */
 FACETRY_RENDER_API void facetry_renderer_set_selection(facetry_renderer* renderer, uint32_t kind,
                                                        uint32_t id);
+
+typedef enum facetry_select_mode {
+    FACETRY_SELECT_REPLACE = 0, /* select only this; FACETRY_PICK_NONE clears */
+    FACETRY_SELECT_TOGGLE = 1   /* add, or remove if selected; FACETRY_PICK_NONE changes nothing */
+} facetry_select_mode;
+
+/* Changes the selection, which can hold any number of elements. */
+FACETRY_RENDER_API void facetry_renderer_select(facetry_renderer* renderer, uint32_t kind,
+                                                uint32_t id, uint32_t mode);
+/* The selection as (kind, id) pairs, in the order selected. Writes at most `capacity` pairs to
+ * `out` (2 × capacity uint32s) and returns how many there are. */
+FACETRY_RENDER_API uint32_t facetry_renderer_selection(const facetry_renderer* renderer,
+                                                       uint32_t* out, uint32_t capacity);
 
 /* ---- Drawing ------------------------------------------------------------------------------ */
 

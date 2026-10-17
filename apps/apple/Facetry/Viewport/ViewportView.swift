@@ -14,7 +14,14 @@ final class ViewportModel {
     /// The mesh to show. The first mesh is framed; later ones keep the camera (call ``fit()``).
     var mesh: MeshData?
     var orthographic = false
+    /// The element picked last (for repairs); set it to `.none` to clear the selection.
     var selection = Pick.none
+    /// Everything selected, in the order selected.
+    fileprivate(set) var selected: [Pick] = []
+    /// What clicks pick.
+    var pickFilter = PickFilter.everything
+    /// Every tap or click adds to the selection or removes from it (for touch, without keys).
+    var multiSelect = false
     /// Mouse and trackpad preset; the app stores it per device.
     var navigation = NavigationPreset.facetry
     /// One finger pans and two fingers orbit, instead of the other way round.
@@ -41,6 +48,9 @@ final class ViewportModel {
 
     /// Frames the selection, or the whole model.
     func fitSelection() { coordinator?.renderer?.fitSelection() }
+
+    /// Selects the shown body (from the browser panel).
+    func selectBody() { coordinator?.select(Pick(kind: .body, id: 1), toggle: false) }
 
     /// The home view: the whole model from the front right, above.
     func home() { coordinator?.renderer?.home(animated: true) }
@@ -82,6 +92,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownFitRequests = 0
     private var shownOrthographic = false
     private var shownSelection = Pick.none
+    private var shownPickFilter = PickFilter.everything
     private var shownGrid: (visible: Bool, unit: Double)?
     private var shownStyle: (style: VisualStyle, opacity: Double)?
     private var lastFrameTime: CFTimeInterval = 0
@@ -123,6 +134,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
                 try renderer.setMesh(mesh)
                 if shownMesh == nil { renderer.home(animated: false) }
                 model.triangles = mesh.triangleCount
+                // The renderer cleared the selection: element IDs change with the geometry.
+                model.selected = []
+                model.selection = .none
+                shownSelection = .none
             } catch {
                 model.error = "\(error)"
             }
@@ -132,9 +147,14 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             renderer.setOrthographic(model.orthographic)
             shownOrthographic = model.orthographic
         }
+        // The selection only changes here when someone clears it (Esc, a new mesh).
         if model.selection != shownSelection {
-            renderer.setSelection(model.selection)
+            if model.selection == .none { select(.none, toggle: false) }
             shownSelection = model.selection
+        }
+        if model.pickFilter != shownPickFilter {
+            renderer.setPickFilter(model.pickFilter)
+            shownPickFilter = model.pickFilter
         }
         if shownStyle?.style != model.style || shownStyle?.opacity != model.opacity {
             renderer.setStyle(model.style, opacity: model.opacity)
@@ -205,12 +225,19 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         renderer.setHover(renderer.pick(at: point, radius: radius))
     }
 
-    func select(at point: CGPoint, radius: Double) {
+    /// `toggle`: add or remove the picked element; otherwise select only it (nothing clears).
+    func select(at point: CGPoint, radius: Double, toggle: Bool) {
         guard let renderer else { return }
-        let pick = renderer.pick(at: point, radius: radius)
-        renderer.setSelection(pick)
-        model.selection = pick
-        shownSelection = pick
+        select(renderer.pick(at: point, radius: radius), toggle: toggle || model.multiSelect)
+    }
+
+    fileprivate func select(_ pick: Pick, toggle: Bool) {
+        guard let renderer else { return }
+        let selected = renderer.select(pick, toggle: toggle)
+        model.selected = selected
+        // The element just added, for repairs; nothing when it was just removed.
+        model.selection = selected.contains(pick) ? pick : .none
+        shownSelection = model.selection
     }
 }
 
@@ -261,7 +288,9 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         override func mouseUp(with event: NSEvent) {
             let point = location(event)
             if let start = dragStart, hypot(point.x - start.x, point.y - start.y) <= 4 {
-                coordinator?.select(at: start, radius: PickRadius.mouse)
+                // Shift or Command add to the selection or remove from it, like in Fusion.
+                let toggle = !event.modifierFlags.intersection([.shift, .command]).isEmpty
+                coordinator?.select(at: start, radius: PickRadius.mouse, toggle: toggle)
             }
             dragStart = nil
         }
@@ -510,7 +539,8 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
             coordinator?.select(
                 at: recognizer.location(in: self),
-                radius: radius(for: gestureDelegate.lastTouchType)
+                radius: radius(for: gestureDelegate.lastTouchType),
+                toggle: !recognizer.modifierFlags.intersection([.shift, .command]).isEmpty
             )
         }
 

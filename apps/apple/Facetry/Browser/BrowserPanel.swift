@@ -8,6 +8,8 @@ struct BrowserPanel: View {
     let model: DocumentModel
     /// Opens a feature's details in the timeline.
     let selectFeature: (String) -> Void
+    /// Selects the shown body in the viewport.
+    let selectBody: () -> Void
     @State private var showOrigin = false
     @State private var renaming: String?
     @State private var newName = ""
@@ -58,26 +60,29 @@ struct BrowserPanel: View {
                         }
                     }
             } else {
-                Button(body.name) { selectFeature(body.id) }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button("Rename") {
-                            newName = body.name
-                            renaming = body.id
-                        }
-                        Button("Isolate") { isolate(body) }
-                        Menu("Opacity") {
-                            ForEach([1.0, 0.75, 0.5, 0.25], id: \.self) { opacity in
-                                Button("\(Int(opacity * 100)) %") {
-                                    Task {
-                                        await model.edit([
-                                            .setBodyOpacity(id: body.id, opacity: opacity)
-                                        ])
-                                    }
+                Button(body.name) {
+                    selectFeature(body.id)
+                    if body.visible { selectBody() }
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Rename") {
+                        newName = body.name
+                        renaming = body.id
+                    }
+                    Button("Isolate") { isolate(body) }
+                    Menu("Opacity") {
+                        ForEach([1.0, 0.75, 0.5, 0.25], id: \.self) { opacity in
+                            Button("\(Int(opacity * 100)) %") {
+                                Task {
+                                    await model.edit([
+                                        .setBodyOpacity(id: body.id, opacity: opacity)
+                                    ])
                                 }
                             }
                         }
                     }
+                }
             }
             Spacer()
             Button("Isolate") { isolate(body) }

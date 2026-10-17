@@ -26,7 +26,16 @@ struct RenderMesh {
     }
 };
 
-enum class PickKind : std::uint32_t { None = 0, Face = 1, Edge = 2, Vertex = 3 };
+enum class PickKind : std::uint32_t { None = 0, Face = 1, Edge = 2, Vertex = 3, Body = 4 };
+
+// What picking looks for (selection modes, keys 1–5 like Plasticity's).
+enum class PickFilter : std::uint32_t {
+    Everything = 0,  // vertices before edges before faces, by the pick radius
+    Vertices = 1,
+    Edges = 2,
+    Faces = 3,
+    Bodies = 4,  // the body under the pointer; the shown model is body 1 until there are several
+};
 
 struct PickResult {
     PickKind kind = PickKind::None;
@@ -59,7 +68,8 @@ class PickIndex {
     // are within `radiusPoints` of the pointer and not hidden behind a face. With `throughFaces`
     // (wireframe, transparent bodies) hidden vertices and edges count too.
     [[nodiscard]] PickResult pick(const Camera& camera, float x, float y, float radiusPoints,
-                                  bool throughFaces = false) const;
+                                  bool throughFaces = false,
+                                  PickFilter filter = PickFilter::Everything) const;
 
     // Point under the pointer for orbiting and zooming: the hit point on the model, or the point
     // on the camera's target plane if nothing is hit.

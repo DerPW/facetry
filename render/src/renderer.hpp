@@ -3,6 +3,7 @@
 
 #include "facetry/render/camera.hpp"
 #include "facetry/render/pick.hpp"
+#include "facetry/render/selection.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -14,8 +15,6 @@ namespace facetry::render {
 struct Highlight {
     PickKind hoverKind = PickKind::None;
     std::uint32_t hoverId = 0;
-    PickKind selectKind = PickKind::None;
-    std::uint32_t selectId = 0;
 };
 
 // How bodies are drawn (facetry_visual_style).
@@ -76,6 +75,16 @@ class Renderer {
     Highlight& highlight() {
         return highlight_;
     }
+    Selection& selection() {
+        return selection_;
+    }
+    // What picking and hovering look for.
+    void setPickFilter(PickFilter filter) {
+        filter_ = filter;
+    }
+    [[nodiscard]] PickResult pick(float x, float y, float radius) const {
+        return pick_.pick(camera_, x, y, radius, picksThroughFaces(), filter_);
+    }
 
     void draw(const FrameTarget& target);
     [[nodiscard]] FrameStats stats() const {
@@ -85,12 +94,16 @@ class Renderer {
   private:
     struct Gpu;
     Renderer(int sampleCount, bool zeroToOneDepth);
+    void updateSelectionFlags();
 
     std::unique_ptr<Gpu> gpu_;
     Camera camera_;
     PickIndex pick_;
     Vec3 orbitPivot_;
     Highlight highlight_;
+    Selection selection_;
+    std::uint64_t shownSelection_ = ~std::uint64_t{0};
+    PickFilter filter_ = PickFilter::Everything;
     FrameStats stats_;
     float pixelRatio_ = 1.0F;
     std::chrono::steady_clock::time_point lastDraw_;
