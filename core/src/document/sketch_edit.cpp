@@ -1,6 +1,7 @@
 #include "facetry/core/sketch_edit.hpp"
 
 #include "facetry/core/error.hpp"
+#include "facetry/core/naming.hpp"
 #include "facetry/core/regeneration.hpp"
 
 #include "sketch_edit_plan.hpp"
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <set>
@@ -42,6 +44,23 @@ class Cuts {
   private:
     std::vector<Cut> cuts_;
 };
+
+template <typename Curves>
+auto* find(Curves& curves, const std::string& id) {
+    const auto it = std::find_if(curves.begin(), curves.end(),
+                                 [&](const auto& curve) { return curve.id == id; });
+    return it == curves.end() ? nullptr : &*it;
+}
+
+// The curves that edits change: all but the projected ones.
+SnapGeometry editable(SnapGeometry geometry, const Sketch& sketch) {
+    const auto projected = [&](const auto& curve) {
+        return sketch.projectionOf(curve.id) != nullptr;
+    };
+    std::erase_if(geometry.lines, projected);
+    std::erase_if(geometry.circles, projected);
+    return geometry;
+}
 
 // Where the other curves of the sketch meet a line or circle, apart from its ends: a line's
 // parameter is 0 to 1, an arc's the angle from its start, a circle's the angle from the u axis.
@@ -82,9 +101,10 @@ void around(const std::vector<Cut>& cuts, double at, TrimPlan& plan) {
 std::optional<TrimPlan> planTrim(const Document& document, const Sketch& sketch, double u, double v,
                                  double radius) {
     const SnapGeometry geometry = snapGeometry(document, sketch);
-    const NearestCurve nearest = nearestCurve(geometry, u, v, radius);
-    const SnapLine* line = nearest.line;
-    const SnapCircle* circle = nearest.circle;
+    // Projected curves cut others but are not trimmed themselves.
+    const std::string picked = nearestCurve(editable(geometry, sketch), u, v, radius).id();
+    const SnapLine* line = find(geometry.lines, picked);
+    const SnapCircle* circle = find(geometry.circles, picked);
     if (line == nullptr && circle == nullptr) {
         return std::nullopt;
     }
@@ -150,7 +170,9 @@ std::optional<TrimPlan> planTrim(const Document& document, const Sketch& sketch,
 std::optional<ExtendPlan> planExtend(const Document& document, const Sketch& sketch, double u,
                                      double v, double radius) {
     const SnapGeometry geometry = snapGeometry(document, sketch);
-    const SnapLine* line = nearestCurve(geometry, u, v, radius, /*linesOnly=*/true).line;
+    const SnapLine* line =
+        find(geometry.lines,
+             nearestCurve(editable(geometry, sketch), u, v, radius, /*linesOnly=*/true).id());
     if (line == nullptr) {
         return std::nullopt;
     }
@@ -236,7 +258,9 @@ std::optional<FilletPlan> planFillet(const Document& document, const Sketch& ske
         std::any_of(sketch.circles.begin(), sketch.circles.end(),
                     [&](const SketchCircle& circle) { return circle.center == point; });
     const auto corner = at(point);
-    if (lines.size() != 2 || other || !corner) {
+    if (lines.size() != 2 || other || !corner || sketch.projectionOf(point) != nullptr ||
+        sketch.projectionOf(lines[0]->id) != nullptr ||
+        sketch.projectionOf(lines[1]->id) != nullptr) {
         return std::nullopt;
     }
     const auto farEnd = [&](const SketchLine& line) {
@@ -350,9 +374,11 @@ class Editor {
             {.id = document_.newId("k"), .type = std::move(type), .entities = std::move(entities)});
     }
 
-    // Removes a point that no curve uses any more, with the constraints on it.
+    // Removes a point that no curve uses any more, with the constraints on it. Points a projection
+    // drives stay.
     void dropIfUnused(const std::string& point) {
         const bool used =
+            sketch_.projectionOf(point) != nullptr ||
             std::any_of(sketch_.lines.begin(), sketch_.lines.end(),
                         [&](const SketchLine& l) { return l.start == point || l.end == point; }) ||
             std::any_of(sketch_.arcs.begin(), sketch_.arcs.end(),
@@ -389,13 +415,6 @@ class Editor {
     Sketch& sketch_;
     double scale_;
 };
-
-template <typename Curves>
-auto* find(Curves& curves, const std::string& id) {
-    const auto it = std::find_if(curves.begin(), curves.end(),
-                                 [&](const auto& curve) { return curve.id == id; });
-    return it == curves.end() ? nullptr : &*it;
-}
 
 }  // namespace
 
@@ -448,6 +467,13 @@ void deleteSketchEntities(Document& document, const std::string& sketchId,
     std::set<std::string> removed = curves;
     removed.insert(points.begin(), points.end());
     editor.dropConstraints(removed);
+    // A projection whose curve or points went is gone; what is left of it stays as ordinary
+    // entities, or goes with the curve when nothing else uses it.
+    std::erase_if(sketch.projections, [&](const SketchProjection& projection) {
+        return removed.contains(projection.curve) ||
+               std::any_of(projection.points.begin(), projection.points.end(),
+                           [&](const std::string& p) { return removed.contains(p); });
+    });
     for (const std::string& point : loose) {
         if (!points.contains(point)) {
             editor.dropIfUnused(point);
@@ -623,8 +649,10 @@ void moveSketchEntities(Document& document, const std::string& sketchId,
                          lengthInMillimeters(point.y, document) + dv};
     };
     if (!copy) {
+        // Projections place what they drive; moving leaves it.
         for (SketchPoint& point : sketch.points) {
-            if (std::find(moving.begin(), moving.end(), point.id) != moving.end()) {
+            if (std::find(moving.begin(), moving.end(), point.id) != moving.end() &&
+                sketch.projectionOf(point.id) == nullptr) {
                 const auto [u, v] = moved(point);
                 point.x = u / editor.scale();
                 point.y = v / editor.scale();
@@ -674,6 +702,156 @@ void moveSketchEntities(Document& document, const std::string& sketchId,
             editor.constrain(constraint.type, std::move(bound));
         }
     }
+}
+
+namespace {
+
+// Where an origin item lies on the sketch plane: a line for an axis, a degenerate one for the
+// origin point. Regeneration computes the same (regeneration.cpp).
+ProfileSegment projectOrigin(const std::string& item, const SketchFrame& frame) {
+    constexpr double kAxisHalfLength = 1000.0;
+    const auto inPlane = [&](const Vec3& v) {
+        return std::pair{v.x * frame.xAxis.x + v.y * frame.xAxis.y + v.z * frame.xAxis.z,
+                         v.x * frame.yAxis.x + v.y * frame.yAxis.y + v.z * frame.yAxis.z};
+    };
+    const auto [ou, ov] = inPlane({-frame.origin.x, -frame.origin.y, -frame.origin.z});
+    if (item == "o") {
+        return lineSegment(ou, ov, ou, ov);
+    }
+    if (item != "x" && item != "y" && item != "z") {
+        throw Error(ErrorCode::InvalidArgument, "\"" + item + "\" is not an origin item");
+    }
+    const Vec3 axis = item == "x"   ? Vec3{1.0, 0.0, 0.0}
+                      : item == "y" ? Vec3{0.0, 1.0, 0.0}
+                                    : Vec3{0.0, 0.0, 1.0};
+    const auto [du, dv] = inPlane(axis);
+    const double size = std::hypot(du, dv);
+    if (size < 1e-9) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "The " + item + " axis is perpendicular to the sketch");
+    }
+    const double s = kAxisHalfLength / size;
+    return lineSegment(ou - du * s, ov - dv * s, ou + du * s, ov + dv * s);
+}
+
+}  // namespace
+
+std::size_t projectIntoSketch(Document& document, const ModelState& model,
+                              const std::string& sketchId,
+                              std::span<const ProjectionSource> sources) {
+    Sketch& sketch = sketchIn(document, sketchId);
+    const SketchFrame frame = [&] {
+        if (sketch.plane != "face") {
+            return originPlaneFrame(sketch.plane);
+        }
+        const auto regenerated = model.sketches.find(sketchId);
+        if (regenerated == model.sketches.end()) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "The sketch " + sketchId + " has no plane; regenerate it first");
+        }
+        return regenerated->second->frame;
+    }();
+    const auto& timeline = document.root.timeline;
+    const auto position = [&](const std::string& feature) {
+        return std::find_if(timeline.begin(), timeline.end(),
+                            [&](const Feature& f) { return f.id == feature; }) -
+               timeline.begin();
+    };
+    Editor editor(document, sketch);
+    std::size_t added = 0;
+    // Adds a projection driving a new curve for `segment` and its points.
+    const auto add = [&](std::string origin, std::vector<Reference> edge,
+                         const ProfileSegment& segment, bool construction) {
+        SketchProjection projection{.id = document.newId("j"),
+                                    .origin = std::move(origin),
+                                    .edge = std::move(edge),
+                                    .curve = {},
+                                    .points = {}};
+        const auto point = [&](double u, double v) {
+            projection.points.push_back(editor.point(u, v));
+            return projection.points.back();
+        };
+        if (projection.origin == "o") {
+            point(segment.x0, segment.y0);
+        } else if (segment.kind == ProfileSegment::Kind::Line) {
+            const std::string start = point(segment.x0, segment.y0);
+            const std::string end = point(segment.x1, segment.y1);
+            projection.curve = document.newId("l");
+            sketch.lines.push_back(
+                {.id = projection.curve, .start = start, .end = end, .construction = construction});
+        } else if (segment.kind == ProfileSegment::Kind::Arc) {
+            const std::string center = point(segment.cx, segment.cy);
+            const std::string start = point(segment.x0, segment.y0);
+            const std::string end = point(segment.x1, segment.y1);
+            projection.curve = document.newId("a");
+            sketch.arcs.push_back({.id = projection.curve,
+                                   .center = center,
+                                   .start = start,
+                                   .end = end,
+                                   .construction = construction});
+        } else {
+            const std::string center = point(segment.cx, segment.cy);
+            projection.curve = document.newId("c");
+            sketch.circles.push_back({.id = projection.curve,
+                                      .center = center,
+                                      .radius = segment.radius / editor.scale(),
+                                      .construction = construction});
+        }
+        sketch.projections.push_back(std::move(projection));
+        ++added;
+    };
+    const auto projected = [&](const std::function<bool(const SketchProjection&)>& same) {
+        return std::any_of(sketch.projections.begin(), sketch.projections.end(), same);
+    };
+    for (const ProjectionSource& source : sources) {
+        if (!source.origin.empty()) {
+            if (!projected([&](const SketchProjection& p) { return p.origin == source.origin; })) {
+                add(source.origin, {}, projectOrigin(source.origin, frame),
+                    /*construction=*/source.origin != "o");
+            }
+            continue;
+        }
+        const auto body = model.bodies.find(source.body);
+        if (body == model.bodies.end()) {
+            throw Error(ErrorCode::InvalidArgument, "The body " + source.body + " does not exist");
+        }
+        if (position(source.body) >= position(sketchId)) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "Only bodies made before the sketch can be projected into it");
+        }
+        const bool face = source.kind == ElementKind::Face;
+        if (!face && source.kind != ElementKind::Edge) {
+            throw Error(ErrorCode::InvalidArgument, "Only edges and faces can be projected");
+        }
+        const std::vector<std::uint32_t> edges =
+            face ? faceEdges(*body->second, source.id) : std::vector{source.id};
+        std::size_t usable = 0;
+        for (const std::uint32_t id : edges) {
+            Reference reference = makeReference(model, source.body, ElementKind::Edge, id);
+            if (projected([&](const SketchProjection& p) {
+                    return !p.edge.empty() && p.edge.front().body == reference.body &&
+                           p.edge.front().name == reference.name;
+                })) {
+                ++usable;
+                continue;
+            }
+            ProfileSegment segment;
+            try {
+                segment = projectEdge(*body->second, id, frame);
+            } catch (const Error&) {
+                if (!face) {
+                    throw;
+                }
+                continue;  // the face's other edges still project
+            }
+            add({}, {std::move(reference)}, segment, /*construction=*/false);
+            ++usable;
+        }
+        if (usable == 0) {
+            throw Error(ErrorCode::InvalidArgument, "None of the face's edges can be projected");
+        }
+    }
+    return added;
 }
 
 }  // namespace facetry::core

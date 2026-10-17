@@ -31,6 +31,8 @@ export interface FacetryRenderModule {
     mesh: number,
     construction: number,
     constructionCount: number,
+    projected: number,
+    projectedCount: number,
   ): number;
   _facetry_renderer_set_viewport(
     renderer: number,

@@ -164,6 +164,10 @@ struct ContentView: View {
                     .keyboardShortcut(.delete, modifiers: [])
                     .disabled(model.tool != nil || model.selectedSketchEntities.isEmpty)
                     .help("Delete the selected points and curves (Delete)")
+                Button("Project") { Task { await model.projectSelection() } }
+                    .help(
+                        "Project the selected faces and edges into the sketch; without a selection, the origin and axes"
+                    )
                 Toggle(
                     "Construction",
                     isOn: Binding(

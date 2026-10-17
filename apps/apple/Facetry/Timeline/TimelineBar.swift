@@ -189,7 +189,9 @@ private struct FeatureDetails: View {
                     }
                 }
             }
-            ForEach(feature.brokenReferences, id: \.self) { reference in
+            // Fillets repair their edges here; sketches report lost references in their messages.
+            ForEach(feature.type == "fillet" ? feature.brokenReferences : [], id: \.self) {
+                reference in
                 brokenReference(reference)
             }
             HStack {

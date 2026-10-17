@@ -24,7 +24,7 @@ struct Pick: Equatable, Sendable {
         case body = 4
         /// A sketch region (profile) shown with ``ViewportRenderer/setRegions(_:)``.
         case region = 5
-        /// A curve or point of the sketch shown with ``ViewportRenderer/setSketch(_:construction:)``,
+        /// A curve or point of the sketch shown with ``ViewportRenderer/setSketch(_:construction:projected:)``,
         /// by edge or vertex ID.
         case sketchCurve = 6
         case sketchPoint = 7
@@ -155,15 +155,20 @@ final class ViewportRenderer {
     }
 
     /// Shows the sketch being edited over everything (a mesh from ``Core/sketchMesh(_:sketch:deflection:)``),
-    /// with the curves whose edge IDs are in `construction` dashed, or hides it (nil).
-    func setSketch(_ mesh: MeshData?, construction: [UInt32]) throws {
+    /// with the curves whose edge IDs are in `construction` dashed and those in `projected` in the
+    /// color of projected geometry, or hides it (nil).
+    func setSketch(_ mesh: MeshData?, construction: [UInt32], projected: [UInt32]) throws {
         let status = construction.withUnsafeBufferPointer { ids in
-            if let mesh {
-                return withRenderMesh(mesh) {
-                    facetry_renderer_set_sketch(handle, $0, ids.baseAddress, UInt32(ids.count))
+            projected.withUnsafeBufferPointer { projectedIds in
+                if let mesh {
+                    return withRenderMesh(mesh) {
+                        facetry_renderer_set_sketch(
+                            handle, $0, ids.baseAddress, UInt32(ids.count),
+                            projectedIds.baseAddress, UInt32(projectedIds.count))
+                    }
                 }
+                return facetry_renderer_set_sketch(handle, nil, nil, 0, nil, 0)
             }
-            return facetry_renderer_set_sketch(handle, nil, nil, 0)
         }
         try check(status)
     }

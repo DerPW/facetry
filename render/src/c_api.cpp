@@ -153,11 +153,14 @@ facetry_render_status facetry_renderer_set_regions(facetry_renderer* renderer,
 facetry_render_status facetry_renderer_set_sketch(facetry_renderer* renderer,
                                                   const facetry_render_mesh* mesh,
                                                   const uint32_t* construction_edge_ids,
-                                                  uint32_t construction_count) {
+                                                  uint32_t construction_count,
+                                                  const uint32_t* projected_edge_ids,
+                                                  uint32_t projected_count) {
     return run(renderer, [&](Renderer& r) {
         const auto construction = copy(construction_edge_ids, construction_count);
+        const auto projected = copy(projected_edge_ids, projected_count);
         r.setSketch(mesh == nullptr ? facetry::render::RenderMesh{} : renderMesh(mesh),
-                    construction);
+                    construction, projected);
     });
 }
 

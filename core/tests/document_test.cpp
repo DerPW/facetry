@@ -85,8 +85,13 @@ TEST_CASE("the checked-in example documents still load and regenerate") {
 
     // Version 3: a 20 × 10 slot of arcs and lines on XZ, 8 deep; a boss of radius 3 on its end
     // face, 4 high; a pin of radius 2 on YZ, 30 long, with a construction circle around it.
+    // Version 3 documents save back unchanged, apart from the version.
+    const auto current = [](std::string text) {
+        const std::string version = "\"formatVersion\": 3";
+        return text.replace(text.find(version), version.size(), "\"formatVersion\": 4");
+    };
     const std::string sketches = example("sketch-planes.json");
-    CHECK(toJson(parseDocument(sketches)) == sketches);
+    CHECK(toJson(parseDocument(sketches)) == current(sketches));
     Session sketchSession = Session::load(sketches);
     const Regeneration& regenerated = sketchSession.regenerate();
     CHECK(statuses(regenerated) == std::vector<FeatureStatus>(6, FeatureStatus::Ok));
@@ -104,12 +109,23 @@ TEST_CASE("the checked-in example documents still load and regenerate") {
     // Also version 3: a 40 × 30 plate, 5 thick, extruded from the region around a circle of
     // radius 8 (ADR-0014), so it has a hole.
     const std::string plate = example("plate-with-hole.json");
-    CHECK(toJson(parseDocument(plate)) == plate);
+    CHECK(toJson(parseDocument(plate)) == current(plate));
     Session plateSession = Session::load(plate);
     const Regeneration& holed = plateSession.regenerate();
     CHECK(statuses(holed) == std::vector<FeatureStatus>(2, FeatureStatus::Ok));
     CHECK(holed.model.bodies.at("f2")->shape.properties().volume ==
           doctest::Approx((40 * 30 - pi * 64) * 5));
+
+    // Version 4: the corner-fillet block without its fillet; a sketch on its top face projects
+    // the face's edges (#52) and has a rectangle 1 inside them, extruded 2 into a boss.
+    const std::string projected = example("projected-boss.json");
+    CHECK(toJson(parseDocument(projected)) == projected);
+    Session bossSession = Session::load(projected);
+    const Regeneration& raised = bossSession.regenerate();
+    CHECK(statuses(raised) == std::vector<FeatureStatus>(4, FeatureStatus::Ok));
+    CHECK(raised.model.bodies.at("f34")->shape.properties().volume ==
+          doctest::Approx((kWidth - 2) * (kDepth - 2) * 2));
+    CHECK(std::get<Sketch>(bossSession.document().findFeature("f5")->data).projections.size() == 4);
 }
 
 TEST_CASE("a document in inches regenerates the same geometry as its millimeter equivalent") {
@@ -167,7 +183,7 @@ TEST_CASE("malformed and newer documents are rejected") {
     };
     CHECK(errorCode(load("not json")) == ErrorCode::InvalidArgument);
     CHECK(errorCode(load(R"({"format": "something-else"})")) == ErrorCode::InvalidArgument);
-    CHECK(errorCode(load(replaced("\"formatVersion\": 3", "\"formatVersion\": 4"))) ==
+    CHECK(errorCode(load(replaced("\"formatVersion\": 4", "\"formatVersion\": 5"))) ==
           ErrorCode::Unsupported);
     CHECK(errorCode(load(replaced("\"units\": \"mm\"", "\"units\": \"ft\""))) ==
           ErrorCode::InvalidArgument);

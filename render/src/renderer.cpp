@@ -48,6 +48,7 @@ constexpr std::array<float, 4> kRegionOutline = {0.08F, 0.32F, 0.80F, 0.9F};
 // The sketch being edited: curves, construction curves (dashed) and points.
 constexpr std::array<float, 4> kSketchCurve = {0.05F, 0.22F, 0.70F, 1.0F};
 constexpr std::array<float, 4> kSketchConstruction = {0.90F, 0.45F, 0.10F, 1.0F};
+constexpr std::array<float, 4> kSketchProjected = {0.55F, 0.15F, 0.70F, 1.0F};
 constexpr std::array<float, 4> kSketchPoint = {0.05F, 0.10F, 0.30F, 1.0F};
 constexpr std::array<float, 4> kSketchPreview = {0.30F, 0.55F, 1.00F, 1.0F};
 constexpr float kSketchCurveHalfWidth = 0.9F;
@@ -89,30 +90,34 @@ void destroy(sg_buffer& buffer) {
     }
 }
 
-// A sketch drawn over everything: segments of its curves and of its construction curves (dashed)
-// and its points, each with the curve or point ID (1-based) and a selection flag.
+// A sketch drawn over everything: segments of its curves by style and its points, each with the
+// curve or point ID (1-based) and a selection flag. Construction curves are dashed, projected ones
+// (linked to the model) have a color of their own.
 struct SketchLayer {
-    sg_buffer curves{};
-    sg_buffer construction{};
+    enum Style : std::uint8_t { Plain, Construction, Projected, ProjectedConstruction, kStyles };
+    struct Curves {
+        sg_buffer segments{};
+        sg_buffer flags{};
+        std::vector<std::uint32_t> ids;
+    };
+    std::array<Curves, kStyles> curves{};
     sg_buffer points{};
-    sg_buffer curveFlags{};
-    sg_buffer constructionFlags{};
     sg_buffer pointFlags{};
-    std::vector<std::uint32_t> curveIds;
-    std::vector<std::uint32_t> constructionIds;
     std::vector<std::uint32_t> pointIds;
 
-    void upload(const RenderMesh& mesh, std::span<const std::uint32_t> constructionCurves);
+    void upload(const RenderMesh& mesh, std::span<const std::uint32_t> constructionCurves,
+                std::span<const std::uint32_t> projectedCurves);
     // Flags the curves and points in `selection` (none for a preview).
     void flag(const Selection* selection);
 
     void release() {
-        for (sg_buffer* buffer :
-             {&curves, &construction, &points, &curveFlags, &constructionFlags, &pointFlags}) {
-            destroy(*buffer);
+        for (Curves& style : curves) {
+            destroy(style.segments);
+            destroy(style.flags);
+            style.ids.clear();
         }
-        curveIds.clear();
-        constructionIds.clear();
+        destroy(points);
+        destroy(pointFlags);
         pointIds.clear();
     }
 };
@@ -553,20 +558,24 @@ void Renderer::setRegions(const RenderMesh& mesh) {
     }
 }
 
-void SketchLayer::upload(const RenderMesh& mesh,
-                         std::span<const std::uint32_t> constructionCurves) {
+void SketchLayer::upload(const RenderMesh& mesh, std::span<const std::uint32_t> constructionCurves,
+                         std::span<const std::uint32_t> projectedCurves) {
     release();
     std::vector<std::uint32_t> edgeIds;
     const std::vector<float> segments = edgeSegments(mesh, edgeIds);
-    std::vector<float> solid;
-    std::vector<float> dashed;
+    std::array<std::vector<float>, kStyles> styled;
+    const auto contains = [](std::span<const std::uint32_t> ids, std::uint32_t id) {
+        return std::find(ids.begin(), ids.end(), id) != ids.end();
+    };
     for (std::size_t i = 0; i < edgeIds.size(); ++i) {
-        const bool isConstruction = std::find(constructionCurves.begin(), constructionCurves.end(),
-                                              edgeIds[i]) != constructionCurves.end();
-        auto& target = isConstruction ? dashed : solid;
-        target.insert(target.end(), segments.begin() + static_cast<std::ptrdiff_t>(i * 7),
-                      segments.begin() + static_cast<std::ptrdiff_t>(i * 7 + 7));
-        (isConstruction ? constructionIds : curveIds).push_back(edgeIds[i]);
+        const bool construction = contains(constructionCurves, edgeIds[i]);
+        const bool projected = contains(projectedCurves, edgeIds[i]);
+        const Style style = projected ? (construction ? ProjectedConstruction : Projected)
+                                      : (construction ? Construction : Plain);
+        styled[style].insert(styled[style].end(),
+                             segments.begin() + static_cast<std::ptrdiff_t>(i * 7),
+                             segments.begin() + static_cast<std::ptrdiff_t>(i * 7 + 7));
+        curves[style].ids.push_back(edgeIds[i]);
     }
     std::vector<float> dots;
     for (std::size_t v = 0; v < mesh.vertexIds.size(); ++v) {
@@ -574,11 +583,10 @@ void SketchLayer::upload(const RenderMesh& mesh,
         dots.insert(dots.end(), {p[0], p[1], p[2], static_cast<float>(mesh.vertexIds[v])});
         pointIds.push_back(mesh.vertexIds[v]);
     }
-    if (!solid.empty()) {
-        curves = makeBuffer(solid, false, "sketch curves");
-    }
-    if (!dashed.empty()) {
-        construction = makeBuffer(dashed, false, "sketch construction curves");
+    for (std::size_t style = 0; style < kStyles; ++style) {
+        if (!styled[style].empty()) {
+            curves[style].segments = makeBuffer(styled[style], false, "sketch curves");
+        }
     }
     if (!dots.empty()) {
         points = makeBuffer(dots, false, "sketch points");
@@ -599,13 +607,15 @@ void SketchLayer::flag(const Selection* selection) {
         }
         buffer = makeBuffer(flags, false, "sketch flags");
     };
-    update(curveFlags, curveIds, PickKind::SketchCurve);
-    update(constructionFlags, constructionIds, PickKind::SketchCurve);
+    for (Curves& style : curves) {
+        update(style.flags, style.ids, PickKind::SketchCurve);
+    }
     update(pointFlags, pointIds, PickKind::SketchPoint);
 }
 
-void Renderer::setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction) {
-    gpu_->sketch.upload(mesh, construction);
+void Renderer::setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction,
+                         std::span<const std::uint32_t> projected) {
+    gpu_->sketch.upload(mesh, construction, projected);
     sketch_ = PickIndex(mesh);
     // Curve and point IDs change with the sketch, so selected ones are forgotten.
     const std::vector<Element> kept = selection_.elements();
@@ -629,7 +639,7 @@ void Renderer::setSketchPreview(const RenderMesh& mesh) {
             guides.push_back(id);
         }
     }
-    gpu_->preview.upload(mesh, guides);
+    gpu_->preview.upload(mesh, guides, {});
 }
 
 float Renderer::gridSpacing() const {
@@ -968,9 +978,9 @@ void Renderer::draw(const FrameTarget& target) {
     const auto sketchLayer = [&](const SketchLayer& layer, bool preview) {
         const float hoverCurve =
             preview ? 0.0F : idFor(h.hoverKind, PickKind::SketchCurve, h.hoverId);
-        const auto curves = [&](sg_buffer segments, sg_buffer flags, std::size_t count,
-                                bool construction) {
-            if (count == 0) {
+        const auto curves = [&](const SketchLayer::Curves& group, bool construction,
+                                bool projected) {
+            if (group.ids.empty()) {
                 return;
             }
             edge_vs_params_t vs{};
@@ -981,6 +991,7 @@ void Renderer::draw(const FrameTarget& target) {
             vs.ids[0] = hoverCurve;
             edge_fs_params_t fs{};
             copy4(fs.color, preview        ? kSketchPreview
+                            : projected    ? kSketchProjected
                             : construction ? kSketchConstruction
                                            : kSketchCurve);
             copy4(fs.hover_color, kHoverColor);
@@ -990,17 +1001,20 @@ void Renderer::draw(const FrameTarget& target) {
 
             sg_bindings bindings{};
             bindings.vertex_buffers[0] = g.edgeQuad;
-            bindings.vertex_buffers[1] = segments;
-            bindings.vertex_buffers[2] = flags;
+            bindings.vertex_buffers[1] = group.segments;
+            bindings.vertex_buffers[2] = group.flags;
             bindings.index_buffer = g.quadIndices;
             sg_apply_pipeline(g.regionOutlinePipeline);
             sg_apply_bindings(&bindings);
             sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
             sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
-            sg_draw(0, 6, static_cast<int>(count));
+            sg_draw(0, 6, static_cast<int>(group.ids.size()));
         };
-        curves(layer.construction, layer.constructionFlags, layer.constructionIds.size(), true);
-        curves(layer.curves, layer.curveFlags, layer.curveIds.size(), false);
+        using Style = SketchLayer::Style;
+        curves(layer.curves[Style::Construction], true, false);
+        curves(layer.curves[Style::ProjectedConstruction], true, true);
+        curves(layer.curves[Style::Projected], false, true);
+        curves(layer.curves[Style::Plain], false, false);
         if (layer.pointIds.empty()) {
             return;
         }

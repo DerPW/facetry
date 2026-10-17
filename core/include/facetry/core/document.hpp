@@ -20,8 +20,8 @@ namespace facetry::core {
 
 // Version of the JSON written by toJson(). Older versions are migrated when they are read:
 // version 1 has no units and is in millimeters; up to version 2 sketches lie on XY and hold only
-// points and lines.
-inline constexpr int kDocumentFormatVersion = 3;
+// points and lines; up to version 3 sketches project nothing.
+inline constexpr int kDocumentFormatVersion = 4;
 
 // Version of the naming scheme (ADR-0006). Each feature records the version it was created with,
 // so a later change to the scheme can migrate old documents instead of silently renaming.
@@ -139,6 +139,21 @@ inline constexpr SketchConstraintType kSketchConstraintTypes[] = {
     {"fix", 1, 1},            // any entity
 };
 
+// A projection (#52, ADR-0018): an origin item or a body's edge, projected onto the sketch plane.
+// It drives ordinary entities of the sketch: `curve`, a line, arc or circle (none for the origin
+// point), and `points`, a line's start and end, an arc's center, start and end, a circle's center,
+// or the origin point. Regeneration puts them where the source lies; their stored values are where
+// it was last, so curves drawn on them keep their place when the source is lost.
+struct SketchProjection {
+    std::string id;
+    std::string origin;           // an origin item, "o", "x", "y" or "z"; empty for an edge
+    std::vector<Reference> edge;  // one edge reference when `origin` is empty
+    std::string curve;
+    std::vector<std::string> points;
+
+    friend bool operator==(const SketchProjection&, const SketchProjection&) = default;
+};
+
 // A sketch (ADR-0013): points and curves with stable IDs (ADR-0006) on a plane. Its profiles are
 // the regions its curves enclose.
 struct Sketch {
@@ -150,6 +165,10 @@ struct Sketch {
     std::vector<SketchArc> arcs;
     std::vector<SketchCircle> circles;
     std::vector<SketchConstraint> constraints;
+    std::vector<SketchProjection> projections;
+
+    // The projection that drives a point or curve, if one does.
+    [[nodiscard]] const SketchProjection* projectionOf(std::string_view entity) const noexcept;
 
     friend bool operator==(const Sketch&, const Sketch&) = default;
 };
@@ -182,10 +201,10 @@ struct Feature {
     int namingVersion = kNamingVersion;
     FeatureData data;
 
-    // The references the feature depends on, in a fixed order; nullptr for features without
-    // references (extrudes). A sketch's are its face, if it lies on one.
-    [[nodiscard]] std::vector<Reference>* references() noexcept;
-    [[nodiscard]] const std::vector<Reference>* references() const noexcept;
+    // The references the feature depends on, in a fixed order: a fillet's edges; a sketch's face,
+    // if it lies on one, then the edges it projects. Extrudes have none.
+    [[nodiscard]] std::vector<Reference*> references();
+    [[nodiscard]] std::vector<const Reference*> references() const;
 
     // Calls `visit` on every value of the feature; all of them are lengths.
     void forEachValue(const std::function<void(Value&)>& visit);

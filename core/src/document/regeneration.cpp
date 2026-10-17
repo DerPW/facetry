@@ -40,9 +40,20 @@ std::string cacheKey(Feature feature, const Document& document) {
         }
     };
     feature.forEachValue(fill);
-    if (auto* references = feature.references()) {
-        for (Reference& reference : *references) {
-            reference.shadow.reset();
+    for (Reference* reference : feature.references()) {
+        reference->shadow.reset();
+    }
+    // What projections drive follows from their sources, not from the stored values.
+    if (auto* sketch = std::get_if<Sketch>(&feature.data)) {
+        for (SketchPoint& point : sketch->points) {
+            if (sketch->projectionOf(point.id) != nullptr) {
+                point.x = point.y = Value(0.0);
+            }
+        }
+        for (SketchCircle& circle : sketch->circles) {
+            if (sketch->projectionOf(circle.id) != nullptr) {
+                circle.radius = Value(0.0);
+            }
         }
     }
     feature.name.clear();
@@ -70,7 +81,6 @@ SketchFrame sketchFrame(const Sketch& sketch, const Document& document, const Mo
         return originPlaneFrame(sketch.plane);
     }
     const Reference& face = sketch.face.at(0);
-    result.resolved.assign(1, std::nullopt);
     const auto body = model.bodies.find(face.body);
     std::optional<std::uint32_t> id;
     if (body == model.bodies.end()) {
@@ -87,17 +97,109 @@ SketchFrame sketchFrame(const Sketch& sketch, const Document& document, const Mo
     return planarFaceFrame(*body->second, *id);
 }
 
+// Origin items as seen on a sketch plane: axes are construction lines this far either side of the
+// origin, in millimeters.
+constexpr double kAxisHalfLength = 1000.0;
+
+std::pair<double, double> inPlane(const SketchFrame& frame, const Vec3& point) {
+    const Vec3 d{point.x - frame.origin.x, point.y - frame.origin.y, point.z - frame.origin.z};
+    return {d.x * frame.xAxis.x + d.y * frame.xAxis.y + d.z * frame.xAxis.z,
+            d.x * frame.yAxis.x + d.y * frame.yAxis.y + d.z * frame.yAxis.z};
+}
+
+// Where a projection puts the points it drives (in order) and, for a circle, its radius. Throws
+// Error if the source is gone or cannot be projected; `index` is its reference's index in
+// Feature::references().
+void project(const SketchProjection& projection, std::size_t index, const Document& document,
+             const ModelState& model, FeatureResult& result, SketchGeometry& geometry) {
+    const SketchFrame& frame = geometry.frame;
+    std::vector<std::pair<double, double>> at;
+    std::optional<double> radius;
+    if (projection.origin == "o") {
+        at = {inPlane(frame, {0.0, 0.0, 0.0})};
+    } else if (!projection.origin.empty()) {
+        const Vec3 axis = projection.origin == "x"   ? Vec3{1.0, 0.0, 0.0}
+                          : projection.origin == "y" ? Vec3{0.0, 1.0, 0.0}
+                                                     : Vec3{0.0, 0.0, 1.0};
+        const double du = axis.x * frame.xAxis.x + axis.y * frame.xAxis.y + axis.z * frame.xAxis.z;
+        const double dv = axis.x * frame.yAxis.x + axis.y * frame.yAxis.y + axis.z * frame.yAxis.z;
+        const double size = std::hypot(du, dv);
+        if (size < 1e-9) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "The " + projection.origin + " axis is perpendicular to the sketch");
+        }
+        const auto [ou, ov] = inPlane(frame, {0.0, 0.0, 0.0});
+        const double s = kAxisHalfLength / size;
+        at = {{ou - du * s, ov - dv * s}, {ou + du * s, ov + dv * s}};
+    } else {
+        const Reference& edge = projection.edge.front();
+        const auto body = model.bodies.find(edge.body);
+        std::optional<std::uint32_t> id;
+        if (body == model.bodies.end()) {
+            result.messages.push_back("The body " + edge.body + " does not exist.");
+        } else {
+            id = resolveReference(*body->second, edge, document.units, result);
+        }
+        if (!id) {
+            result.brokenReferences.push_back(index);
+            throw Error(ErrorCode::InvalidArgument,
+                        "The projected edge " + projection.id +
+                            " is lost; its curves stay where they were. Delete it and project "
+                            "the edge again.");
+        }
+        result.resolved[index] =
+            Shadow{.id = *id, .geometry = elementGeometry(body->second->shape, edge.kind, *id)};
+        const ProfileSegment segment = projectEdge(*body->second, *id, frame);
+        switch (segment.kind) {
+            case ProfileSegment::Kind::Line:
+                at = {{segment.x0, segment.y0}, {segment.x1, segment.y1}};
+                break;
+            case ProfileSegment::Kind::Arc:
+                at = {{segment.cx, segment.cy}, {segment.x0, segment.y0}, {segment.x1, segment.y1}};
+                break;
+            case ProfileSegment::Kind::Circle:
+                at = {{segment.cx, segment.cy}};
+                radius = segment.radius;
+                break;
+        }
+    }
+    if (at.size() != projection.points.size()) {
+        throw Error(ErrorCode::InvalidArgument, "The edge projected as " + projection.id +
+                                                    " changed its shape; project it again.");
+    }
+    for (std::size_t i = 0; i < at.size(); ++i) {
+        geometry.projectedPoints[projection.points[i]] = at[i];
+    }
+    if (radius) {
+        geometry.projectedRadii[projection.curve] = *radius;
+    }
+}
+
 SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
                               const Document& document, const ModelState& model,
                               FeatureResult& result) {
+    result.resolved.assign(feature.references().size(), std::nullopt);
     SketchGeometry geometry{.frame = sketchFrame(sketch, document, model, result),
                             .curves = {},
                             .regions = {},
                             .points = {}};
+    // Projections first: what they drive goes where their sources are; a projection that fails
+    // leaves its entities where they were.
+    std::size_t index = sketch.face.size();
+    for (const SketchProjection& projection : sketch.projections) {
+        try {
+            project(projection, index, document, model, result, geometry);
+        } catch (const Error& error) {
+            result.messages.emplace_back(error.what());
+        }
+        index += projection.edge.size();
+    }
     std::map<std::string, std::pair<double, double>> points;
     for (const SketchPoint& point : sketch.points) {
-        const double x = length(point.x, document);
-        const double y = length(point.y, document);
+        const auto projected = geometry.projectedPoints.find(point.id);
+        const auto [x, y] = projected != geometry.projectedPoints.end()
+                                ? projected->second
+                                : std::pair{length(point.x, document), length(point.y, document)};
         points[point.id] = {x, y};
         geometry.points.push_back(geometry.frame.at(x, y));
     }
@@ -129,11 +231,14 @@ SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
     }
     for (const SketchCircle& circle : sketch.circles) {
         const auto [cx, cy] = points.at(circle.center);
+        const auto projected = geometry.projectedRadii.find(circle.id);
         geometry.curves.push_back({.segment = {.name = name(circle.id),
                                                .kind = ProfileSegment::Kind::Circle,
                                                .cx = cx,
                                                .cy = cy,
-                                               .radius = length(circle.radius, document)},
+                                               .radius = projected != geometry.projectedRadii.end()
+                                                             ? projected->second
+                                                             : length(circle.radius, document)},
                                    .start = {},
                                    .end = {},
                                    .construction = circle.construction});

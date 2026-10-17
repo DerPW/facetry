@@ -192,12 +192,28 @@ export function sketchPoints(definition: FeatureJson): string[] {
   return ((definition.points as { id: string }[] | undefined) ?? []).map(({ id }) => id);
 }
 
-export function sketchCurves(definition: FeatureJson): { id: string; construction: boolean }[] {
+export function sketchCurves(
+  definition: FeatureJson,
+): { id: string; construction: boolean; projected: boolean }[] {
   const curves = ["lines", "arcs", "circles"].flatMap(
     (key) => (definition[key] as { id: string; construction?: boolean }[] | undefined) ?? [],
   );
-  return curves.map(({ id, construction }) => ({ id, construction: construction === true }));
+  const projected = new Set(
+    ((definition.projections as { curve?: string }[] | undefined) ?? []).flatMap(
+      ({ curve }) => curve ?? [],
+    ),
+  );
+  return curves.map(({ id, construction }) => ({
+    id,
+    construction: construction === true,
+    projected: projected.has(id),
+  }));
 }
+
+/** What to project into a sketch (docs/adr/0018-sketch-projection.md): an origin item, or a face
+ * or edge of a body by its element ID in the last regeneration. A face projects its edges. */
+export type ProjectionSource =
+  { origin: "o" | "x" | "y" | "z" } | { body: string; kind: "face" | "edge"; id: number };
 
 /** Persistent names of a body's elements; index i belongs to element ID i + 1. */
 export interface ElementNames {
@@ -651,6 +667,25 @@ export class FacetryCore {
       );
       return JSON.parse(this.#outputString()) as Reference;
     });
+  }
+
+  /** Projects origin items, faces and edges into a sketch as one edit; returns how many
+   * projections were added. Regenerate afterwards. */
+  projectIntoSketch(session: number, sketch: string, sources: ProjectionSource[]): number {
+    return this.#withString(sketch, (sketchText) =>
+      this.#withString(JSON.stringify(sources), (sourcesText) => {
+        this.#check(
+          this.#m._facetry_session_project(
+            this.#context,
+            session,
+            sketchText,
+            sourcesText,
+            this.#scratch,
+          ),
+        );
+        return this.#u32(this.#scratch);
+      }),
+    );
   }
 
   releaseSession(session: number): void {

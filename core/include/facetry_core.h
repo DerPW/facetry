@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 13
+#define FACETRY_API_VERSION_MINOR 14
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -282,6 +282,15 @@ typedef enum facetry_element_kind {
 FACETRY_API facetry_status facetry_session_make_reference(
     facetry_context* context, facetry_handle session, const char* body_id,
     facetry_element_kind kind, uint32_t element_id, const char** out_json);
+
+/* Projects geometry into the sketch feature `sketch_id` as one edit (#52,
+ * docs/adr/0018-sketch-projection.md). `sources_json` lists origin items and elements of the last
+ * regeneration: [{"origin": "x"}, {"body": "f2", "kind": "face", "id": 5}, {"body": "f2",
+ * "kind": "edge", "id": 3}]; origin items are "o", "x", "y" and "z", and a face projects its
+ * edges. `out_added` (may be NULL) is how many projections were added. Regenerate afterwards. */
+FACETRY_API facetry_status facetry_session_project(facetry_context* context, facetry_handle session,
+                                                   const char* sketch_id, const char* sources_json,
+                                                   uint32_t* out_added);
 
 FACETRY_API facetry_status facetry_session_release(facetry_context* context,
                                                    facetry_handle session);

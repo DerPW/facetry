@@ -149,6 +149,13 @@ export interface FacetryCoreModule {
     elementId: number,
     jsonOut: number,
   ): number;
+  _facetry_session_project(
+    context: number,
+    session: number,
+    sketch: number,
+    sources: number,
+    out: number,
+  ): number;
   _facetry_session_release(context: number, session: number): number;
 }
 

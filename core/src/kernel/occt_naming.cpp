@@ -50,6 +50,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <string>
@@ -894,6 +895,83 @@ SketchFrame planarFaceFrame(const NamedShape& body, std::uint32_t faceId) {
                            .xAxis = {x.X(), x.Y(), x.Z()},
                            .yAxis = {y.X(), y.Y(), y.Z()}};
     });
+}
+
+ProfileSegment projectEdge(const NamedShape& body, std::uint32_t edgeId, const SketchFrame& frame) {
+    const Shape::Impl& data = body.shape.impl();
+    if (edgeId == 0 || edgeId > static_cast<std::uint32_t>(data.edges.Extent())) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "Edge " + std::to_string(edgeId) + " does not exist");
+    }
+    return kernel::guard("Projecting an edge", [&] {
+        const TopoDS_Edge& edge = TopoDS::Edge(data.edges(static_cast<int>(edgeId)));
+        const BRepAdaptor_Curve curve(edge);
+        const gp_Pnt origin(frame.origin.x, frame.origin.y, frame.origin.z);
+        const gp_Vec x(frame.xAxis.x, frame.xAxis.y, frame.xAxis.z);
+        const gp_Vec y(frame.yAxis.x, frame.yAxis.y, frame.yAxis.z);
+        const gp_Vec normal = x.Crossed(y);
+        const auto inPlane = [&](const gp_Pnt& point) {
+            const gp_Vec v(origin, point);
+            return std::pair{v.Dot(x), v.Dot(y)};
+        };
+        const auto [u0, v0] = inPlane(curve.Value(curve.FirstParameter()));
+        const auto [u1, v1] = inPlane(curve.Value(curve.LastParameter()));
+        switch (curve.GetType()) {
+            case GeomAbs_Line:
+                if (std::hypot(u1 - u0, v1 - v0) < kPointTolerance) {
+                    throw Error(ErrorCode::InvalidArgument,
+                                "The edge is perpendicular to the sketch and projects to a point");
+                }
+                return ProfileSegment{.name = {}, .x0 = u0, .y0 = v0, .x1 = u1, .y1 = v1};
+            case GeomAbs_Circle: {
+                const gp_Circ circle = curve.Circle();
+                const gp_Vec axis(circle.Axis().Direction());
+                const double alignment = axis.Dot(normal);
+                if (std::abs(std::abs(alignment) - 1.0) > 1e-9) {
+                    throw Error(ErrorCode::InvalidArgument,
+                                "Only circles and arcs parallel to the sketch can be projected");
+                }
+                const auto [cu, cv] = inPlane(circle.Location());
+                if (curve.LastParameter() - curve.FirstParameter() >
+                    2.0 * std::numbers::pi - 1e-9) {
+                    return ProfileSegment{.name = {},
+                                          .kind = ProfileSegment::Kind::Circle,
+                                          .cx = cu,
+                                          .cy = cv,
+                                          .radius = circle.Radius()};
+                }
+                // The parameter runs counter-clockwise around the circle's axis; seen along the
+                // sketch normal that is clockwise when the axis points the other way.
+                const bool ccw = alignment > 0.0;
+                return ProfileSegment{.name = {},
+                                      .x0 = ccw ? u0 : u1,
+                                      .y0 = ccw ? v0 : v1,
+                                      .x1 = ccw ? u1 : u0,
+                                      .y1 = ccw ? v1 : v0,
+                                      .kind = ProfileSegment::Kind::Arc,
+                                      .cx = cu,
+                                      .cy = cv};
+            }
+            default:
+                throw Error(ErrorCode::InvalidArgument,
+                            "Only lines, circles and arcs can be projected");
+        }
+    });
+}
+
+std::vector<std::uint32_t> faceEdges(const NamedShape& body, std::uint32_t faceId) {
+    const Shape::Impl& data = body.shape.impl();
+    if (faceId == 0 || faceId > static_cast<std::uint32_t>(data.faces.Extent())) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "Face " + std::to_string(faceId) + " does not exist");
+    }
+    std::set<std::uint32_t> ids;
+    for (TopExp_Explorer edge(data.faces(static_cast<int>(faceId)), TopAbs_EDGE); edge.More();
+         edge.Next()) {
+        ids.insert(static_cast<std::uint32_t>(data.edges.FindIndex(edge.Current())));
+    }
+    ids.erase(0);
+    return {ids.begin(), ids.end()};
 }
 
 NamedShape filletEdges(const NamedShape& body, std::span<const std::uint32_t> edgeIds,

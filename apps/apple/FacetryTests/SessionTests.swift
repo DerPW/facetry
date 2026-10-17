@@ -204,6 +204,31 @@ struct SessionTests {
         #expect(try core.state(of: session).features[0].sketchCurves.count == 6)
     }
 
+    @Test func originItemsAndFacesProjectIntoSketches() throws {
+        let core = try Core()
+        let session = try openExample(core)
+        try core.regenerate(session)
+        let feature: JSONValue = .object([
+            "type": .string("sketch"), "plane": .string("xy"), "points": .array([]),
+            "lines": .array([]),
+        ])
+        try core.apply(session, [.addFeature(feature, index: nil)])
+        try core.regenerate(session)
+        let sketch = try #require(try core.state(of: session).features.last?.id)
+        #expect(try core.projectIntoSketch(session, sketch: sketch, sources: [.origin("x")]) == 1)
+        // The block's bottom face projects onto XY as its outline: four lines.
+        let added = try core.projectIntoSketch(
+            session, sketch: sketch, sources: [.face(body: "f2", id: 1), .face(body: "f2", id: 2)])
+        #expect(added > 0)
+        try core.regenerate(session)
+        let projected = try #require(try core.state(of: session).features.last)
+        #expect(projected.status == "ok")
+        #expect(projected.sketchProjectedCurves.count == 1 + added)
+        #expect(throws: CoreError.self) {
+            try core.projectIntoSketch(session, sketch: sketch, sources: [.origin("z")])
+        }
+    }
+
     @Test func unitsChangeAndConvertEveryLength() throws {
         let core = try Core()
         let session = try openExample(core)
