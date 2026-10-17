@@ -487,6 +487,22 @@ facetry_status facetry_session_body_shape(facetry_context* context, facetry_hand
     });
 }
 
+facetry_status facetry_session_sketch_regions(facetry_context* context, facetry_handle session,
+                                              const char* sketch_id, facetry_handle* out_shape) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_shape, "out_shape");
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        const auto& sketches = source.regeneration().model.sketches;
+        const auto sketch = sketches.find(requireString(sketch_id, "sketch_id"));
+        if (sketch == sketches.end()) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "The sketch " + std::string(sketch_id) +
+                            " does not exist; regenerate the session after changes");
+        }
+        out = ctx.add(facetry::core::regionsShape(sketch->second->regions));
+    });
+}
+
 facetry_status facetry_session_element_names(facetry_context* context, facetry_handle session,
                                              const char* body_id, const char** out_json) {
     return run(context, [&](facetry_context& ctx) {

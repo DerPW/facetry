@@ -324,6 +324,7 @@ Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
                 bounds = bounds_;
             }
             break;
+        case PickKind::Region:  // regions have an index of their own (Renderer::setRegions)
         case PickKind::None:
             break;
     }
@@ -552,6 +553,54 @@ std::vector<Element> PickIndex::boxSelect(const Camera& camera, float x0, float 
                 }
             }
         }
+    }
+    return result;
+}
+
+namespace {
+
+std::optional<PickResult> pickRegion(const PickIndex& regions, const Camera& camera, float x,
+                                     float y, PickFilter filter) {
+    if ((filter != PickFilter::Everything && filter != PickFilter::Regions) ||
+        regions.bounds().isEmpty()) {
+        return std::nullopt;
+    }
+    const Ray ray = camera.rayAt(x, y);
+    const auto hit = regions.raycast(ray);
+    if (!hit) {
+        return std::nullopt;
+    }
+    return PickResult{.kind = PickKind::Region,
+                      .id = hit->faceId,
+                      .point = ray.origin + ray.direction * hit->distance,
+                      .screenDistance = 0.0F};
+}
+
+}  // namespace
+
+PickResult pickWithRegions(const PickIndex& model, const PickIndex& regions, const Camera& camera,
+                           float x, float y, float radiusPoints, bool throughFaces,
+                           PickFilter filter) {
+    if (const auto region = pickRegion(regions, camera, x, y, filter)) {
+        return *region;
+    }
+    if (filter == PickFilter::Regions) {
+        return {};
+    }
+    return model.pick(camera, x, y, radiusPoints, throughFaces, filter);
+}
+
+std::vector<PickResult> candidatesWithRegions(const PickIndex& model, const PickIndex& regions,
+                                              const Camera& camera, float x, float y,
+                                              float radiusPoints, bool throughFaces,
+                                              PickFilter filter) {
+    std::vector<PickResult> result;
+    if (const auto region = pickRegion(regions, camera, x, y, filter)) {
+        result.push_back(*region);
+    }
+    if (filter != PickFilter::Regions) {
+        const auto rest = model.candidates(camera, x, y, radiusPoints, throughFaces, filter);
+        result.insert(result.end(), rest.begin(), rest.end());
     }
     return result;
 }

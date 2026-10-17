@@ -14,6 +14,8 @@ regenerate it.
 | `corner-fillet-inch.facetry` | file 1, document 2 | The inch document as a native file, for opening in the apps |
 | `sketch-planes.json` | document 3 | Sketches on planes ([ADR-0013](../../docs/adr/0013-sketch-model.md)): a slot of lines and arcs on XZ with a construction line and constraints, a boss sketched on the slot's end face, and a pin circle on YZ next to a construction circle |
 | `sketch-planes.facetry` | file 1, document 3 | The sketch document as a native file |
+| `plate-with-hole.json` | document 3 | A rectangle with a circle inside; the extrusion takes the region around the circle, so the plate has a hole ([ADR-0014](../../docs/adr/0014-sketch-profiles.md)) |
+| `plate-with-hole.facetry` | file 1, document 3 | The plate as a native file |
 
 Never edit a file here to make a test pass. When the format changes, add a migration and keep
 the old file; add a new example for the new version.

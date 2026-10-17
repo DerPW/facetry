@@ -71,7 +71,7 @@ facetry_render_status create(facetry_renderer** out, Create&& makeRenderer) {
 }
 
 PickKind toKind(uint32_t kind) {
-    return kind <= 4 ? static_cast<PickKind>(kind) : PickKind::None;
+    return kind <= 5 ? static_cast<PickKind>(kind) : PickKind::None;
 }
 
 template <typename T>
@@ -80,6 +80,40 @@ std::vector<T> copy(const T* data, uint32_t count) {
         throw std::invalid_argument("Mesh buffer pointer is null");
     }
     return count > 0 ? std::vector<T>(data, data + count) : std::vector<T>{};
+}
+
+// Copies and checks a mesh from the C API.
+facetry::render::RenderMesh renderMesh(const facetry_render_mesh* mesh) {
+    if (mesh == nullptr) {
+        throw std::invalid_argument("Mesh must not be null");
+    }
+    if (mesh->position_count % 3 != 0 || mesh->triangle_index_count % 3 != 0 ||
+        mesh->edge_point_count % 3 != 0 || mesh->vertex_position_count % 3 != 0 ||
+        mesh->edge_offset_count == 0) {
+        throw std::invalid_argument("Mesh buffer sizes are inconsistent");
+    }
+    facetry::render::RenderMesh m;
+    m.positions = copy(mesh->positions, mesh->position_count);
+    m.normals = copy(mesh->normals, mesh->position_count);
+    m.triangles = copy(mesh->triangles, mesh->triangle_index_count);
+    m.triangleFaceIds = copy(mesh->triangle_face_ids, mesh->triangle_index_count / 3);
+    m.edgePoints = copy(mesh->edge_points, mesh->edge_point_count);
+    m.edgeOffsets = copy(mesh->edge_offsets, mesh->edge_offset_count);
+    m.edgeIds = copy(mesh->edge_ids, mesh->edge_offset_count - 1);
+    m.vertexPositions = copy(mesh->vertex_positions, mesh->vertex_position_count);
+    m.vertexIds = copy(mesh->vertex_ids, mesh->vertex_position_count / 3);
+    const auto vertexCount = static_cast<uint32_t>(m.positions.size() / 3);
+    for (const uint32_t index : m.triangles) {
+        if (index >= vertexCount) {
+            throw std::invalid_argument("Triangle index out of range");
+        }
+    }
+    for (const uint32_t offset : m.edgeOffsets) {
+        if (offset > m.edgePoints.size() / 3) {
+            throw std::invalid_argument("Edge offset out of range");
+        }
+    }
+    return m;
 }
 
 }  // namespace
@@ -106,37 +140,13 @@ const char* facetry_renderer_last_error(const facetry_renderer* renderer) {
 
 facetry_render_status facetry_renderer_set_mesh(facetry_renderer* renderer,
                                                 const facetry_render_mesh* mesh) {
+    return run(renderer, [&](Renderer& r) { r.setMesh(renderMesh(mesh)); });
+}
+
+facetry_render_status facetry_renderer_set_regions(facetry_renderer* renderer,
+                                                   const facetry_render_mesh* mesh) {
     return run(renderer, [&](Renderer& r) {
-        if (mesh == nullptr) {
-            throw std::invalid_argument("Mesh must not be null");
-        }
-        if (mesh->position_count % 3 != 0 || mesh->triangle_index_count % 3 != 0 ||
-            mesh->edge_point_count % 3 != 0 || mesh->vertex_position_count % 3 != 0 ||
-            mesh->edge_offset_count == 0) {
-            throw std::invalid_argument("Mesh buffer sizes are inconsistent");
-        }
-        facetry::render::RenderMesh m;
-        m.positions = copy(mesh->positions, mesh->position_count);
-        m.normals = copy(mesh->normals, mesh->position_count);
-        m.triangles = copy(mesh->triangles, mesh->triangle_index_count);
-        m.triangleFaceIds = copy(mesh->triangle_face_ids, mesh->triangle_index_count / 3);
-        m.edgePoints = copy(mesh->edge_points, mesh->edge_point_count);
-        m.edgeOffsets = copy(mesh->edge_offsets, mesh->edge_offset_count);
-        m.edgeIds = copy(mesh->edge_ids, mesh->edge_offset_count - 1);
-        m.vertexPositions = copy(mesh->vertex_positions, mesh->vertex_position_count);
-        m.vertexIds = copy(mesh->vertex_ids, mesh->vertex_position_count / 3);
-        const auto vertexCount = static_cast<uint32_t>(m.positions.size() / 3);
-        for (const uint32_t index : m.triangles) {
-            if (index >= vertexCount) {
-                throw std::invalid_argument("Triangle index out of range");
-            }
-        }
-        for (const uint32_t offset : m.edgeOffsets) {
-            if (offset > m.edgePoints.size() / 3) {
-                throw std::invalid_argument("Edge offset out of range");
-            }
-        }
-        r.setMesh(m);
+        r.setRegions(mesh == nullptr ? facetry::render::RenderMesh{} : renderMesh(mesh));
     });
 }
 
@@ -314,7 +324,7 @@ uint32_t facetry_renderer_selection(const facetry_renderer* renderer, uint32_t* 
 
 void facetry_renderer_set_pick_filter(facetry_renderer* renderer, uint32_t filter) {
     run(renderer, [&](Renderer& r) {
-        if (filter > 4) {
+        if (filter > 5) {
             throw std::invalid_argument("Unknown pick filter");
         }
         r.setPickFilter(static_cast<facetry::render::PickFilter>(filter));

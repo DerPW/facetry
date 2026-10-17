@@ -44,7 +44,7 @@ Document extruded(Sketch sketch, double height) {
     Document document;
     document.root.timeline.push_back(feature("f1", "Sketch 1", std::move(sketch)));
     document.root.timeline.push_back(
-        feature("f2", "Extrude 1", Extrude{.profile = "f1", .distance = height}));
+        feature("f2", "Extrude 1", Extrude{.profile = "f1", .distance = height, .regions = {}}));
     return document;
 }
 
@@ -101,7 +101,7 @@ Session faceSketchSession(const std::string& face, double cx, double cy) {
         sketch.circles = {{"c1", "p1", 1.0}};
         document.root.timeline.push_back(feature("f3", "Sketch 2", sketch));
         document.root.timeline.push_back(
-            feature("f4", "Extrude 2", Extrude{.profile = "f3", .distance = 2.0}));
+            feature("f4", "Extrude 2", Extrude{.profile = "f3", .distance = 2.0, .regions = {}}));
     });
     return session;
 }
@@ -193,14 +193,14 @@ TEST_CASE("construction curves never bound a profile") {
     Session session(extruded(sketch, 4));
     CHECK(body(session.regenerate(), "f2").shape.properties().volume == doctest::Approx(240));
 
-    // As real geometry, the diagonal meets two lines at p1 and p3: no single loop.
+    // As real geometry, the diagonal splits the rectangle into two triangles: two profiles.
     session.edit([](Document& document) {
         std::get<Sketch>(document.root.timeline[0].data).lines.back().construction = false;
     });
     const Regeneration& diagonal = session.regenerate();
     CHECK(diagonal.features[0].status == FeatureStatus::Ok);
     CHECK(diagonal.features[1].status == FeatureStatus::Error);
-    CHECK(diagonal.features[1].messages.at(0).find("closed loop") != std::string::npos);
+    CHECK(diagonal.features[1].messages.at(0).find("several profiles") != std::string::npos);
 
     // A real circle next to the rectangle is a second profile.
     session.edit([](Document& document) {
@@ -220,7 +220,7 @@ TEST_CASE("construction curves never bound a profile") {
         }
         edited.circles.clear();
     });
-    CHECK(session.regenerate().features[1].messages.at(0).find("nothing to extrude") !=
+    CHECK(session.regenerate().features[1].messages.at(0).find("no closed profile") !=
           std::string::npos);
 }
 

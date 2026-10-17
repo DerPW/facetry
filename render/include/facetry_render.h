@@ -66,6 +66,12 @@ typedef struct facetry_render_mesh {
 FACETRY_RENDER_API facetry_render_status facetry_renderer_set_mesh(facetry_renderer* renderer,
                                                                    const facetry_render_mesh* mesh);
 
+/* Sketch regions (profiles) to choose from, drawn over the model and picked before it as
+ * FACETRY_PICK_REGION: the mesh of a sketch's region shape (facetry_session_sketch_regions), whose
+ * face IDs are the region IDs. Vertices are not needed. NULL hides the regions. */
+FACETRY_RENDER_API facetry_render_status
+facetry_renderer_set_regions(facetry_renderer* renderer, const facetry_render_mesh* mesh);
+
 FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer, float width,
                                                       float height, float pixel_ratio);
 
@@ -177,7 +183,8 @@ typedef enum facetry_pick_kind {
     FACETRY_PICK_FACE = 1,
     FACETRY_PICK_EDGE = 2,
     FACETRY_PICK_VERTEX = 3,
-    FACETRY_PICK_BODY = 4 /* the shown model is body 1 until there are several */
+    FACETRY_PICK_BODY = 4,  /* the shown model is body 1 until there are several */
+    FACETRY_PICK_REGION = 5 /* a sketch region (facetry_renderer_set_regions) */
 } facetry_pick_kind;
 
 /* What picking and hovering look for (selection modes). */
@@ -186,7 +193,8 @@ typedef enum facetry_pick_filter {
     FACETRY_PICK_VERTICES = 1,
     FACETRY_PICK_EDGES = 2,
     FACETRY_PICK_FACES = 3,
-    FACETRY_PICK_BODIES = 4
+    FACETRY_PICK_BODIES = 4,
+    FACETRY_PICK_REGIONS = 5 /* only sketch regions; "everything" picks them first, too */
 } facetry_pick_filter;
 
 FACETRY_RENDER_API void facetry_renderer_set_pick_filter(facetry_renderer* renderer,

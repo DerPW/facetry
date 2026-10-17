@@ -88,7 +88,8 @@ SketchFrame sketchFrame(const Sketch& sketch, const Document& document, const Mo
 SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
                               const Document& document, const ModelState& model,
                               FeatureResult& result) {
-    SketchGeometry geometry{.frame = sketchFrame(sketch, document, model, result), .curves = {}};
+    SketchGeometry geometry{
+        .frame = sketchFrame(sketch, document, model, result), .curves = {}, .regions = {}};
     std::map<std::string, std::pair<double, double>> points;
     for (const SketchPoint& point : sketch.points) {
         points[point.id] = {length(point.x, document), length(point.y, document)};
@@ -130,70 +131,42 @@ SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
                                    .end = {},
                                    .construction = circle.construction});
     }
+    std::vector<ProfileSegment> bounding;
+    for (const SketchCurve& curve : geometry.curves) {
+        if (!curve.construction) {
+            bounding.push_back(curve.segment);
+        }
+    }
+    geometry.regions = sketchRegions(bounding, geometry.frame);
     return geometry;
 }
 
-// The profile an extrusion takes: the sketch's curves (not construction) as one closed loop of
-// lines and arcs, or a single circle. Several profiles come with profile selection (#47).
-std::vector<ProfileSegment> profileLoop(const SketchGeometry& sketch) {
-    std::vector<const SketchCurve*> curves;
-    std::size_t circles = 0;
-    for (const SketchCurve& curve : sketch.curves) {
-        if (!curve.construction) {
-            curves.push_back(&curve);
-            circles += curve.segment.kind == ProfileSegment::Kind::Circle ? 1 : 0;
-        }
-    }
-    if (curves.empty()) {
-        throw Error(ErrorCode::InvalidArgument, "The sketch has nothing to extrude");
-    }
-    if (circles > 0) {
-        if (curves.size() == 1) {
-            return {curves[0]->segment};
-        }
-        throw Error(ErrorCode::InvalidArgument,
-                    "The sketch has several profiles; choosing one comes with profile selection");
-    }
-    std::map<std::string, std::vector<std::size_t>> curvesAt;
-    for (std::size_t i = 0; i < curves.size(); ++i) {
-        curvesAt[curves[i]->start].push_back(i);
-        curvesAt[curves[i]->end].push_back(i);
-    }
-    for (const auto& [point, at] : curvesAt) {
-        if (at.size() != 2) {
+// The regions an extrusion takes: the ones it names, or the sketch's only region.
+std::vector<SketchRegion> chosenRegions(const Extrude& extrude, const SketchGeometry& sketch) {
+    if (extrude.regions.empty()) {
+        if (sketch.regions.empty()) {
             throw Error(ErrorCode::InvalidArgument,
-                        "The sketch curves must form one closed loop, but point " + point +
-                            " is shared by " + std::to_string(at.size()) + " curves");
+                        "The sketch has no closed profile: its curves enclose no region");
         }
-    }
-
-    std::vector<ProfileSegment> loop;
-    const std::string& first = curves.front()->start;
-    std::string at = first;
-    std::size_t current = 0;
-    while (true) {
-        const SketchCurve& curve = *curves[current];
-        ProfileSegment segment = curve.segment;
-        if (curve.start != at) {
-            // Walked from its end to its start: swap the ends; an arc then runs clockwise.
-            std::swap(segment.x0, segment.x1);
-            std::swap(segment.y0, segment.y1);
-            segment.clockwise = !segment.clockwise;
+        if (sketch.regions.size() > 1) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "The sketch has several profiles; choose the ones to extrude");
         }
-        loop.push_back(segment);
-        at = curve.start == at ? curve.end : curve.start;
-        if (at == first) {
-            break;
+        return sketch.regions;
+    }
+    std::vector<SketchRegion> chosen;
+    for (const std::string& name : extrude.regions) {
+        const auto region =
+            std::find_if(sketch.regions.begin(), sketch.regions.end(),
+                         [&](const SketchRegion& candidate) { return candidate.name == name; });
+        if (region == sketch.regions.end()) {
+            throw Error(ErrorCode::InvalidArgument,
+                        "A chosen profile is no longer in the sketch (" + name +
+                            "); choose the profiles again");
         }
-        const std::vector<std::size_t>& candidates = curvesAt.at(at);
-        current = candidates[0] == current ? candidates[1] : candidates[0];
+        chosen.push_back(*region);
     }
-    if (loop.size() != curves.size()) {
-        throw Error(ErrorCode::InvalidArgument,
-                    "The sketch curves must form one closed loop, but " +
-                        std::to_string(curves.size() - loop.size()) + " curves are not part of it");
-    }
-    return loop;
+    return chosen;
 }
 
 // Finds a referenced element by name; if the name is gone, by its shadow (with a warning).
@@ -288,8 +261,8 @@ FeatureResult execute(const Feature& feature, const Document& document, ModelSta
                             "The sketch " + extrude->profile + " has no profile to extrude");
             }
             after.bodies[feature.id] = std::make_shared<const NamedShape>(
-                extrudeProfile(profileLoop(*profile->second), length(extrude->distance, document),
-                               feature.id, profile->second->frame));
+                extrudeRegions(chosenRegions(*extrude, *profile->second), profile->second->frame,
+                               length(extrude->distance, document), feature.id));
         } else if (const auto* fillet = std::get_if<Fillet>(&feature.data)) {
             executeFillet(feature, *fillet, document, after, result);
         }

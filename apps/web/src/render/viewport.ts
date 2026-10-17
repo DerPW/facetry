@@ -4,7 +4,8 @@
 import type { MeshData } from "../core/api";
 import createFacetryRender, { type FacetryRenderModule } from "./wasm/facetry-render.mjs";
 
-export const PickKind = { None: 0, Face: 1, Edge: 2, Vertex: 3, Body: 4 } as const;
+/** `Region`: a sketch region (profile) shown with setRegions(). */
+export const PickKind = { None: 0, Face: 1, Edge: 2, Vertex: 3, Body: 4, Region: 5 } as const;
 export type PickKind = (typeof PickKind)[keyof typeof PickKind];
 
 export interface Pick {
@@ -12,8 +13,16 @@ export interface Pick {
   id: number;
 }
 
-/** What picking and hovering look for (facetry_pick_filter); keys 1–5. */
-export const PickFilter = { Everything: 0, Vertices: 1, Edges: 2, Faces: 3, Bodies: 4 } as const;
+/** What picking and hovering look for (facetry_pick_filter); keys 1–5. `Regions` takes only the
+ * sketch regions shown with setRegions(); `Everything` takes them first, too. */
+export const PickFilter = {
+  Everything: 0,
+  Vertices: 1,
+  Edges: 2,
+  Faces: 3,
+  Bodies: 4,
+  Regions: 5,
+} as const;
 export type PickFilter = (typeof PickFilter)[keyof typeof PickFilter];
 
 /** How the model is drawn (facetry_visual_style). */
@@ -168,6 +177,37 @@ export class Viewport {
 
   /** Uploads a mesh from the core. The camera keeps its position; call fit() to frame it. */
   setMesh(mesh: MeshData): void {
+    this.#withMesh(mesh, (struct) => this.#m._facetry_renderer_set_mesh(this.#renderer, struct));
+    this.#hover = { kind: PickKind.None, id: 0 };
+    // The renderer clears the selection with a new mesh: element IDs change with the geometry.
+    this.#selection = [];
+    this.#m._facetry_renderer_set_hover(this.#renderer, 0, 0);
+  }
+
+  /** Shows a sketch's regions over the model to choose from (a mesh of its region shape), or
+   * hides them (null). Selected regions are dropped: their IDs change with the regions. */
+  setRegions(mesh: MeshData | null): void {
+    if (mesh) {
+      this.#withMesh(mesh, (struct) =>
+        this.#m._facetry_renderer_set_regions(this.#renderer, struct),
+      );
+    } else {
+      this.#check(this.#m._facetry_renderer_set_regions(this.#renderer, 0));
+    }
+    if (this.#hover.kind === PickKind.Region) this.#hover = { kind: PickKind.None, id: 0 };
+    this.onSelectionChange(this.#readSelection(), { kind: PickKind.None, id: 0 });
+  }
+
+  /** Selects exactly `picks`. */
+  setSelection(picks: Pick[]): void {
+    const m = this.#m;
+    m._facetry_renderer_select(this.#renderer, PickKind.None, 0, 0);
+    for (const pick of picks) m._facetry_renderer_select(this.#renderer, pick.kind, pick.id, 1);
+    this.onSelectionChange(this.#readSelection(), { kind: PickKind.None, id: 0 });
+  }
+
+  // Passes a mesh to the renderer as a facetry_render_mesh.
+  #withMesh(mesh: MeshData, call: (struct: number) => number): void {
     const m = this.#m;
     const buffers = [
       mesh.positions,
@@ -216,15 +256,11 @@ export class Viewport {
     const struct = m._malloc(fields.length * 4);
     m.HEAPU32.set(fields, struct >> 2);
     try {
-      this.#check(m._facetry_renderer_set_mesh(this.#renderer, struct));
+      this.#check(call(struct));
     } finally {
       m._free(struct);
       pointers.forEach((pointer) => m._free(pointer));
     }
-    this.#hover = { kind: PickKind.None, id: 0 };
-    // The renderer clears the selection with a new mesh: element IDs change with the geometry.
-    this.#selection = [];
-    m._facetry_renderer_set_hover(this.#renderer, 0, 0);
   }
 
   /** The selected elements, in the order selected. */

@@ -22,6 +22,8 @@ struct Pick: Equatable, Sendable {
         case vertex = 3
         /// The shown model is body 1 until there are several (M1.5).
         case body = 4
+        /// A sketch region (profile) shown with ``ViewportRenderer/setRegions(_:)``.
+        case region = 5
     }
 
     var kind: Kind = .none
@@ -128,7 +130,29 @@ final class ViewportRenderer {
     }
 
     func setMesh(_ mesh: MeshData) throws {
-        let status = mesh.positions.withUnsafeBufferPointer { positions in
+        try check(withRenderMesh(mesh) { facetry_renderer_set_mesh(handle, $0) })
+    }
+
+    /// Shows a sketch's regions over the model to choose from (a mesh of its region shape), or
+    /// hides them (nil). Selected regions are dropped: their IDs change with the regions.
+    func setRegions(_ mesh: MeshData?) throws {
+        if let mesh {
+            try check(withRenderMesh(mesh) { facetry_renderer_set_regions(handle, $0) })
+        } else {
+            try check(facetry_renderer_set_regions(handle, nil))
+        }
+    }
+
+    /// Clicks and hovering pick only the regions (while choosing profiles).
+    func pickRegionsOnly() {
+        facetry_renderer_set_pick_filter(handle, FACETRY_PICK_REGIONS.rawValue)
+    }
+
+    /// Passes a mesh to the renderer as a facetry_render_mesh.
+    private func withRenderMesh(
+        _ mesh: MeshData, _ call: (UnsafePointer<facetry_render_mesh>) -> facetry_render_status
+    ) -> facetry_render_status {
+        mesh.positions.withUnsafeBufferPointer { positions in
             mesh.normals.withUnsafeBufferPointer { normals in
                 mesh.triangles.withUnsafeBufferPointer { triangles in
                     mesh.triangleFaceIDs.withUnsafeBufferPointer { faceIDs in
@@ -152,7 +176,7 @@ final class ViewportRenderer {
                                                 vertex_positions: vertices.baseAddress,
                                                 vertex_position_count: UInt32(vertices.count),
                                                 vertex_ids: vertexIDs.baseAddress)
-                                            return facetry_renderer_set_mesh(handle, &data)
+                                            return call(&data)
                                         }
                                     }
                                 }
@@ -162,7 +186,6 @@ final class ViewportRenderer {
                 }
             }
         }
-        try check(status)
     }
 
     func setViewport(width: Double, height: Double, pixelRatio: Double) {

@@ -93,6 +93,12 @@ export interface FacetryCoreModule {
   ): number;
   _facetry_session_state(context: number, session: number, jsonOut: number): number;
   _facetry_session_body_shape(context: number, session: number, body: number, out: number): number;
+  _facetry_session_sketch_regions(
+    context: number,
+    session: number,
+    sketch: number,
+    out: number,
+  ): number;
   _facetry_session_element_names(
     context: number,
     session: number,

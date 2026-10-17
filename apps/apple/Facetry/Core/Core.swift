@@ -119,6 +119,9 @@ struct SessionState: Decodable, Sendable, Equatable {
         let brokenReferences: [Int]
         /// Later features that use this one, directly or through others.
         let dependents: [String]
+        /// Sketches: the names of their closed regions (profiles), as of the last regeneration.
+        /// An extrusion names the ones it takes in its definition's "regions".
+        let regions: [String]?
         /// The feature in the document's JSON form, to change and send back with
         /// ``DocumentEdit/replaceFeature(_:)``.
         let definition: JSONValue
@@ -551,6 +554,12 @@ final class Core {
     /// A new shape handle for a body of the last regeneration. Release it when done.
     func bodyShape(_ session: SessionHandle, body: String) throws -> ShapeHandle {
         try makeShape { facetry_session_body_shape(context, session.rawValue, body, $0) }
+    }
+
+    /// A new shape handle for a sketch's regions, face ID i + 1 being region i. Release it when
+    /// done.
+    func sketchRegionsShape(_ session: SessionHandle, sketch: String) throws -> ShapeHandle {
+        try makeShape { facetry_session_sketch_regions(context, session.rawValue, sketch, $0) }
     }
 
     func elementNames(_ session: SessionHandle, body: String) throws -> ElementNames {

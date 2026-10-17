@@ -168,6 +168,16 @@ private struct FeatureDetails: View {
                 }
                 .help("A number, or the name of a parameter")
             }
+            if feature.type == "extrude" {
+                HStack {
+                    Text(profileSummary).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Choose profiles") {
+                        model.profiles = feature.id
+                        close()
+                    }
+                }
+            }
             ForEach(feature.brokenReferences, id: \.self) { reference in
                 brokenReference(reference)
             }
@@ -203,6 +213,14 @@ private struct FeatureDetails: View {
                 Text("These features use it and will fail: \(dependentNames).")
             }
         }
+    }
+
+    /// The profiles the extrusion takes.
+    private var profileSummary: String {
+        guard case .array(let regions)? = feature.definition["regions"], !regions.isEmpty else {
+            return "Profile: the sketch's only one"
+        }
+        return regions.count == 1 ? "1 profile" : "\(regions.count) profiles"
     }
 
     private var dependentNames: String {

@@ -82,6 +82,10 @@ describe("FacetryCore (WebAssembly)", () => {
       const snapshot = core.regenerateModel(session);
       expect(snapshot.state.features.map((f) => f.status)).toEqual(Array(6).fill("ok"));
       expect(snapshot.state.features[2]?.definition.plane).toBe("face");
+      // Every sketch has one region (profile), with a mesh to show and pick it.
+      expect(snapshot.state.features[0]?.regions).toHaveLength(1);
+      expect(Object.keys(snapshot.regions).sort()).toEqual(["f1", "f3", "f5"]);
+      expect(new Set(snapshot.regions.f1?.triangleFaceIds)).toEqual(new Set([1]));
       const volume = (body: string) => {
         const shape = core.bodyShape(session, body);
         const result = core.properties(shape).volume;
@@ -182,12 +186,14 @@ describe("FacetryCore (WebAssembly)", () => {
     it("cancels from the progress callback", () => {
       const session = core.openSession(example);
       const calls: number[] = [];
+      // Stops once the sketch is done; it reports progress (done = 0) while it finds its
+      // profiles.
       core.regenerate(session, (done, total) => {
         calls.push(done);
         expect(total).toBe(3);
-        return false;
+        return done < 1;
       });
-      expect(calls).toEqual([1]);
+      expect(calls.at(-1)).toBe(1);
       const state = core.sessionState(session);
       expect(state.regeneration.cancelled).toBe(true);
       expect(state.features.map((f) => f.status)).toEqual(["ok", "notRun", "notRun"]);

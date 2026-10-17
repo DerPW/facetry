@@ -89,3 +89,50 @@ TEST_CASE("anchor falls back to the target plane") {
     const Vec3 offModel = index.anchorAt(camera, 5, 5);
     CHECK(offModel.y == doctest::Approx(0.0F).epsilon(1e-4));  // target plane y = 0
 }
+
+TEST_CASE("sketch regions are picked over the model") {
+    const PickIndex model(test::unitCube());
+    const Camera camera = frontCamera(model);
+    // Two regions inside the cube, behind its front face: x 0.1–0.4 and 0.6–0.9, z 0.1–0.9.
+    RenderMesh mesh;
+    for (std::uint32_t r = 0; r < 2; ++r) {
+        const float x0 = r == 0 ? 0.1F : 0.6F;
+        const float x1 = x0 + 0.3F;
+        const auto base = static_cast<std::uint32_t>(mesh.positions.size() / 3);
+        mesh.positions.insert(mesh.positions.end(),
+                              {x0, 0.5F, 0.1F, x1, 0.5F, 0.1F, x1, 0.5F, 0.9F, x0, 0.5F, 0.9F});
+        mesh.normals.insert(mesh.normals.end(), {0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0});
+        mesh.triangles.insert(mesh.triangles.end(),
+                              {base, base + 1, base + 2, base, base + 2, base + 3});
+        mesh.triangleFaceIds.insert(mesh.triangleFaceIds.end(), {r + 1, r + 1});
+    }
+    const PickIndex regions(mesh);
+    const auto left = camera.project({0.25F, 0.0F, 0.5F});
+    const auto right = camera.project({0.75F, 0.0F, 0.5F});
+    const auto between = camera.project({0.5F, 0.0F, 0.5F});
+
+    const auto pick = [&](const Camera::Projected& at, PickFilter filter) {
+        return pickWithRegions(model, regions, camera, at.x, at.y, 6, false, filter);
+    };
+    CHECK(pick(left, PickFilter::Everything).kind == PickKind::Region);
+    CHECK(pick(left, PickFilter::Everything).id == 1);
+    CHECK(pick(right, PickFilter::Regions).id == 2);
+    CHECK(pick(between, PickFilter::Everything).kind == PickKind::Face);
+    CHECK(pick(between, PickFilter::Regions).kind == PickKind::None);
+    CHECK(pick(left, PickFilter::Faces).kind == PickKind::Face);
+
+    // A click's candidates: the region, then the model's elements behind it.
+    const auto candidates = candidatesWithRegions(model, regions, camera, left.x, left.y, 6, false,
+                                                  PickFilter::Everything);
+    REQUIRE(candidates.size() >= 2);
+    CHECK(candidates[0].kind == PickKind::Region);
+    CHECK(candidates[1].kind == PickKind::Face);
+    CHECK(
+        candidatesWithRegions(model, regions, camera, left.x, left.y, 6, false, PickFilter::Regions)
+            .size() == 1);
+
+    // Without regions, picking is the model's.
+    CHECK(pickWithRegions(model, PickIndex(), camera, left.x, left.y, 6, false,
+                          PickFilter::Everything)
+              .kind == PickKind::Face);
+}

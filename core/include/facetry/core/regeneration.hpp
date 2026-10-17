@@ -31,10 +31,11 @@ struct SketchCurve {
     bool construction = false;
 };
 
-// What a sketch adds to the model: its plane and its curves.
+// What a sketch adds to the model: its plane, its curves and the regions they enclose.
 struct SketchGeometry {
     SketchFrame frame;
     std::vector<SketchCurve> curves;
+    std::vector<SketchRegion> regions;  // sorted by name
 };
 
 // The model at one point of the timeline. Results are shared between cache entries, not copied.

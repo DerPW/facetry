@@ -5,6 +5,7 @@
 
 #include <doctest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <numbers>
@@ -99,6 +100,16 @@ TEST_CASE("the checked-in example documents still load and regenerate") {
     const BoundingBox boss = regenerated.model.bodies.at("f4")->shape.properties().bounds;
     CHECK(boss.min.y == doctest::Approx(-12));
     CHECK(boss.max.y == doctest::Approx(-8));
+
+    // Also version 3: a 40 × 30 plate, 5 thick, extruded from the region around a circle of
+    // radius 8 (ADR-0014), so it has a hole.
+    const std::string plate = example("plate-with-hole.json");
+    CHECK(toJson(parseDocument(plate)) == plate);
+    Session plateSession = Session::load(plate);
+    const Regeneration& holed = plateSession.regenerate();
+    CHECK(statuses(holed) == std::vector<FeatureStatus>(2, FeatureStatus::Ok));
+    CHECK(holed.model.bodies.at("f2")->shape.properties().volume ==
+          doctest::Approx((40 * 30 - pi * 64) * 5));
 }
 
 TEST_CASE("a document in inches regenerates the same geometry as its millimeter equivalent") {
@@ -270,7 +281,7 @@ TEST_CASE("suppressed and failing features pass the model through") {
     CHECK(statuses(failed) ==
           std::vector{FeatureStatus::Ok, FeatureStatus::Error, FeatureStatus::Error});
     CHECK(failed.model.bodies.empty());
-    CHECK(failed.features[1].messages.at(0).find("closed loop") != std::string::npos);
+    CHECK(failed.features[1].messages.at(0).find("no closed profile") != std::string::npos);
     CHECK_FALSE(failed.features[2].messages.empty());
 
     REQUIRE(session.undo());
@@ -296,11 +307,15 @@ TEST_CASE("regeneration can be cancelled between features and continues later") 
         session.regenerate(cancel, [&](std::size_t done, std::size_t total) {
             progress.push_back(done);
             CHECK(total == 3);
-            cancel.cancel();  // as if the user pressed Cancel while the sketch ran
+            if (done == 1) {
+                cancel.cancel();  // as if the user pressed Cancel once the sketch was done
+            }
         });
     CHECK(stopped.cancelled);
     CHECK(stopped.executed == 1);
-    CHECK(progress == std::vector<std::size_t>{1});
+    // The sketch reports progress (done = 0) while it finds its profiles, too.
+    CHECK(progress.back() == 1);
+    CHECK(std::count(progress.begin(), progress.end(), 1) == 1);
     CHECK(statuses(stopped) ==
           std::vector{FeatureStatus::Ok, FeatureStatus::NotRun, FeatureStatus::NotRun});
 

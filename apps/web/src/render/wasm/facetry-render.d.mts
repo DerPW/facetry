@@ -15,6 +15,7 @@ export interface FacetryRenderModule {
   _facetry_renderer_destroy(renderer: number): void;
   _facetry_renderer_last_error(renderer: number): number;
   _facetry_renderer_set_mesh(renderer: number, mesh: number): number;
+  _facetry_renderer_set_regions(renderer: number, mesh: number): number;
   _facetry_renderer_set_viewport(
     renderer: number,
     width: number,

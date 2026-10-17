@@ -23,12 +23,17 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Select the next element under the pointer (overlapping, or a hidden face behind) | tap the same spot again | tap the same spot again | click the same spot again | click the same spot again |
 | Precision selector | long press on the model: a crosshair above the finger selects where it points on release | — | — | — |
 | Box selection | long press on empty space, then drag; or drag with **Box** on | drag with **Box** on | left drag in the Fusion preset, or with **Box** on | the same as the mouse |
+| Highlight what is under the pointer | — | hover (supported iPads) | move | move |
+| Choose an extrusion's profiles ("Choose profiles") | tap a region to add or remove it | tap | click | click |
 
 **Box selection:** dragged to the right, a *window* (solid blue) takes what lies entirely inside;
 dragged to the left, a *crossing box* (dashed green) also takes what it touches, like in Fusion.
 It follows the selection filter; with "All" it takes edges. Shift, Cmd, Ctrl or **Multi** add to
 the selection.
-| Highlight what is under the pointer | — | hover (supported iPads) | move | move |
+
+**Choosing profiles:** the sketch's regions show over the model, translucent blue, and only they
+can be picked. Every click or tap adds a region or removes it; Done takes the selected ones,
+Cancel keeps the extrusion as it was.
 
 The mouse and trackpad columns show the **Facetry** preset, the default.
 

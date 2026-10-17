@@ -123,6 +123,9 @@ export interface SessionState {
     brokenReferences: number[];
     /** Later features that use this one, directly or through others. */
     dependents: string[];
+    /** Sketches: the names of their closed regions (profiles), as of the last regeneration. An
+     * extrusion names the ones it takes in its definition's `regions`. */
+    regions?: string[];
     /** The feature in the document's JSON form, to change and send back with `replaceFeature`. */
     definition: FeatureJson & { id: string };
   }[];
@@ -185,6 +188,8 @@ export type Edit =
 export interface ModelSnapshot {
   state: SessionState;
   meshes: Record<string, MeshData>;
+  /** A display mesh of each sketch's regions: face ID i + 1 is the sketch's region i. */
+  regions: Record<string, MeshData>;
 }
 
 export interface LoadOptions {
@@ -442,6 +447,17 @@ export class FacetryCore {
     });
   }
 
+  /** A new shape handle for a sketch's regions, face ID i + 1 being region i. Release it when
+   * done. */
+  sketchRegionsShape(session: number, sketch: string): number {
+    return this.#withString(sketch, (text) => {
+      this.#check(
+        this.#m._facetry_session_sketch_regions(this.#context, session, text, this.#scratch),
+      );
+      return this.#u32(this.#scratch);
+    });
+  }
+
   elementNames(session: number, body: string): ElementNames {
     return this.#withString(body, (text) => {
       this.#check(
@@ -478,19 +494,26 @@ export class FacetryCore {
     return this.modelSnapshot(session, options);
   }
 
-  /** The session summary and a display mesh per body of the last regeneration. */
+  /** The session summary and display meshes of the bodies and the sketches' regions of the last
+   * regeneration. */
   modelSnapshot(session: number, options: TessellationOptions = {}): ModelSnapshot {
     const state = this.sessionState(session);
-    const meshes: Record<string, MeshData> = {};
-    for (const { id } of state.bodies) {
-      const shape = this.bodyShape(session, id);
+    const mesh = (shape: number) => {
       try {
-        meshes[id] = this.tessellate(shape, options);
+        return this.tessellate(shape, options);
       } finally {
         this.release(shape);
       }
+    };
+    const meshes: Record<string, MeshData> = {};
+    for (const { id } of state.bodies) meshes[id] = mesh(this.bodyShape(session, id));
+    const regions: Record<string, MeshData> = {};
+    for (const feature of state.features) {
+      if (feature.regions?.length) {
+        regions[feature.id] = mesh(this.sketchRegionsShape(session, feature.id));
+      }
     }
-    return { state, meshes };
+    return { state, meshes, regions };
   }
 
   /** Releases the context and every shape it owns. The instance must not be used afterwards. */

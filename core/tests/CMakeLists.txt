@@ -9,6 +9,7 @@ add_executable(facetry-core-tests
     naming_scenarios_test.cpp
     naming_test.cpp
     occt_smoke_test.cpp
+    profile_test.cpp
     session_json_test.cpp
     sketch_test.cpp
     version_test.cpp)

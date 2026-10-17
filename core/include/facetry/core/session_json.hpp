@@ -59,7 +59,9 @@ void applyEdits(Document& document, std::string_view json);
 // last regeneration and is "notRun" for features added since. "dependents" lists the later
 // features that use this one, directly or through others (what deleting it would break).
 // "definition" is the feature in the document's JSON form, ready to be changed and sent back with
-// "replaceFeature". Lengths are in "units", in parameters and definitions alike.
+// "replaceFeature". Lengths are in "units", in parameters and definitions alike. Sketches also
+// list their "regions" (profiles) by name, as of the last regeneration; an extrusion names the ones
+// it takes in its definition's "regions".
 [[nodiscard]] std::string sessionStateJson(const Session& session);
 
 // Persistent names of a body's elements: {"faces": [...], "edges": [...], "vertices": [...]}.

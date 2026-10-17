@@ -11,6 +11,8 @@ struct ModelSnapshot: Sendable {
     /// Display mesh of the first visible body; empty if none is visible. Showing several bodies
     /// at once comes with the first features that make more than one (M1.5).
     let mesh: MeshData
+    /// A display mesh of each sketch's regions, by sketch ID: face ID i + 1 is region i.
+    let regions: [String: MeshData]
 }
 
 /// Progress of a regeneration: `done` of `total` features are finished.
@@ -93,13 +95,19 @@ actor DocumentEngine {
         }
         guard control.isCurrent(generation) else { return nil }
         let state = try core.state(of: session)
-        guard let body = state.bodies.first(where: \.visible) else {
-            return ModelSnapshot(state: state, mesh: .empty)
+        let mesh = { (shape: ShapeHandle) throws -> MeshData in
+            defer { try? self.core.release(shape) }
+            return try self.core.tessellate(shape, linearDeflection: 0.01, angularDeflection: 0.2)
         }
-        let shape = try core.bodyShape(session, body: body.id)
-        defer { try? core.release(shape) }
-        let mesh = try core.tessellate(shape, linearDeflection: 0.01, angularDeflection: 0.2)
-        return ModelSnapshot(state: state, mesh: mesh)
+        var regions: [String: MeshData] = [:]
+        for feature in state.features where !(feature.regions ?? []).isEmpty {
+            regions[feature.id] = try mesh(core.sketchRegionsShape(session, sketch: feature.id))
+        }
+        guard let body = state.bodies.first(where: \.visible) else {
+            return ModelSnapshot(state: state, mesh: .empty, regions: regions)
+        }
+        return ModelSnapshot(
+            state: state, mesh: try mesh(core.bodyShape(session, body: body.id)), regions: regions)
     }
 
     /// The M0.4 demo part (a plate with rounded edges, a boss and a hole), tessellated finely to
@@ -213,6 +221,62 @@ final class DocumentModel {
 
     var repair: Repair?
 
+    // MARK: - Profiles
+
+    /// The extrusion whose profiles are being chosen: the sketch's regions show over the model,
+    /// taps add or remove them, and ``finishProfiles()`` takes them.
+    var profiles: String? {
+        didSet { showProfiles() }
+    }
+    /// Display meshes of the sketches' regions from the last regeneration.
+    private var regionMeshes: [String: MeshData] = [:]
+
+    /// The extrusion and the region names of its sketch, while choosing profiles.
+    private var profileChoice: (extrude: SessionState.Feature, regions: [String])? {
+        guard let profiles, let state,
+            let extrude = state.features.first(where: { $0.id == profiles && $0.type == "extrude" }
+            ),
+            let sketch = extrude.definition["profile"]?.string
+        else { return nil }
+        return (extrude, state.features.first { $0.id == sketch }?.regions ?? [])
+    }
+
+    private func showProfiles() {
+        guard let choice = profileChoice,
+            let sketch = choice.extrude.definition["profile"]?.string,
+            let mesh = regionMeshes[sketch]
+        else {
+            viewport.regions = nil
+            return
+        }
+        let chosen: [String]
+        if case .array(let names)? = choice.extrude.definition["regions"] {
+            chosen = names.compactMap(\.string)
+        } else {
+            chosen = []
+        }
+        let ids = chosen.compactMap { name in
+            choice.regions.firstIndex(of: name).map { UInt32($0 + 1) }
+        }
+        viewport.regions = RegionChoice(mesh: mesh, selected: ids)
+    }
+
+    /// Makes the extrusion take the regions selected in the viewport, as one undo step.
+    func finishProfiles() async {
+        guard let choice = profileChoice else {
+            profiles = nil
+            return
+        }
+        let names = viewport.selected.filter { $0.kind == .region }.compactMap { pick in
+            let index = Int(pick.id) - 1
+            return choice.regions.indices.contains(index) ? choice.regions[index] : nil
+        }
+        var definition = choice.extrude.definition
+        definition["regions"] = names.isEmpty ? nil : .array(names.map { .string($0) })
+        profiles = nil
+        await edit([.replaceFeature(definition)])
+    }
+
     /// Replaces the broken reference ``repair`` with the picked edge.
     func completeRepair(with pick: Pick) async {
         guard let repair, pick.kind == .edge, let state,
@@ -290,6 +354,8 @@ final class DocumentModel {
             // Element IDs change with the geometry, so an old selection would point elsewhere.
             viewport.selection = .none
             viewport.mesh = snapshot.mesh
+            regionMeshes = snapshot.regions
+            if profiles != nil { showProfiles() }
         } catch {
             shown = generation
             progress = nil

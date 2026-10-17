@@ -327,6 +327,10 @@ void validate(const Document& document) {
             validateSketch(feature, *sketch);
         } else if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
             checkValue(extrude->distance, "Extrude " + feature.id + " distance");
+            const std::set<std::string> regions(extrude->regions.begin(), extrude->regions.end());
+            if (regions.size() != extrude->regions.size() || regions.contains("")) {
+                invalid("Extrude " + feature.id + ": profiles must be named once each");
+            }
         } else if (const auto* fillet = std::get_if<Fillet>(&feature.data)) {
             checkValue(fillet->radius, "Fillet " + feature.id + " radius");
             for (const Reference& edge : fillet->edges) {

@@ -95,6 +95,20 @@ TEST_CASE("a session opens, regenerates and reports the example document") {
     CHECK(names["vertices"].size() == static_cast<std::size_t>(properties.vertex_count));
     CHECK(names["faces"][0].get<std::string>().starts_with("f"));
 
+    // The sketch's regions: names in the state, faces in a shape of their own, ready to mesh.
+    CHECK(after["features"][0]["regions"] == json::array({"region{f1/l1+|f1/l2+|f1/l3+|f1/l4+}"}));
+    CHECK_FALSE(after["features"][1].contains("regions"));
+    facetry_handle regions = 0;
+    REQUIRE(facetry_session_sketch_regions(c.ctx, session, "f1", &regions) == FACETRY_OK);
+    facetry_shape_properties regionProperties{};
+    REQUIRE(facetry_shape_properties_get(c.ctx, regions, &regionProperties) == FACETRY_OK);
+    CHECK(regionProperties.face_count == 1);
+    CHECK(regionProperties.area == doctest::Approx(60));
+    facetry_handle regionMesh = 0;
+    CHECK(facetry_shape_tessellate(c.ctx, regions, 0.1, 0.5, 0, &regionMesh) == FACETRY_OK);
+    CHECK(facetry_session_sketch_regions(c.ctx, session, "f2", &regions) ==
+          FACETRY_ERROR_INVALID_ARGUMENT);
+
     // A picked edge becomes a reference with its persistent name.
     const char* referenceText = nullptr;
     REQUIRE(facetry_session_make_reference(c.ctx, session, "f2", FACETRY_ELEMENT_EDGE, 1,
@@ -167,14 +181,16 @@ TEST_CASE("the progress callback can cancel a regeneration") {
     facetry_handle session = 0;
     REQUIRE(facetry_session_create(c.ctx, example().c_str(), &session) == FACETRY_OK);
     std::vector<uint32_t> calls;
-    const auto stopAfterFirst = [](uint32_t done, uint32_t total, void* data) -> int {
+    // Stops once the sketch is done; it reports progress (done = 0) while it finds its profiles.
+    const auto stopAfterSketch = [](uint32_t done, uint32_t total, void* data) -> int {
         auto& seen = *static_cast<std::vector<uint32_t>*>(data);
         seen.push_back(done);
         CHECK(total == 3);
-        return 1;
+        return done >= 1 ? 1 : 0;
     };
-    REQUIRE(facetry_session_regenerate(c.ctx, session, stopAfterFirst, &calls) == FACETRY_OK);
-    CHECK(calls == std::vector<uint32_t>{1});
+    REQUIRE(facetry_session_regenerate(c.ctx, session, stopAfterSketch, &calls) == FACETRY_OK);
+    REQUIRE_FALSE(calls.empty());
+    CHECK(calls.back() == 1);
     const json stopped = state(c.ctx, session);
     CHECK(stopped["regeneration"]["cancelled"] == true);
     CHECK(stopped["needsRegeneration"] == true);

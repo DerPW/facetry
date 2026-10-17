@@ -26,9 +26,17 @@ struct RenderMesh {
     }
 };
 
-enum class PickKind : std::uint32_t { None = 0, Face = 1, Edge = 2, Vertex = 3, Body = 4 };
+// Regions are the closed areas of a sketch, its profiles (Renderer::setRegions).
+enum class PickKind : std::uint32_t {
+    None = 0,
+    Face = 1,
+    Edge = 2,
+    Vertex = 3,
+    Body = 4,
+    Region = 5
+};
 
-// A face, edge, vertex or body, by ID.
+// A face, edge, vertex, body or sketch region, by ID.
 struct Element {
     PickKind kind = PickKind::None;
     std::uint32_t id = 0;
@@ -47,6 +55,8 @@ enum class PickFilter : std::uint32_t {
     Edges = 2,
     Faces = 3,
     Bodies = 4,  // the body under the pointer; the shown model is body 1 until there are several
+    Regions =
+        5,  // only the sketch regions shown (Renderer::setRegions); "Everything" takes them too
 };
 
 struct PickResult {
@@ -131,5 +141,17 @@ class PickIndex {
     std::vector<std::uint32_t> vertexIds_;
     Bounds bounds_;
 };
+
+// Picking with sketch regions over the model (Renderer::setRegions). With "Everything" or
+// "Regions" the region under (x, y) comes first, whatever lies in front of it, since regions are
+// drawn over the model; "Regions" takes nothing else. `regions` may be empty.
+[[nodiscard]] PickResult pickWithRegions(const PickIndex& model, const PickIndex& regions,
+                                         const Camera& camera, float x, float y, float radiusPoints,
+                                         bool throughFaces, PickFilter filter);
+[[nodiscard]] std::vector<PickResult> candidatesWithRegions(const PickIndex& model,
+                                                            const PickIndex& regions,
+                                                            const Camera& camera, float x, float y,
+                                                            float radiusPoints, bool throughFaces,
+                                                            PickFilter filter);
 
 }  // namespace facetry::render

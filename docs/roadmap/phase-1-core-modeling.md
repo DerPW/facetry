@@ -137,8 +137,10 @@ and with a mouse on the first or second attempt.
       optional grid snap
 - [ ] Inference while drawing: horizontal/vertical, parallel/perpendicular to nearby lines,
       tangent, alignment guides. Inferred constraints are created automatically and shown.
-- [ ] Profile detection: closed regions, including nested islands, are highlighted and
-      selectable
+- [x] Profile detection: closed regions, including nested islands, are highlighted and
+      selectable; an extrusion takes the ones chosen
+      ([#47](https://github.com/DerPW/facetry/issues/47),
+      [ADR-0014](../adr/0014-sketch-profiles.md))
 - [ ] Project origin geometry and face edges into the sketch (basic projection)
 
 **Done when:** all benchmark sketches can be drawn without typing coordinates.
