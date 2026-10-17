@@ -37,6 +37,12 @@ constexpr std::array<float, 4> kHiddenEdgeColor = {0.13F, 0.15F, 0.18F, 0.45F};
 constexpr float kDashPeriod = 7.0F;
 // Below this the faces count as transparent.
 constexpr float kOpaque = 0.999F;
+// Sketch regions: a flat translucent fill, stronger when hovered or selected, and outlines.
+constexpr std::array<float, 4> kRegionFill = {0.22F, 0.52F, 0.95F, 0.18F};
+constexpr std::array<float, 4> kRegionHover = {0.22F, 0.52F, 0.95F, 0.0F};
+constexpr std::array<float, 4> kRegionSelect = {0.02F, 0.36F, 0.92F, 0.35F};
+constexpr float kRegionHighlightAlpha = 0.5F;
+constexpr std::array<float, 4> kRegionOutline = {0.08F, 0.32F, 0.80F, 0.9F};
 constexpr std::array<float, 4> kGridMinor = {0.0F, 0.0F, 0.0F, 0.07F};
 constexpr std::array<float, 4> kGridMajor = {0.0F, 0.0F, 0.0F, 0.16F};
 constexpr std::array<float, 4> kGridXAxis = {0.85F, 0.20F, 0.20F, 0.55F};
@@ -74,6 +80,63 @@ void destroy(sg_buffer& buffer) {
     }
 }
 
+// Triangles on the GPU: positions, normals, a face ID per mesh vertex and indices.
+struct TriangleBuffers {
+    sg_buffer positions{};
+    sg_buffer normals{};
+    sg_buffer faceIds{};
+    sg_buffer triangles{};
+    sg_buffer selected{};                      // 1 per mesh vertex whose face is selected
+    std::vector<std::uint32_t> vertexFaceIds;  // the face IDs on the CPU, for the flags
+    std::uint32_t indexCount = 0;
+
+    void upload(const RenderMesh& mesh, const char* label) {
+        const std::size_t vertexCount = mesh.positions.size() / 3;
+        if (vertexCount == 0 || mesh.triangles.empty()) {
+            return;
+        }
+        // Mesh vertices belong to exactly one face, so the face ID can be a vertex attribute.
+        std::vector<float> ids(vertexCount, 0.0F);
+        for (std::size_t i = 0; i < mesh.triangles.size(); ++i) {
+            ids[mesh.triangles[i]] = static_cast<float>(mesh.triangleFaceIds[i / 3]);
+        }
+        positions = makeBuffer(mesh.positions, false, label);
+        normals = makeBuffer(mesh.normals, false, label);
+        faceIds = makeBuffer(ids, false, label);
+        triangles = makeBuffer(mesh.triangles, true, label);
+        indexCount = static_cast<std::uint32_t>(mesh.triangles.size());
+        vertexFaceIds.reserve(vertexCount);
+        for (const float id : ids) {
+            vertexFaceIds.push_back(static_cast<std::uint32_t>(id));
+        }
+    }
+
+    void release() {
+        destroy(positions);
+        destroy(normals);
+        destroy(faceIds);
+        destroy(triangles);
+        destroy(selected);
+        vertexFaceIds.clear();
+        indexCount = 0;
+    }
+};
+
+// The mesh's edge polylines as segments for the edge shader: p0, p1 and the edge ID each.
+std::vector<float> edgeSegments(const RenderMesh& mesh,
+                                std::vector<std::uint32_t>& segmentEdgeIds) {
+    std::vector<float> segments;
+    for (std::size_t e = 0; e + 1 < mesh.edgeOffsets.size() && e < mesh.edgeIds.size(); ++e) {
+        for (std::uint32_t k = mesh.edgeOffsets[e]; k + 1 < mesh.edgeOffsets[e + 1]; ++k) {
+            const float* a = &mesh.edgePoints[std::size_t{k} * 3];
+            segments.insert(segments.end(), {a[0], a[1], a[2], a[3], a[4], a[5],
+                                             static_cast<float>(mesh.edgeIds[e])});
+            segmentEdgeIds.push_back(mesh.edgeIds[e]);
+        }
+    }
+    return segments;
+}
+
 }  // namespace
 
 struct Renderer::Gpu {
@@ -89,45 +152,49 @@ struct Renderer::Gpu {
     sg_pipeline gridPipeline{};
     sg_pipeline edgePipeline{};
     sg_pipeline pointPipeline{};
+    // Sketch regions over everything: fills, then outlines.
+    sg_pipeline regionPipeline{};
+    sg_pipeline regionOutlinePipeline{};
 
     // Shared unit quads for instanced edges and vertex dots.
     sg_buffer edgeQuad{};
     sg_buffer pointQuad{};
     sg_buffer quadIndices{};
 
-    sg_buffer positions{};
-    sg_buffer normals{};
-    sg_buffer faceIds{};
-    sg_buffer triangles{};
+    TriangleBuffers faces;
     sg_buffer segments{};
     sg_buffer vertices{};
     // Selection flags (1 selected): per mesh vertex, per edge segment and per vertex dot.
     // Buffers are immutable, so they are made anew when the selection changes (rarely, and
     // small next to the mesh). The IDs behind them stay on the CPU.
-    sg_buffer faceSelected{};
     sg_buffer segmentSelected{};
     sg_buffer vertexSelected{};
-    std::vector<std::uint32_t> meshFaceIds;
     std::vector<std::uint32_t> segmentEdgeIds;
     std::vector<std::uint32_t> dotVertexIds;
-    std::uint32_t indexCount = 0;
     std::uint32_t segmentCount = 0;
     std::uint32_t vertexCount = 0;
 
+    TriangleBuffers regions;
+    sg_buffer regionSegments{};
+    sg_buffer regionSegmentFlags{};  // all 0: outlines are never highlighted
+    std::uint32_t regionSegmentCount = 0;
+
     void releaseMesh() {
-        destroy(positions);
-        destroy(normals);
-        destroy(faceIds);
-        destroy(triangles);
+        faces.release();
         destroy(segments);
         destroy(vertices);
-        destroy(faceSelected);
         destroy(segmentSelected);
         destroy(vertexSelected);
-        meshFaceIds.clear();
         segmentEdgeIds.clear();
         dotVertexIds.clear();
-        indexCount = segmentCount = vertexCount = 0;
+        segmentCount = vertexCount = 0;
+    }
+
+    void releaseRegions() {
+        regions.release();
+        destroy(regionSegments);
+        destroy(regionSegmentFlags);
+        regionSegmentCount = 0;
     }
 };
 
@@ -198,6 +265,13 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.cull_mode = SG_CULLMODE_BACK;
         desc.label = "transparent front faces";
         g.meshFrontPipeline = sg_make_pipeline(&desc);
+
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.bias = 0.0F;
+        desc.depth.bias_slope_scale = 0.0F;
+        desc.cull_mode = SG_CULLMODE_NONE;
+        desc.label = "sketch regions";
+        g.regionPipeline = sg_make_pipeline(&desc);
     }
     {
         sg_pipeline_desc desc{};
@@ -228,6 +302,10 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
         desc.label = "hidden edges";
         g.hiddenEdgePipeline = sg_make_pipeline(&desc);
+
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.label = "sketch region outlines";
+        g.regionOutlinePipeline = sg_make_pipeline(&desc);
     }
     {
         sg_pipeline_desc desc{};
@@ -283,7 +361,9 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         sg_query_pipeline_state(g.gridPipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.meshBackPipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.meshFrontPipeline) != SG_RESOURCESTATE_VALID ||
-        sg_query_pipeline_state(g.hiddenEdgePipeline) != SG_RESOURCESTATE_VALID) {
+        sg_query_pipeline_state(g.hiddenEdgePipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.regionPipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.regionOutlinePipeline) != SG_RESOURCESTATE_VALID) {
         throw std::runtime_error("Creating the viewport shaders failed");
     }
 }
@@ -369,33 +449,9 @@ void Renderer::setMesh(const RenderMesh& mesh) {
     pick_ = PickIndex(mesh);
     camera_.setSceneBounds(pick_.bounds());
 
-    const std::size_t vertexCount = mesh.positions.size() / 3;
-    if (vertexCount > 0 && !mesh.triangles.empty()) {
-        // Mesh vertices belong to exactly one face, so the face ID can be a vertex attribute.
-        std::vector<float> faceIds(vertexCount, 0.0F);
-        for (std::size_t i = 0; i < mesh.triangles.size(); ++i) {
-            faceIds[mesh.triangles[i]] = static_cast<float>(mesh.triangleFaceIds[i / 3]);
-        }
-        g.positions = makeBuffer(mesh.positions, false, "positions");
-        g.normals = makeBuffer(mesh.normals, false, "normals");
-        g.faceIds = makeBuffer(faceIds, false, "face ids");
-        g.triangles = makeBuffer(mesh.triangles, true, "triangles");
-        g.indexCount = static_cast<std::uint32_t>(mesh.triangles.size());
-        g.meshFaceIds.reserve(vertexCount);
-        for (const float id : faceIds) {
-            g.meshFaceIds.push_back(static_cast<std::uint32_t>(id));
-        }
-    }
+    g.faces.upload(mesh, "faces");
 
-    std::vector<float> segments;
-    for (std::size_t e = 0; e + 1 < mesh.edgeOffsets.size() && e < mesh.edgeIds.size(); ++e) {
-        for (std::uint32_t k = mesh.edgeOffsets[e]; k + 1 < mesh.edgeOffsets[e + 1]; ++k) {
-            const float* a = &mesh.edgePoints[std::size_t{k} * 3];
-            segments.insert(segments.end(), {a[0], a[1], a[2], a[3], a[4], a[5],
-                                             static_cast<float>(mesh.edgeIds[e])});
-            g.segmentEdgeIds.push_back(mesh.edgeIds[e]);
-        }
-    }
+    const std::vector<float> segments = edgeSegments(mesh, g.segmentEdgeIds);
     if (!segments.empty()) {
         g.segments = makeBuffer(segments, false, "edge segments");
         g.segmentCount = static_cast<std::uint32_t>(segments.size() / 7);
@@ -415,9 +471,35 @@ void Renderer::setMesh(const RenderMesh& mesh) {
     selection_.clear();
     shownSelection_ = ~std::uint64_t{0};
 
-    stats_.triangles = g.indexCount / 3;
+    stats_.triangles = g.faces.indexCount / 3;
     stats_.edgeSegments = g.segmentCount;
     stats_.vertices = g.vertexCount;
+}
+
+void Renderer::setRegions(const RenderMesh& mesh) {
+    Gpu& g = *gpu_;
+    g.releaseRegions();
+    regions_ = PickIndex(mesh);
+    g.regions.upload(mesh, "sketch regions");
+    std::vector<std::uint32_t> edgeIds;
+    const std::vector<float> segments = edgeSegments(mesh, edgeIds);
+    if (!segments.empty()) {
+        g.regionSegments = makeBuffer(segments, false, "sketch region outlines");
+        g.regionSegmentCount = static_cast<std::uint32_t>(edgeIds.size());
+        g.regionSegmentFlags = makeBuffer(std::vector<float>(edgeIds.size(), 0.0F), false,
+                                          "sketch region outline flags");
+    }
+    // Region IDs change with the regions, so selected regions are forgotten.
+    const std::vector<Element> kept = selection_.elements();
+    selection_.clear();
+    for (const Element& element : kept) {
+        if (element.kind != PickKind::Region) {
+            selection_.add(element);
+        }
+    }
+    if (highlight_.hoverKind == PickKind::Region) {
+        highlight_ = {};
+    }
 }
 
 void Renderer::setViewport(float width, float height, float pixelRatio) {
@@ -433,8 +515,13 @@ void Renderer::orbit(float dx, float dy) {
     camera_.orbit(dx, dy, orbitPivot_);
 }
 
+PickResult Renderer::pick(float x, float y, float radius) const {
+    return pickWithRegions(pick_, regions_, camera_, x, y, radius, picksThroughFaces(), filter_);
+}
+
 PickResult Renderer::click(float x, float y, float radius, bool toggle) {
-    const auto candidates = pick_.candidates(camera_, x, y, radius, picksThroughFaces(), filter_);
+    const auto candidates =
+        candidatesWithRegions(pick_, regions_, camera_, x, y, radius, picksThroughFaces(), filter_);
     if (toggle) {
         clickCycle_.reset();
         const PickResult pick = candidates.empty() ? PickResult{} : candidates.front();
@@ -451,7 +538,9 @@ PickResult Renderer::click(float x, float y, float radius, bool toggle) {
 std::size_t Renderer::boxSelect(float x0, float y0, float x1, float y1, bool add) {
     const BoxMode mode = x1 >= x0 ? BoxMode::Window : BoxMode::Crossing;
     const auto elements =
-        pick_.boxSelect(camera_, x0, y0, x1, y1, mode, filter_, picksThroughFaces());
+        filter_ == PickFilter::Regions
+            ? std::vector<Element>{}
+            : pick_.boxSelect(camera_, x0, y0, x1, y1, mode, filter_, picksThroughFaces());
     if (!add) {
         selection_.clear();
     }
@@ -475,7 +564,8 @@ void Renderer::updateSelectionFlags() {
         }
         buffer = makeBuffer(flags, false, label);
     };
-    update(g.faceSelected, g.meshFaceIds, PickKind::Face, "selected faces");
+    update(g.faces.selected, g.faces.vertexFaceIds, PickKind::Face, "selected faces");
+    update(g.regions.selected, g.regions.vertexFaceIds, PickKind::Region, "selected regions");
     update(g.segmentSelected, g.segmentEdgeIds, PickKind::Edge, "selected edges");
     update(g.vertexSelected, g.dotVertexIds, PickKind::Vertex, "selected vertices");
 }
@@ -492,7 +582,9 @@ bool Renderer::picksThroughFaces() const {
 void Renderer::fitSelection() {
     Bounds bounds;
     for (const Element& element : selection_.elements()) {
-        const Bounds element_bounds = pick_.elementBounds(element.kind, element.id);
+        const Bounds element_bounds = element.kind == PickKind::Region
+                                          ? regions_.elementBounds(PickKind::Face, element.id)
+                                          : pick_.elementBounds(element.kind, element.id);
         if (!element_bounds.isEmpty()) {
             bounds.merge(element_bounds);
         }
@@ -553,7 +645,7 @@ void Renderer::draw(const FrameTarget& target) {
     const bool drawFaces = style_ != VisualStyle::Wireframe && opacity_ > 0.001F;
     const bool transparent = opacity_ < kOpaque;
 
-    const auto faces = [&](sg_pipeline pipeline) {
+    const auto faces = [&](sg_pipeline pipeline, const TriangleBuffers& buffers, bool regions) {
         mesh_vs_params_t vs{};
         copyMatrix(vs.view_proj, viewProjection);
         mesh_fs_params_t fs{};
@@ -562,24 +654,33 @@ void Renderer::draw(const FrameTarget& target) {
         fs.key_light[0] = light.x;
         fs.key_light[1] = light.y;
         fs.key_light[2] = light.z;
-        copy4(fs.base_color, kBaseColor);
-        fs.base_color[3] = opacity_;
-        copy4(fs.hover_color, kFaceHoverTint);
-        copy4(fs.select_color, kFaceSelectTint);
-        fs.ids[0] = idFor(h.hoverKind, PickKind::Face, h.hoverId);
-        fs.ids[2] = h.hoverKind == PickKind::Body ? 1.0F : 0.0F;
+        if (regions) {
+            copy4(fs.base_color, kRegionFill);
+            copy4(fs.hover_color, kRegionHover);
+            copy4(fs.select_color, kRegionSelect);
+            fs.ids[0] = idFor(h.hoverKind, PickKind::Region, h.hoverId);
+            fs.ids[1] = 1.0F;  // flat
+            fs.ids[3] = kRegionHighlightAlpha;
+        } else {
+            copy4(fs.base_color, kBaseColor);
+            fs.base_color[3] = opacity_;
+            copy4(fs.hover_color, kFaceHoverTint);
+            copy4(fs.select_color, kFaceSelectTint);
+            fs.ids[0] = idFor(h.hoverKind, PickKind::Face, h.hoverId);
+            fs.ids[2] = h.hoverKind == PickKind::Body ? 1.0F : 0.0F;
+        }
 
         sg_bindings bindings{};
-        bindings.vertex_buffers[0] = g.positions;
-        bindings.vertex_buffers[1] = g.normals;
-        bindings.vertex_buffers[2] = g.faceIds;
-        bindings.vertex_buffers[3] = g.faceSelected;
-        bindings.index_buffer = g.triangles;
+        bindings.vertex_buffers[0] = buffers.positions;
+        bindings.vertex_buffers[1] = buffers.normals;
+        bindings.vertex_buffers[2] = buffers.faceIds;
+        bindings.vertex_buffers[3] = buffers.selected;
+        bindings.index_buffer = buffers.triangles;
         sg_apply_pipeline(pipeline);
         sg_apply_bindings(&bindings);
         sg_apply_uniforms(UB_mesh_vs_params, SG_RANGE(vs));
         sg_apply_uniforms(UB_mesh_fs_params, SG_RANGE(fs));
-        sg_draw(0, static_cast<int>(g.indexCount), 1);
+        sg_draw(0, static_cast<int>(buffers.indexCount), 1);
     };
 
     // `hidden`: the edges behind the faces, faint and dashed. `onlyHighlighted`: just the
@@ -611,8 +712,8 @@ void Renderer::draw(const FrameTarget& target) {
         sg_draw(0, 6, static_cast<int>(g.segmentCount));
     };
 
-    if (g.indexCount > 0 && drawFaces && !transparent) {
-        faces(g.meshPipeline);
+    if (g.faces.indexCount > 0 && drawFaces && !transparent) {
+        faces(g.meshPipeline, g.faces, /*regions=*/false);
     }
 
     if (gridVisible_) {
@@ -654,9 +755,9 @@ void Renderer::draw(const FrameTarget& target) {
     }
 
     // Transparent faces after the grid, so the grid shows through them.
-    if (g.indexCount > 0 && drawFaces && transparent) {
-        faces(g.meshBackPipeline);
-        faces(g.meshFrontPipeline);
+    if (g.faces.indexCount > 0 && drawFaces && transparent) {
+        faces(g.meshBackPipeline, g.faces, /*regions=*/false);
+        faces(g.meshFrontPipeline, g.faces, /*regions=*/false);
     }
 
     if (g.segmentCount > 0) {
@@ -690,6 +791,31 @@ void Renderer::draw(const FrameTarget& target) {
         sg_apply_uniforms(UB_point_vs_params, SG_RANGE(vs));
         sg_apply_uniforms(UB_point_fs_params, SG_RANGE(fs));
         sg_draw(0, 6, static_cast<int>(g.vertexCount));
+    }
+
+    // Sketch regions last, over the model, so they can be chosen wherever they lie.
+    if (g.regions.indexCount > 0) {
+        faces(g.regionPipeline, g.regions, /*regions=*/true);
+    }
+    if (g.regionSegmentCount > 0) {
+        edge_vs_params_t vs{};
+        copyMatrix(vs.view_proj, viewProjection);
+        std::memcpy(vs.viewport, viewport, sizeof(viewport));
+        vs.viewport[2] = kEdgeHalfWidth * pixelRatio_;
+        vs.viewport[3] = kEdgeHalfWidth * pixelRatio_;
+        edge_fs_params_t fs{};
+        copy4(fs.color, kRegionOutline);
+
+        sg_bindings bindings{};
+        bindings.vertex_buffers[0] = g.edgeQuad;
+        bindings.vertex_buffers[1] = g.regionSegments;
+        bindings.vertex_buffers[2] = g.regionSegmentFlags;
+        bindings.index_buffer = g.quadIndices;
+        sg_apply_pipeline(g.regionOutlinePipeline);
+        sg_apply_bindings(&bindings);
+        sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
+        sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
+        sg_draw(0, 6, static_cast<int>(g.regionSegmentCount));
     }
 
     sg_end_pass();

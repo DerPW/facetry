@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 8
+#define FACETRY_API_VERSION_MINOR 9
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -245,6 +245,14 @@ FACETRY_API facetry_status facetry_session_state(facetry_context* context, facet
 FACETRY_API facetry_status facetry_session_body_shape(facetry_context* context,
                                                       facetry_handle session, const char* body_id,
                                                       facetry_handle* out_shape);
+
+/* A new shape handle for the closed regions (profiles) of a sketch of the last regeneration: face
+ * ID i + 1 is the sketch's region i in facetry_session_state() ("regions"). It has no faces if
+ * the sketch encloses nothing. Release it with facetry_shape_release(). */
+FACETRY_API facetry_status facetry_session_sketch_regions(facetry_context* context,
+                                                          facetry_handle session,
+                                                          const char* sketch_id,
+                                                          facetry_handle* out_shape);
 
 /* Persistent names of the body's faces, edges and vertices as JSON:
  * {"faces": [...], "edges": [...], "vertices": [...]}; entry i belongs to element ID i + 1. */

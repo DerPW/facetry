@@ -47,7 +47,8 @@ inline Document rectangleBlock() {
     sketch.lines = {{"l1", "p1", "p2"}, {"l2", "p2", "p3"}, {"l3", "p3", "p4"}, {"l4", "p4", "p1"}};
     document.root.timeline.push_back(feature("f1", "Sketch 1", sketch));
     document.root.timeline.push_back(
-        feature("f2", "Extrude 1", Extrude{.profile = "f1", .distance = Value::of("height")}));
+        feature("f2", "Extrude 1",
+                Extrude{.profile = "f1", .distance = Value::of("height"), .regions = {}}));
     return document;
 }
 

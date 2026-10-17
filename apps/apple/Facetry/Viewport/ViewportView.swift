@@ -25,6 +25,9 @@ final class ViewportModel {
     /// Drags draw selection boxes (for the Pencil and fingers; the Fusion preset's left drag
     /// always does).
     var boxMode = false
+    /// A sketch's regions to choose profiles from, shown over the model. While they are shown,
+    /// clicks and taps pick only regions and add or remove them.
+    var regions: RegionChoice?
     /// The selection box being dragged, in view points; drawn by ``SelectionBoxOverlay``.
     fileprivate(set) var selectionBox: (start: CGPoint, end: CGPoint)?
     /// Where the precision selector's crosshair points (#38), above the finger.
@@ -84,6 +87,12 @@ final class ViewportModel {
     }
 }
 
+/// Regions to choose from: a mesh of a sketch's region shape and the region IDs selected first.
+struct RegionChoice: Equatable {
+    let mesh: MeshData
+    let selected: [UInt32]
+}
+
 /// Pick radius in points per input type: fingers need more room than the Pencil or a mouse.
 private enum PickRadius {
     static let mouse = 6.0
@@ -99,7 +108,8 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownFitRequests = 0
     private var shownOrthographic = false
     private var shownSelection = Pick.none
-    private var shownPickFilter = PickFilter.everything
+    private var shownPickFilter: (filter: PickFilter, regionsOnly: Bool)?
+    private var shownRegions: RegionChoice?
     private var shownGrid: (visible: Bool, unit: Double)?
     private var shownStyle: (style: VisualStyle, opacity: Double)?
     private var lastFrameTime: CFTimeInterval = 0
@@ -145,6 +155,8 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
                 model.selected = []
                 model.selection = .none
                 shownSelection = .none
+                // The regions' first selection is applied again.
+                shownRegions = nil
             } catch {
                 model.error = "\(error)"
             }
@@ -159,9 +171,19 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             if model.selection == .none { select(.none, toggle: false) }
             shownSelection = model.selection
         }
-        if model.pickFilter != shownPickFilter {
-            renderer.setPickFilter(model.pickFilter)
-            shownPickFilter = model.pickFilter
+        if model.regions != shownRegions {
+            showRegions(model.regions, on: renderer)
+        }
+        let regionsOnly = model.regions != nil
+        if shownPickFilter?.filter != model.pickFilter
+            || shownPickFilter?.regionsOnly != regionsOnly
+        {
+            if regionsOnly {
+                renderer.pickRegionsOnly()
+            } else {
+                renderer.setPickFilter(model.pickFilter)
+            }
+            shownPickFilter = (model.pickFilter, regionsOnly)
         }
         if shownStyle?.style != model.style || shownStyle?.opacity != model.opacity {
             renderer.setStyle(model.style, opacity: model.opacity)
@@ -175,6 +197,20 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             renderer.fit()
             shownFitRequests = model.fitRequests
         }
+    }
+
+    private func showRegions(_ regions: RegionChoice?, on renderer: ViewportRenderer) {
+        do {
+            try renderer.setRegions(regions?.mesh)
+        } catch {
+            model.error = "\(error)"
+        }
+        var selected = renderer.select(.none, toggle: true)  // reads the selection
+        for id in regions?.selected ?? [] {
+            selected = renderer.select(Pick(kind: .region, id: id), toggle: true)
+        }
+        model.selected = selected
+        shownRegions = regions
     }
 
     func updateViewport(_ view: MTKView) {
@@ -237,7 +273,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     func select(at point: CGPoint, radius: Double, toggle: Bool) {
         guard let renderer else { return }
         let (pick, selected) = renderer.click(
-            at: point, radius: radius, toggle: toggle || model.multiSelect)
+            at: point, radius: radius, toggle: toggle || model.multiSelect || model.regions != nil)
         model.selected = selected
         // The element just added, for repairs; nothing when it was just removed.
         model.selection = selected.contains(pick) ? pick : .none
@@ -268,7 +304,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         model.selectionBox = nil
         guard let renderer, hypot(end.x - start.x, end.y - start.y) > 4 else { return }
         model.selected = renderer.boxSelect(
-            from: start, to: end, add: add || model.multiSelect)
+            from: start, to: end, add: add || model.multiSelect || model.regions != nil)
         model.selection = .none
         shownSelection = .none
     }

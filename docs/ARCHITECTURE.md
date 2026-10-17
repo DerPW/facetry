@@ -82,10 +82,10 @@ The M0.6 prototype implements this in the core:
 
 | Part | Where | Prototype scope |
 |---|---|---|
-| Document, components, features, parameters | `core/include/facetry/core/document.hpp` | Root component only; sketch (points, lines, arcs, circles and constraints on an origin plane or a planar face, [ADR-0013](adr/0013-sketch-model.md)), extrude (new body), fillet; parameters are numbers that features use by name; lengths in the document's units ([ADR-0012](adr/0012-document-units.md)) |
+| Document, components, features, parameters | `core/include/facetry/core/document.hpp` | Root component only; sketch (points, lines, arcs, circles and constraints on an origin plane or a planar face, [ADR-0013](adr/0013-sketch-model.md)), extrude (new body from chosen profiles, [ADR-0014](adr/0014-sketch-profiles.md)), fillet; parameters are numbers that features use by name; lengths in the document's units ([ADR-0012](adr/0012-document-units.md)) |
 | Bodies | results in `regeneration.hpp` | A body's ID is the ID of the feature that created it |
 | JSON form | `document.hpp` (`toJson`, `parseDocument`) | Versioned (`formatVersion`, per-feature `namingVersion`); examples in `tests/documents/` |
-| Naming | `naming.hpp`, `core/src/kernel/occt_naming.cpp` | Faces from history and roles, edges and vertices by their faces |
+| Naming | `naming.hpp`, `core/src/kernel/occt_naming.cpp` | Faces from history and roles, edges and vertices by their faces; sketch regions by the curves around them and the side ([ADR-0014](adr/0014-sketch-profiles.md)) |
 | Regeneration engine | `regeneration.hpp`, `cancellation.hpp` | Per-feature cache keyed by the feature's definition with parameter values filled in; cancellation between features and inside kernel operations that support it (OCCT Booleans and meshing; fillets run to the end); failed features pass the model through |
 | Session | `session.hpp` | Undo/redo of named steps; transactions make one step of a whole tool (M1.1). A step keeps the document before it, which is cheap at a few kilobytes |
 | C API | `facetry_core.h`, `session_json.hpp` | Sessions with JSON edits and summaries ([ADR-0011](adr/0011-document-api-json-over-c.md)); the apps open the M0.6 example through it |
@@ -188,3 +188,4 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0011](adr/0011-document-api-json-over-c.md) | Document API: sessions with JSON edits over the C API | Accepted | M1.1 |
 | [0012](adr/0012-document-units.md) | Document units: values in the document's unit, geometry in millimeters | Accepted | M1.1 |
 | [0013](adr/0013-sketch-model.md) | Sketch model: entities on shared points, a plane by name or face reference | Accepted | M1.3 |
+| [0014](adr/0014-sketch-profiles.md) | Sketch profiles: regions from splitting the sketch plane, named by the curves around them | Accepted | M1.3 |

@@ -2,14 +2,16 @@
 //
 //   {
 //     "format": "facetry-document",
-//     "formatVersion": 2,
+//     "formatVersion": 3,
 //     "nextId": 12,
 //     "parameters": [{"name": "width", "value": 40}],
 //     "root": {"id": "root", "name": "Root", "timeline": [
 //       {"id": "f1", "type": "sketch", "name": "Sketch 1", "suppressed": false, "namingVersion": 1,
-//        "points": [{"id": "p2", "x": "width", "y": 0}, …],
-//        "lines": [{"id": "l6", "start": "p2", "end": "p3"}, …]},
-//       {"id": "f10", "type": "extrude", …, "profile": "f1", "distance": 10},
+//        "plane": "xy", "points": [{"id": "p2", "x": "width", "y": 0}, …],
+//        "lines": [{"id": "l6", "start": "p2", "end": "p3"}, …],
+//        "circles": [{"id": "c9", "center": "p8", "radius": 3, "construction": true}]},
+//       {"id": "f10", "type": "extrude", …, "profile": "f1", "distance": 10,
+//        "regions": ["region{f1/l6+|f1/l7+|f1/l8+|f1/l9+}"]},
 //       {"id": "f11", "type": "fillet", …, "radius": 2, "edges": [{"body": "f10", "kind": "edge",
 //        "name": "edge{f10:side[f1/l6]|f10:side[f1/l7]}",
 //        "shadow": {"id": 7, "type": "line", "centroid": [40, 20, 5], "size": 10}}]}
@@ -142,8 +144,15 @@ FeatureData readFeatureData(const Reader& reader, const std::string& type) {
         return sketch;
     }
     if (type == "extrude") {
-        return Extrude{.profile = reader.at("profile").string(),
-                       .distance = reader.at("distance").value()};
+        Extrude extrude{.profile = reader.at("profile").string(),
+                        .distance = reader.at("distance").value(),
+                        .regions = {}};
+        if (reader.has("regions")) {
+            for (const Reader& region : reader.at("regions").items()) {
+                extrude.regions.push_back(region.string());
+            }
+        }
+        return extrude;
     }
     if (type == "fillet") {
         Fillet fillet{.edges = {}, .radius = reader.at("radius").value()};
@@ -249,6 +258,9 @@ Json featureToJson(const Feature& feature) {
     } else if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
         result["profile"] = extrude->profile;
         result["distance"] = valueToJson(extrude->distance);
+        if (!extrude->regions.empty()) {
+            result["regions"] = extrude->regions;
+        }
     } else if (const auto* fillet = std::get_if<Fillet>(&feature.data)) {
         result["radius"] = valueToJson(fillet->radius);
         Json edges = Json::array();

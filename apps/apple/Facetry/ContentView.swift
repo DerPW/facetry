@@ -46,6 +46,14 @@ struct ContentView: View {
                         Text("Select the edge that should replace the missing one.")
                             .font(.caption).panel()
                     }
+                    if let model, model.profiles != nil {
+                        HStack {
+                            Text("Tap profiles to add or leave them out.").font(.caption)
+                            Button("Done") { Task { await model.finishProfiles() } }
+                            Button("Cancel") { model.profiles = nil }
+                        }
+                        .panel()
+                    }
                     if let model, let state = model.state {
                         TimelineBar(state: state, model: model, selected: $selectedFeature)
                     }
@@ -187,7 +195,7 @@ struct ContentView: View {
     private func describe(_ selection: [Pick]) -> String {
         let names: [(Pick.Kind, String, String)] = [
             (.vertex, "Vertex", "vertices"), (.edge, "Edge", "edges"), (.face, "Face", "faces"),
-            (.body, "Body", "bodies"),
+            (.body, "Body", "bodies"), (.region, "Profile", "profiles"),
         ]
         guard let only = selection.first else { return "Nothing selected" }
         if selection.count == 1 {

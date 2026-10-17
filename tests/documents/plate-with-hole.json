@@ -1,0 +1,107 @@
+{
+  "format": "facetry-document",
+  "formatVersion": 3,
+  "nextId": 11,
+  "parameters": [
+    {
+      "name": "width",
+      "value": 40.0
+    },
+    {
+      "name": "depth",
+      "value": 30.0
+    },
+    {
+      "name": "thickness",
+      "value": 5.0
+    },
+    {
+      "name": "hole",
+      "value": 8.0
+    }
+  ],
+  "root": {
+    "id": "root",
+    "name": "Root",
+    "timeline": [
+      {
+        "id": "f1",
+        "type": "sketch",
+        "name": "Plate sketch",
+        "suppressed": false,
+        "namingVersion": 1,
+        "plane": "xy",
+        "points": [
+          {
+            "id": "p1",
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "id": "p2",
+            "x": "width",
+            "y": 0.0
+          },
+          {
+            "id": "p3",
+            "x": "width",
+            "y": "depth"
+          },
+          {
+            "id": "p4",
+            "x": 0.0,
+            "y": "depth"
+          },
+          {
+            "id": "p5",
+            "x": 20.0,
+            "y": 15.0
+          }
+        ],
+        "lines": [
+          {
+            "id": "l6",
+            "start": "p1",
+            "end": "p2"
+          },
+          {
+            "id": "l7",
+            "start": "p2",
+            "end": "p3"
+          },
+          {
+            "id": "l8",
+            "start": "p3",
+            "end": "p4"
+          },
+          {
+            "id": "l9",
+            "start": "p4",
+            "end": "p1"
+          }
+        ],
+        "circles": [
+          {
+            "id": "c10",
+            "center": "p5",
+            "radius": "hole"
+          }
+        ]
+      },
+      {
+        "id": "f2",
+        "type": "extrude",
+        "name": "Plate",
+        "suppressed": false,
+        "namingVersion": 1,
+        "profile": "f1",
+        "distance": "thickness",
+        "regions": [
+          "region{f1/c10-|f1/l6+|f1/l7+|f1/l8+|f1/l9+}"
+        ]
+      }
+    ]
+  },
+  "rollback": null,
+  "units": "mm"
+}

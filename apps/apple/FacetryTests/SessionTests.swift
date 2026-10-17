@@ -34,6 +34,13 @@ struct SessionTests {
         #expect(names.edges.count == properties.edges)
         try core.release(shape)
 
+        // The sketch's one region (profile), with faces to show and pick.
+        #expect(state.features[0].regions == ["region{f1/l1+|f1/l2+|f1/l3+|f1/l4+}"])
+        #expect(state.features[1].regions == nil)
+        let regions = try core.sketchRegionsShape(session, sketch: "f1")
+        #expect(try core.properties(of: regions).faces == 1)
+        try core.release(regions)
+
         try core.apply(session, [.setParameter(name: "width", value: 14)])
         try core.regenerate(session)
         let wider = try core.bodyShape(session, body: "f2")
@@ -66,13 +73,15 @@ struct SessionTests {
     @Test func progressCanCancel() throws {
         let core = try Core()
         let session = try openExample(core)
-        var calls = 0
+        // Stops once the sketch is done; it reports progress (done = 0) while it finds its
+        // profiles.
+        var calls: [Int] = []
         try core.regenerate(session) { done, total in
-            calls += 1
-            #expect(done == 1 && total == 3)
-            return false
+            calls.append(done)
+            #expect(total == 3)
+            return done < 1
         }
-        #expect(calls == 1)
+        #expect(calls.last == 1)
         let state = try core.state(of: session)
         #expect(state.regeneration.cancelled)
         #expect(state.features.map(\.status) == ["ok", "notRun", "notRun"])

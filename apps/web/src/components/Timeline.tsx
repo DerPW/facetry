@@ -29,10 +29,25 @@ interface Props {
   onSelect: (feature: string | null) => void;
   repair: Repair | null;
   onRepair: (repair: Repair | null) => void;
+  /** The extrusion whose profiles are being chosen in the viewport. */
+  profiles: string | null;
+  onChooseProfiles: (feature: string | null) => void;
+  /** Takes the profiles selected in the viewport. */
+  onFinishProfiles: () => void;
 }
 
 /** The timeline bar (Fusion-style): one chip per feature, the rollback marker, feature details. */
-export function Timeline({ state, onEdit, selected, onSelect, repair, onRepair }: Props) {
+export function Timeline({
+  state,
+  onEdit,
+  selected,
+  onSelect,
+  repair,
+  onRepair,
+  profiles,
+  onChooseProfiles,
+  onFinishProfiles,
+}: Props) {
   const setSelected = onSelect;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const row = useRef<HTMLOListElement>(null);
@@ -56,7 +71,13 @@ export function Timeline({ state, onEdit, selected, onSelect, repair, onRepair }
           onEdit={onEdit}
           repair={repair}
           onRepair={onRepair}
-          onClose={() => setSelected(null)}
+          choosingProfiles={profiles === feature.id}
+          onChooseProfiles={onChooseProfiles}
+          onFinishProfiles={onFinishProfiles}
+          onClose={() => {
+            if (profiles === feature.id) onChooseProfiles(null);
+            setSelected(null);
+          }}
         />
       )}
       <nav className="panel timeline-bar" aria-label="Timeline">
@@ -118,6 +139,9 @@ interface DetailsProps {
   onEdit: (edits: Edit | Edit[]) => void;
   repair: Repair | null;
   onRepair: (repair: Repair | null) => void;
+  choosingProfiles: boolean;
+  onChooseProfiles: (feature: string | null) => void;
+  onFinishProfiles: () => void;
   onClose: () => void;
 }
 
@@ -131,12 +155,16 @@ function FeatureDetails({
   onEdit,
   repair,
   onRepair,
+  choosingProfiles,
+  onChooseProfiles,
+  onFinishProfiles,
   onClose,
 }: DetailsProps) {
   const definition = feature.definition;
   const replace = (changes: Partial<FeatureJson>) =>
     onEdit({ op: "replaceFeature", feature: { ...definition, ...changes } });
   const edges = (definition.edges as Reference[] | undefined) ?? [];
+  const chosenProfiles = (definition.regions as string[] | undefined) ?? [];
 
   return (
     <section className="panel feature-details" aria-label={`Feature ${feature.name}`}>
@@ -181,6 +209,29 @@ function FeatureDetails({
           />
         </label>
       ))}
+      {feature.type === "extrude" &&
+        (choosingProfiles ? (
+          <div className="profiles">
+            <p className="muted">Click profiles in the view to add or leave them out.</p>
+            <button type="button" onClick={onFinishProfiles}>
+              Done
+            </button>
+            <button type="button" onClick={() => onChooseProfiles(null)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="profiles">
+            <p className="muted">
+              {chosenProfiles.length === 0
+                ? "Profile: the sketch's only one"
+                : `${chosenProfiles.length} ${chosenProfiles.length === 1 ? "profile" : "profiles"}`}
+            </p>
+            <button type="button" onClick={() => onChooseProfiles(feature.id)}>
+              Choose profiles
+            </button>
+          </div>
+        ))}
       {feature.brokenReferences.map((i) => {
         const shadow = edges[i]?.shadow;
         const place = shadow

@@ -13,6 +13,7 @@ import {
   ElementKind,
   MILLIMETERS_PER,
   type Edit,
+  type FeatureJson,
   type MeshData,
   type ModelSnapshot,
   type Reference,
@@ -53,7 +54,10 @@ const kindNames: [PickKind, string, string][] = [
   [PickKind.Edge, "Edge", "edges"],
   [PickKind.Face, "Face", "faces"],
   [PickKind.Body, "Body", "bodies"],
+  [PickKind.Region, "Profile", "profiles"],
 ];
+
+const NO_REGIONS: string[] = [];
 
 function describe(selection: Pick[]): string {
   const [only] = selection;
@@ -184,6 +188,9 @@ export function App() {
   const [editError, setEditError] = useState<string | null>(null);
   const [fileName, setFileName] = useState("Untitled.facetry");
   const [repair, setRepair] = useState<Repair | null>(null);
+  // The extrusion whose profiles are being chosen in the viewport.
+  const [profiles, setProfiles] = useState<string | null>(null);
+  const regionMeshes = useRef<Record<string, MeshData>>({});
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   // Shown while a regeneration takes longer than a step; the last model stays on screen.
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -205,6 +212,7 @@ export function App() {
       // that make more than one (M1.5).
       const body = snapshot.state.bodies.find((b) => b.visible);
       const mesh = body ? snapshot.meshes[body.id] : undefined;
+      regionMeshes.current = snapshot.regions;
       if (viewport) {
         // Element IDs change with the geometry, so an old selection would point elsewhere.
         viewport.clearSelection();
@@ -451,11 +459,42 @@ export function App() {
     viewport?.setOrthographic(orthographic);
   }, [viewport, orthographic]);
 
+  // Choosing profiles: the sketch's regions show over the model, clicks toggle them, and the
+  // extrusion's current profiles start out selected.
+  const choosing = model?.features.find((f) => f.id === profiles && f.type === "extrude");
+  const profileSketch = choosing ? String(choosing.definition.profile) : null;
+  const sketchRegions = model?.features.find((f) => f.id === profileSketch)?.regions ?? NO_REGIONS;
   useEffect(() => {
-    viewport?.setPickFilter(pickFilter);
-    viewport?.setMultiSelect(multiSelect);
-    viewport?.setBoxMode(boxMode);
-  }, [viewport, pickFilter, multiSelect, boxMode]);
+    if (!viewport || !choosing || !profileSketch) return;
+    viewport.setRegions(regionMeshes.current[profileSketch] ?? null);
+    const chosen = (choosing.definition.regions as string[] | undefined) ?? [];
+    viewport.setSelection(
+      chosen
+        .map((name) => sketchRegions.indexOf(name) + 1)
+        .filter((id) => id > 0)
+        .map((id) => ({ kind: PickKind.Region, id })),
+    );
+    return () => viewport.setRegions(null);
+  }, [viewport, choosing, profileSketch, sketchRegions]);
+
+  const finishProfiles = () => {
+    if (choosing) {
+      const regions = selection
+        .filter((pick) => pick.kind === PickKind.Region)
+        .map((pick) => sketchRegions[pick.id - 1])
+        .filter((name): name is string => name !== undefined);
+      const definition: FeatureJson & { id: string } = { ...choosing.definition, regions };
+      if (regions.length === 0) delete definition.regions;
+      edit({ op: "replaceFeature", feature: definition });
+    }
+    setProfiles(null);
+  };
+
+  useEffect(() => {
+    viewport?.setPickFilter(choosing ? PickFilter.Regions : pickFilter);
+    viewport?.setMultiSelect(choosing ? true : multiSelect);
+    viewport?.setBoxMode(choosing ? false : boxMode);
+  }, [viewport, pickFilter, multiSelect, boxMode, choosing]);
 
   // The shown body's opacity comes from the document; the style is a device setting.
   const opacity = model?.bodies.find((body) => body.visible)?.opacity ?? 1;
@@ -706,11 +745,15 @@ export function App() {
             onSelect={setSelectedFeature}
             repair={repair}
             onRepair={setRepair}
+            profiles={profiles}
+            onChooseProfiles={setProfiles}
+            onFinishProfiles={finishProfiles}
           />
         )}
         {repair && (
           <p className="panel hint">Select the edge that should replace the missing one.</p>
         )}
+
         <p className="panel stats">{stats ? formatStats(stats) : ""}</p>
         <p className="panel selection">{describe(selection)}</p>
       </div>

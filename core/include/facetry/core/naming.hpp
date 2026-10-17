@@ -93,6 +93,33 @@ struct ProfileSegment {
 [[nodiscard]] NamedShape extrudeProfile(std::span<const ProfileSegment> loop, double distance,
                                         std::string_view feature, const SketchFrame& frame = {});
 
+// A closed region of a sketch, a profile (ADR-0014): a face on the sketch plane, its normal along
+// the sketch normal, bounded by pieces of the sketch's curves. Its name lists the curves around it
+// and the side it lies on, sorted: "region{f1/c5-|f1/l1+|f1/l2+|f1/l3+|f1/l4+}". "+" is left of
+// the curve's direction (lines from start to end, arcs and circles counter-clockwise), "-" right
+// of it. Regions with the same name get "#1", "#2", … in geometric order.
+struct SketchRegion {
+    std::string name;
+    Shape face;
+    std::vector<std::string> edges;  // per edge ID of `face`: the curve it is a piece of
+};
+
+// The regions that the curves enclose, sorted by name. Curves are split where they cross or
+// touch; islands are holes in the region around them and regions of their own. Curves that
+// enclose nothing, such as an open line, bound no region. Degenerate curves are ignored.
+[[nodiscard]] std::vector<SketchRegion> sketchRegions(std::span<const ProfileSegment> curves,
+                                                      const SketchFrame& frame);
+
+// The regions' faces as one shape for display and picking: face ID i + 1 is regions[i].
+[[nodiscard]] Shape regionsShape(std::span<const SketchRegion> regions);
+
+// Extrudes regions of one sketch (from one sketchRegions() call) along the frame's normal by
+// `distance` into one body; adjacent regions merge. Names as extrudeProfile(): a side face is
+// named after the curve its edge is a piece of; caps are "<feature>:start" and "<feature>:end".
+[[nodiscard]] NamedShape extrudeRegions(std::span<const SketchRegion> regions,
+                                        const SketchFrame& frame, double distance,
+                                        std::string_view feature);
+
 // The frame of a planar face (1-based ID of `body`), its normal pointing out of the body, for
 // sketching on it. Throws Error(InvalidArgument) if the face is not planar.
 [[nodiscard]] SketchFrame planarFaceFrame(const NamedShape& body, std::uint32_t faceId);

@@ -381,6 +381,16 @@ std::string sessionStateJson(const Session& session) {
         entry["brokenReferences"] =
             result != nullptr ? result->brokenReferences : std::vector<std::size_t>{};
         entry["dependents"] = dependentsById.at(feature.id);
+        if (std::holds_alternative<Sketch>(feature.data)) {
+            Json regions = Json::array();
+            if (const auto sketch = regeneration.model.sketches.find(feature.id);
+                sketch != regeneration.model.sketches.end()) {
+                for (const SketchRegion& region : sketch->second->regions) {
+                    regions.push_back(region.name);
+                }
+            }
+            entry["regions"] = std::move(regions);
+        }
         entry["definition"] = json::featureToJson(feature);
         features.push_back(std::move(entry));
     }

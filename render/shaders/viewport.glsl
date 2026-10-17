@@ -34,7 +34,9 @@ layout(binding=1) uniform mesh_fs_params {
     vec4 base_color;
     vec4 hover_color;   // a: blend amount
     vec4 select_color;  // a: blend amount
-    vec4 ids;           // x: hovered face, z: 1 when the whole body is hovered
+    // x: hovered face, y: 1 for flat (unlit) color, z: 1 when the whole body is hovered,
+    // w: alpha of hovered and selected faces if above 0 (sketch regions), else base_color.a
+    vec4 ids;
 };
 
 in vec3 v_normal;
@@ -50,13 +52,16 @@ void main() {
     // Z-up world: the sky lights faces pointing up, the ground faces pointing down.
     vec3 ambient = mix(vec3(0.52, 0.52, 0.55), vec3(1.0, 1.0, 1.0), 0.5 + 0.5 * n.z);
     float key = max(dot(n, key_light.xyz), 0.0);
-    vec3 color = base_color.rgb * (0.62 * ambient + 0.45 * key);
+    vec3 color = ids.y > 0.5 ? base_color.rgb : base_color.rgb * (0.62 * ambient + 0.45 * key);
+    float alpha = base_color.a;  // the body's opacity
     if (v_selected > 0.5) {
         color = mix(color, select_color.rgb, select_color.a);
+        alpha = ids.w > 0.0 ? ids.w : alpha;
     } else if (ids.z > 0.5 || (ids.x > 0.5 && abs(v_face_id - ids.x) < 0.5)) {
         color = mix(color, hover_color.rgb, hover_color.a);
+        alpha = ids.w > 0.0 ? mix(base_color.a, ids.w, 0.6) : alpha;
     }
-    frag_color = vec4(color, base_color.a);  // a: the body's opacity
+    frag_color = vec4(color, alpha);
 }
 @end
 

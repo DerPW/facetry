@@ -158,6 +158,8 @@ struct Sketch {
 struct Extrude {
     std::string profile;  // ID of the sketch feature
     Value distance;
+    // Names of the sketch's regions to extrude (ADR-0014). Empty takes the sketch's only region.
+    std::vector<std::string> regions;
 
     friend bool operator==(const Extrude&, const Extrude&) = default;
 };

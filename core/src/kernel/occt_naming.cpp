@@ -8,8 +8,10 @@
 
 #include "occt_common.hpp"
 
+#include <BOPAlgo_BuilderFace.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
+#include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
@@ -18,6 +20,7 @@
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepGProp.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 #include <GProp_GProps.hxx>
@@ -25,10 +28,14 @@
 #include <Geom_TrimmedCurve.hxx>
 #include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_List.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
+#include <TopoDS_Iterator.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
 #include <gp_Ax2.hxx>
@@ -43,6 +50,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -460,6 +468,404 @@ NamedShape extrudeProfile(std::span<const ProfileSegment> loop, double distance,
         }
         names.add(prism.FirstShape(), prefix + ":start");
         names.add(prism.LastShape(), prefix + ":end");
+        return nameTopology(std::move(result), names.finish(feature));
+    });
+}
+
+namespace {
+
+using Kind = ProfileSegment::Kind;
+
+// Where a point in space lies on the sketch plane.
+std::pair<double, double> inSketch(const SketchFrame& frame, const gp_Pnt& p) {
+    const double dx = p.X() - frame.origin.x;
+    const double dy = p.Y() - frame.origin.y;
+    const double dz = p.Z() - frame.origin.z;
+    return {dx * frame.xAxis.x + dy * frame.xAxis.y + dz * frame.xAxis.z,
+            dx * frame.yAxis.x + dy * frame.yAxis.y + dz * frame.yAxis.z};
+}
+
+double radiusOf(const ProfileSegment& curve) {
+    return curve.kind == Kind::Circle ? curve.radius
+                                      : std::hypot(curve.x0 - curve.cx, curve.y0 - curve.cy);
+}
+
+// Checks a curve for sketchRegions(). Returns false for degenerate curves, which bound nothing.
+bool usable(const ProfileSegment& curve) {
+    for (const double value :
+         {curve.x0, curve.y0, curve.x1, curve.y1, curve.cx, curve.cy, curve.radius}) {
+        kernel::requireFinite(value, "Sketch coordinate");
+    }
+    switch (curve.kind) {
+        case Kind::Line:
+            return !samePoint(curve.x0, curve.y0, curve.x1, curve.y1);
+        case Kind::Circle:
+            if (curve.radius < 0.0) {
+                kernel::requirePositive(curve.radius, "Circle radius");
+            }
+            return curve.radius > kPointTolerance;
+        case Kind::Arc: {
+            const double r0 = radiusOf(curve);
+            const double r1 = std::hypot(curve.x1 - curve.cx, curve.y1 - curve.cy);
+            if (r0 <= kPointTolerance || samePoint(curve.x0, curve.y0, curve.x1, curve.y1)) {
+                return false;
+            }
+            if (std::abs(r1 - r0) > kPointTolerance * std::max(1.0, r0)) {
+                throw Error(ErrorCode::InvalidArgument,
+                            "Arc " + curve.name + " ends off its circle");
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// The edge of a curve on the sketch plane: lines and arcs from start to end, circles
+// counter-clockwise.
+TopoDS_Edge curveEdge(const ProfileSegment& curve, const SketchFrame& frame) {
+    const gp_Pnt start = point(frame.at(curve.x0, curve.y0));
+    const gp_Pnt end = point(frame.at(curve.x1, curve.y1));
+    switch (curve.kind) {
+        case Kind::Line:
+            return BRepBuilderAPI_MakeEdge(start, end);
+        case Kind::Arc: {
+            const auto [mx, my] = arcMiddle(curve);
+            const GC_MakeArcOfCircle arc(start, point(frame.at(mx, my)), end);
+            if (!arc.IsDone()) {
+                throw Error(ErrorCode::Kernel, "Arc " + curve.name + " is degenerate");
+            }
+            return BRepBuilderAPI_MakeEdge(arc.Value());
+        }
+        case Kind::Circle:
+            break;
+    }
+    const gp_Ax2 axis(point(frame.at(curve.cx, curve.cy)), direction(frame.normal()),
+                      direction(frame.xAxis));
+    return BRepBuilderAPI_MakeEdge(gp_Circ(axis, curve.radius));
+}
+
+// The angle from `from` counter-clockwise to `to`, in [0, 2π).
+double sweepBetween(double from, double to) {
+    double sweep = std::fmod(to - from, 2.0 * M_PI);
+    return sweep < 0.0 ? sweep + 2.0 * M_PI : sweep;
+}
+
+// Distance on the sketch plane from (u, v) to a curve.
+double distanceTo(const ProfileSegment& curve, double u, double v) {
+    if (curve.kind == Kind::Line) {
+        const double dx = curve.x1 - curve.x0;
+        const double dy = curve.y1 - curve.y0;
+        const double t =
+            std::clamp(((u - curve.x0) * dx + (v - curve.y0) * dy) / (dx * dx + dy * dy), 0.0, 1.0);
+        return std::hypot(u - curve.x0 - t * dx, v - curve.y0 - t * dy);
+    }
+    const double onCircle = std::abs(std::hypot(u - curve.cx, v - curve.cy) - radiusOf(curve));
+    if (curve.kind == Kind::Circle) {
+        return onCircle;
+    }
+    // On an arc only within its sweep; outside it, the nearer end counts.
+    double start = std::atan2(curve.y0 - curve.cy, curve.x0 - curve.cx);
+    double end = std::atan2(curve.y1 - curve.cy, curve.x1 - curve.cx);
+    if (curve.clockwise) {
+        std::swap(start, end);
+    }
+    const double at = std::atan2(v - curve.cy, u - curve.cx);
+    if (sweepBetween(start, at) <= sweepBetween(start, end)) {
+        return onCircle;
+    }
+    return std::min(std::hypot(u - curve.x0, v - curve.y0), std::hypot(u - curve.x1, v - curve.y1));
+}
+
+// The direction of a curve at (u, v), on the sketch plane.
+std::pair<double, double> tangentAt(const ProfileSegment& curve, double u, double v) {
+    if (curve.kind == Kind::Line) {
+        return {curve.x1 - curve.x0, curve.y1 - curve.y0};
+    }
+    const double sign = curve.clockwise ? -1.0 : 1.0;
+    return {-(v - curve.cy) * sign, (u - curve.cx) * sign};
+}
+
+// The curve an edge is a piece of: the nearest one to its middle within `tolerance`.
+std::optional<std::size_t> curveOf(const TopoDS_Edge& edge, std::span<const ProfileSegment> curves,
+                                   std::span<const std::size_t> candidates,
+                                   const SketchFrame& frame, double tolerance) {
+    const BRepAdaptor_Curve adaptor(edge);
+    const gp_Pnt middle = adaptor.Value((adaptor.FirstParameter() + adaptor.LastParameter()) / 2.0);
+    const auto [u, v] = inSketch(frame, middle);
+    std::optional<std::size_t> nearest;
+    double best = tolerance;
+    for (const std::size_t i : candidates) {
+        const double distance = distanceTo(curves[i], u, v);
+        if (distance <= best) {
+            best = distance;
+            nearest = i;
+        }
+    }
+    return nearest;
+}
+
+}  // namespace
+
+std::vector<SketchRegion> sketchRegions(std::span<const ProfileSegment> curves,
+                                        const SketchFrame& frame) {
+    std::vector<std::size_t> used;
+    for (std::size_t i = 0; i < curves.size(); ++i) {
+        if (usable(curves[i])) {
+            used.push_back(i);
+        }
+    }
+    if (used.empty()) {
+        return {};
+    }
+    return kernel::guard("Finding the sketch's profiles", [&] {
+        // A sheet on the sketch plane well beyond the curves, cut into pieces by them. The piece
+        // that touches the sheet's border is outside every region.
+        double umin = HUGE_VAL;
+        double umax = -HUGE_VAL;
+        double vmin = HUGE_VAL;
+        double vmax = -HUGE_VAL;
+        const auto extend = [&](double u, double v, double r) {
+            umin = std::min(umin, u - r);
+            umax = std::max(umax, u + r);
+            vmin = std::min(vmin, v - r);
+            vmax = std::max(vmax, v + r);
+        };
+        NCollection_List<TopoDS_Shape> tools;
+        for (const std::size_t i : used) {
+            const ProfileSegment& curve = curves[i];
+            if (curve.kind == Kind::Line) {
+                extend(curve.x0, curve.y0, 0.0);
+                extend(curve.x1, curve.y1, 0.0);
+            } else {
+                extend(curve.cx, curve.cy, radiusOf(curve));
+            }
+            tools.Append(curveEdge(curve, frame));
+        }
+        const double size = std::max({umax - umin, vmax - vmin, 1.0});
+        const double margin = size;
+        const double tolerance = 1e-6 * size;
+        const Vec3 n = frame.normal();
+        const gp_Pln plane(gp_Ax3(point(frame.origin), direction(n), direction(frame.xAxis)));
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(BRepBuilderAPI_MakeFace(plane, umin - margin, umax + margin, vmin - margin,
+                                                 vmax + margin)
+                             .Face());
+
+        BRepAlgoAPI_Splitter splitter;
+        splitter.SetArguments(arguments);
+        splitter.SetTools(tools);
+        const kernel::Progress progress;
+        splitter.Build(progress.range());
+        progress.check();
+        if (!splitter.IsDone() || splitter.HasErrors()) {
+            throw Error(ErrorCode::Kernel, "Splitting the sketch plane by its curves failed");
+        }
+
+        std::vector<SketchRegion> regions;
+        std::vector<std::string> names;
+        kernel::ShapeMap faces;
+        BRep_Builder builder;
+        for (TopExp_Explorer piece(splitter.Shape(), TopAbs_FACE); piece.More(); piece.Next()) {
+            // Sides are found on the face as stored; flipping a face flips both its normal and
+            // the direction its edges run, so the side stays the same.
+            const TopoDS_Face face = TopoDS::Face(piece.Current().Oriented(TopAbs_FORWARD));
+            const gp_Dir normal = BRepAdaptor_Surface(face).Plane().Axis().Direction();
+            const bool alongNormal = normal.X() * n.x + normal.Y() * n.y + normal.Z() * n.z > 0.0;
+            TopoDS_Face region = TopoDS::Face(face.EmptyCopied());
+            std::set<std::string> sides;
+            bool outside = false;
+            for (TopoDS_Iterator wires(face); wires.More() && !outside; wires.Next()) {
+                // Curves inside a region that do not split it (an open line) are internal
+                // edges; the region leaves them out.
+                TopoDS_Wire wire;
+                builder.MakeWire(wire);
+                bool internal = false;
+                bool bounding = false;
+                for (TopoDS_Iterator edges(wires.Value()); edges.More(); edges.Next()) {
+                    const TopoDS_Edge& edge = TopoDS::Edge(edges.Value());
+                    if (edge.Orientation() != TopAbs_FORWARD &&
+                        edge.Orientation() != TopAbs_REVERSED) {
+                        internal = true;
+                        continue;
+                    }
+                    const auto curve = curveOf(edge, curves, used, frame, tolerance);
+                    if (!curve) {
+                        outside = true;
+                        break;
+                    }
+                    const BRepAdaptor_Curve adaptor(edge);
+                    gp_Pnt middle;
+                    gp_Vec along;
+                    adaptor.D1((adaptor.FirstParameter() + adaptor.LastParameter()) / 2.0, middle,
+                               along);
+                    if (edge.Orientation() == TopAbs_REVERSED) {
+                        along.Reverse();
+                    }
+                    const auto [u, v] = inSketch(frame, middle);
+                    const auto [tu, tv] = tangentAt(curves[*curve], u, v);
+                    const double du = along.X() * frame.xAxis.x + along.Y() * frame.xAxis.y +
+                                      along.Z() * frame.xAxis.z;
+                    const double dv = along.X() * frame.yAxis.x + along.Y() * frame.yAxis.y +
+                                      along.Z() * frame.yAxis.z;
+                    // A face lies left of its edges, seen from its normal.
+                    const bool left = (du * tu + dv * tv > 0.0) == alongNormal;
+                    sides.insert(curves[*curve].name + (left ? "+" : "-"));
+                    builder.Add(wire, edge);
+                    bounding = true;
+                }
+                if (bounding) {
+                    builder.Add(region, internal ? wire : TopoDS::Wire(wires.Value()));
+                }
+            }
+            if (outside || sides.empty()) {
+                continue;
+            }
+            if (!alongNormal) {
+                region.Reverse();
+            }
+            std::string name = "region{";
+            for (auto it = sides.begin(); it != sides.end(); ++it) {
+                name += (it == sides.begin() ? "" : "|") + *it;
+            }
+            name += '}';
+            SketchRegion result{
+                .name = {}, .face = kernel::wrap(region, "Finding a profile"), .edges = {}};
+            const Shape::Impl& data = result.face.impl();
+            for (int i = 1; i <= data.edges.Extent(); ++i) {
+                const auto curve =
+                    curveOf(TopoDS::Edge(data.edges(i)), curves, used, frame, tolerance);
+                result.edges.push_back(curve ? curves[*curve].name : std::string());
+            }
+            faces.Add(region);
+            names.push_back(std::move(name));
+            regions.push_back(std::move(result));
+        }
+        disambiguate(faces, names);
+        for (std::size_t i = 0; i < regions.size(); ++i) {
+            regions[i].name = std::move(names[i]);
+        }
+        std::sort(regions.begin(), regions.end(),
+                  [](const SketchRegion& a, const SketchRegion& b) { return a.name < b.name; });
+        return regions;
+    });
+}
+
+Shape regionsShape(std::span<const SketchRegion> regions) {
+    return kernel::guard("Collecting profiles", [&] {
+        TopoDS_Compound compound;
+        BRep_Builder builder;
+        builder.MakeCompound(compound);
+        for (const SketchRegion& region : regions) {
+            builder.Add(compound, region.face.impl().shape);
+        }
+        return kernel::wrap(compound, "Collecting profiles");
+    });
+}
+
+NamedShape extrudeRegions(std::span<const SketchRegion> regions, const SketchFrame& frame,
+                          double distance, std::string_view feature) {
+    if (regions.empty()) {
+        throw Error(ErrorCode::InvalidArgument, "Choose at least one profile to extrude");
+    }
+    kernel::requireFinite(distance, "Extrude distance");
+    if (std::abs(distance) < kPointTolerance) {
+        throw Error(ErrorCode::InvalidArgument, "Extrude distance must not be zero");
+    }
+    return kernel::guard("Extruding profiles", [&] {
+        // The curve behind each edge, and how many chosen regions it bounds. Edges between two
+        // chosen regions disappear: adjacent regions merge.
+        kernel::ShapeMap edges;
+        std::vector<std::string> edgeCurves;
+        std::vector<int> uses;
+        for (const SketchRegion& region : regions) {
+            const Shape::Impl& data = region.face.impl();
+            for (int i = 1; i <= data.edges.Extent(); ++i) {
+                const int index = edges.Add(data.edges(i));
+                if (static_cast<std::size_t>(index) > edgeCurves.size()) {
+                    edgeCurves.push_back(region.edges.at(static_cast<std::size_t>(i) - 1));
+                    uses.push_back(0);
+                }
+                ++uses[static_cast<std::size_t>(index) - 1];
+            }
+        }
+        std::vector<TopoDS_Face> faces;
+        if (std::all_of(uses.begin(), uses.end(), [](int count) { return count == 1; })) {
+            for (const SketchRegion& region : regions) {
+                faces.push_back(TopoDS::Face(region.face.impl().shape));
+            }
+        } else {
+            const TopoDS_Face& first = TopoDS::Face(regions.front().face.impl().shape);
+            BOPAlgo_BuilderFace merge;
+            merge.SetFace(TopoDS::Face(first.Oriented(TopAbs_FORWARD)));
+            NCollection_List<TopoDS_Shape> boundary;
+            for (const SketchRegion& region : regions) {
+                const TopoDS_Shape face = region.face.impl().shape.Oriented(TopAbs_FORWARD);
+                for (TopExp_Explorer edge(face, TopAbs_EDGE); edge.More(); edge.Next()) {
+                    if (uses[static_cast<std::size_t>(edges.FindIndex(edge.Current())) - 1] == 1) {
+                        boundary.Append(edge.Current());
+                    }
+                }
+            }
+            merge.SetShapes(boundary);
+            merge.Perform();
+            if (merge.HasErrors()) {
+                throw Error(ErrorCode::Kernel, "Merging the chosen profiles failed");
+            }
+            for (const TopoDS_Shape& area : merge.Areas()) {
+                faces.push_back(TopoDS::Face(area.Oriented(first.Orientation())));
+            }
+        }
+
+        // Pieces of one curve that meet only each other, for example where another curve
+        // touched it or where merged regions met, become one edge again: one side face each.
+        for (TopoDS_Face& face : faces) {
+            ShapeUpgrade_UnifySameDomain unify(face, /*UnifyEdges=*/true, /*UnifyFaces=*/false,
+                                               /*ConcatBSplines=*/false);
+            unify.Build();
+            for (int i = 1; i <= edges.Extent(); ++i) {
+                for (const TopoDS_Shape& merged : unify.History()->Modified(edges(i))) {
+                    const int index = edges.Add(merged);
+                    if (static_cast<std::size_t>(index) > edgeCurves.size()) {
+                        edgeCurves.push_back(edgeCurves[static_cast<std::size_t>(i) - 1]);
+                    }
+                }
+            }
+            face = TopoDS::Face(unify.Shape());
+        }
+
+        TopoDS_Compound compound;
+        BRep_Builder builder;
+        builder.MakeCompound(compound);
+        for (const TopoDS_Face& face : faces) {
+            builder.Add(compound, face);
+        }
+        const TopoDS_Shape base = faces.size() == 1 ? TopoDS_Shape(faces.front()) : compound;
+        const Vec3 n = frame.normal();
+        BRepPrimAPI_MakePrism prism(base, gp_Vec(n.x * distance, n.y * distance, n.z * distance));
+        prism.Build();
+        if (!prism.IsDone()) {
+            throw Error(ErrorCode::Kernel, "Extruding the profiles failed");
+        }
+        Shape result = kernel::checkedResult(prism.Shape(), "Extruding profiles");
+
+        FaceNames names(result.impl());
+        const std::string prefix(feature);
+        for (const TopoDS_Face& face : faces) {
+            for (TopExp_Explorer edge(face, TopAbs_EDGE); edge.More(); edge.Next()) {
+                const int index = edges.FindIndex(edge.Current());
+                if (index > 0) {
+                    names.generated(
+                        prism, edge.Current(),
+                        prefix + ":side[" + edgeCurves[static_cast<std::size_t>(index) - 1] + "]");
+                }
+            }
+        }
+        for (TopExp_Explorer cap(prism.FirstShape(), TopAbs_FACE); cap.More(); cap.Next()) {
+            names.add(cap.Current(), prefix + ":start");
+        }
+        for (TopExp_Explorer cap(prism.LastShape(), TopAbs_FACE); cap.More(); cap.Next()) {
+            names.add(cap.Current(), prefix + ":end");
+        }
         return nameTopology(std::move(result), names.finish(feature));
     });
 }

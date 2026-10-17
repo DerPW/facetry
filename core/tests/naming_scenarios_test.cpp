@@ -57,7 +57,6 @@ TEST_CASE(
     "filleted one") {
     Session session = cornerFilletSession();
     session.regenerate();
-    const std::uint32_t idBefore = filletOf(session).edges[0].shadow->id;
 
     // Cut off the corner at p2 = (width, 0): p2 moves to (width - 2, 0), a new point p5 sits at
     // (width, 2), and a new line from p2 to p5 comes before l2, which now starts at p5.
@@ -74,10 +73,10 @@ TEST_CASE(
     CHECK(regeneration.model.bodies.at("f2")->faces.size() == 8);
     expectRoundAt(regeneration, kFillet, kWidth, kDepth, kHeight, kRadius,
                   kBlockVolume - 2.0 * kHeight);
-
-    // The edge moved to another index: a reference stored as an index would now point
-    // somewhere else (see "indices shift when a sketch edge is inserted" in naming_test.cpp).
-    CHECK(filletOf(session).edges[0].shadow->id != idBefore);
+    // The reference resolved by name. Whether the edge's index changed depends on the kernel's
+    // output order; "indices shift when a sketch edge is inserted" in naming_test.cpp shows that
+    // indices are not stable.
+    CHECK(filletOf(session).edges[0].shadow->geometry.centroid.x == doctest::Approx(kWidth));
 }
 
 TEST_CASE("scenario: delete the fillet, undo, regenerate") {

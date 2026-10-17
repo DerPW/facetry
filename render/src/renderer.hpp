@@ -8,7 +8,9 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace facetry::render {
 
@@ -48,6 +50,9 @@ class Renderer {
     Renderer& operator=(const Renderer&) = delete;
 
     void setMesh(const RenderMesh& mesh);
+    // Sketch regions (profiles) to choose from: drawn over the model and picked before it, with
+    // the triangles' face IDs as region IDs. An empty mesh hides them.
+    void setRegions(const RenderMesh& mesh);
     void setViewport(float width, float height, float pixelRatio);
 
     Camera& camera() {
@@ -82,9 +87,7 @@ class Renderer {
     void setPickFilter(PickFilter filter) {
         filter_ = filter;
     }
-    [[nodiscard]] PickResult pick(float x, float y, float radius) const {
-        return pick_.pick(camera_, x, y, radius, picksThroughFaces(), filter_);
-    }
+    [[nodiscard]] PickResult pick(float x, float y, float radius) const;
     // Selects what a click at (x, y) picks and returns it. Clicking the same spot again, with the
     // selection unchanged since, picks the next candidate there. `toggle` adds or removes the
     // first candidate instead.
@@ -107,6 +110,7 @@ class Renderer {
     std::unique_ptr<Gpu> gpu_;
     Camera camera_;
     PickIndex pick_;
+    PickIndex regions_;
     Vec3 orbitPivot_;
     Highlight highlight_;
     Selection selection_;

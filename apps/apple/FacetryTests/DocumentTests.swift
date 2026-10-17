@@ -35,7 +35,9 @@ struct DocumentTests {
         #expect(try await engine.needsRegeneration())
         let snapshot = try await engine.regenerate(generation: current) { _ in }
         #expect(snapshot?.state.features.map(\.status) == ["ok", "ok", "ok"])
-        #expect(snapshot?.state.regeneration.executed == 2)  // the sketch stayed cached
+        // The obsolete run stopped inside the sketch, which reports progress while it finds its
+        // profiles, so all three features run now.
+        #expect(snapshot?.state.regeneration.executed == 3)
         #expect(try await engine.needsRegeneration() == false)
     }
 

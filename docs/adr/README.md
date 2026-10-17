@@ -33,3 +33,4 @@ a new ADR that supersedes the old one and set the old one's status to
 | [0011](0011-document-api-json-over-c.md) | Document API: sessions with JSON edits over the C API | Accepted |
 | [0012](0012-document-units.md) | Document units: values in the document's unit, geometry in millimeters | Accepted |
 | [0013](0013-sketch-model.md) | Sketch model: entities on shared points, a plane by name or face reference | Accepted |
+| [0014](0014-sketch-profiles.md) | Sketch profiles: regions from splitting the sketch plane, named by the curves around them | Accepted |
