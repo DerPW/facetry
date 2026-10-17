@@ -57,10 +57,13 @@ Back to the [roadmap overview](../ROADMAP.md).
   - [x] error and warning badges with an explanation
   - [x] broken references ([ADR-0006](../adr/0006-persistent-naming.md)): list each with its last
         known place, pick a replacement as one undo step
-- [ ] Regeneration engine (from the M0.6 prototype):
+- [x] Regeneration engine (from the M0.6 prototype):
   - [x] incremental: regenerate from the first changed feature (core, M0.6)
-  - [ ] runs off the UI thread (background thread on Apple, Web Worker on web)
-  - [ ] progress and cancel between features (core, M0.6) and inside long kernel operations
+  - [x] runs off the UI thread (background actor on Apple, Web Worker on web); a new edit stops
+        a running regeneration, and the last model stays on screen meanwhile
+        ([#13](https://github.com/DerPW/facetry/issues/13))
+  - [x] progress and cancel between features (core, M0.6) and inside long kernel operations
+        that support it: OCCT's Boolean operations and meshing do, its fillets run to the end
   - [x] a failed feature does not block independent later features (core, M0.6)
 - [x] Command system with unlimited undo/redo per session; a tool session is one undo step
       (transactions); steps have names; Apple's undo manager and the web shortcuts drive it

@@ -3,6 +3,7 @@ configure_file(src/build_info.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/buil
 # The core library: C API (facetry_core.h), C++ API (facetry/core/*.hpp) and the kernel adapter.
 add_library(facetry-core STATIC
     src/c_api.cpp
+    src/cancellation.cpp
     src/log.cpp
     src/naming.cpp
     src/stl.cpp

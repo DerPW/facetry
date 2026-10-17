@@ -10,6 +10,7 @@
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_List.hxx>
 #include <Poly_PolygonOnTriangulation.hxx>
@@ -156,9 +157,14 @@ Mesh tessellate(const Shape& shape, const TessellationOptions& options) {
     const Shape::Impl& data = shape.impl();
     return kernel::guard("Tessellating the shape", [&] {
         // OCCT stores the triangulation on the shape; meshing is idempotent for equal settings.
-        const BRepMesh_IncrementalMesh mesher(data.shape, options.linearDeflection,
-                                              options.relative, options.angularDeflection,
-                                              /*isInParallel=*/false);
+        IMeshTools_Parameters parameters;
+        parameters.Deflection = options.linearDeflection;
+        parameters.Angle = options.angularDeflection;
+        parameters.Relative = options.relative;
+        parameters.InParallel = false;
+        const kernel::Progress progress;
+        const BRepMesh_IncrementalMesh mesher(data.shape, parameters, progress.range());
+        progress.check();
         if (!mesher.IsDone()) {
             throw Error(ErrorCode::Kernel, "Tessellating the shape failed");
         }

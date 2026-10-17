@@ -18,6 +18,8 @@ export class CoreClient {
   readonly #pending = new Map<number, Pending>();
   #nextId = 1;
   onLog: (level: LogLevel, message: string) => void = consoleLog;
+  /** Progress of a regeneration that takes longer than a step: `done` of `total` features. */
+  onProgress: (done: number, total: number) => void = () => {};
 
   constructor(
     worker = new Worker(new URL("./core.worker.ts", import.meta.url), { type: "module" }),
@@ -49,6 +51,10 @@ export class CoreClient {
   #receive(message: WorkerMessage): void {
     if (message.kind === "log") {
       this.onLog(message.level, message.message);
+      return;
+    }
+    if (message.kind === "progress") {
+      this.onProgress(message.done, message.total);
       return;
     }
     const pending = this.#pending.get(message.id);

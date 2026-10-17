@@ -1,5 +1,6 @@
 #include "occt_common.hpp"
 
+#include "facetry/core/cancellation.hpp"
 #include "facetry/core/log.hpp"
 
 #include <BRepCheck_Analyzer.hxx>
@@ -11,6 +12,7 @@
 #include <TopAbs_ShapeEnum.hxx>
 #include <TopExp.hxx>
 
+#include <atomic>
 #include <cmath>
 #include <mutex>
 
@@ -55,7 +57,40 @@ class LogPrinter : public Message_Printer {
     }
 };
 
+// Asks the current CancelScope whether to stop. OpenCASCADE calls UserBreak() often while an
+// algorithm runs; parallel algorithms also call it from worker threads, which have no scope and
+// so never stop it themselves.
+class CancelIndicator : public Message_ProgressIndicator {
+  public:
+    bool UserBreak() override {
+        if (CancelScope::shouldStop()) {
+            stopped_ = true;
+        }
+        return stopped_;
+    }
+    void Show(const Message_ProgressScope& /*scope*/, const bool /*force*/) override {}
+
+    [[nodiscard]] bool stopped() const {
+        return stopped_;
+    }
+
+  private:
+    std::atomic<bool> stopped_ = false;
+};
+
 }  // namespace
+
+Progress::Progress() : indicator_(new CancelIndicator()) {}
+
+Message_ProgressRange Progress::range() const {
+    return indicator_->Start();
+}
+
+void Progress::check() const {
+    if (static_cast<const CancelIndicator&>(*indicator_).stopped()) {
+        throw Cancelled();
+    }
+}
 
 void routeMessagesToLog() {
     static std::once_flag once;

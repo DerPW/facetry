@@ -486,8 +486,8 @@ final class Core {
     }
 
     /// Regenerates the document. `progress` is called after each feature with the features done
-    /// and the total; returning false cancels the rest. Feature failures do not throw; they are
-    /// reported in ``state(of:)``.
+    /// and the total, and with the same count while a long kernel operation runs; returning false
+    /// cancels the rest. Feature failures do not throw; they are reported in ``state(of:)``.
     func regenerate(_ session: SessionHandle, progress: ((Int, Int) -> Bool)? = nil) throws {
         guard let progress else {
             try check(facetry_session_regenerate(context, session.rawValue, nil, nil))

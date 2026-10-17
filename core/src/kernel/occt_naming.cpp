@@ -374,7 +374,9 @@ NamedShape filletEdges(const NamedShape& body, std::span<const std::uint32_t> ed
         for (const std::uint32_t id : edgeIds) {
             fillet.Add(radius, TopoDS::Edge(data.edges(static_cast<int>(id))));
         }
-        fillet.Build();
+        const kernel::Progress progress;
+        fillet.Build(progress.range());
+        progress.check();
         if (!fillet.IsDone()) {
             throw Error(ErrorCode::Kernel, "Filleting edges failed: the radius " +
                                                std::to_string(radius) +

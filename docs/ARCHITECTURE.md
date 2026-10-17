@@ -47,7 +47,8 @@ iPadOS/macOS and TypeScript for the web, render panels and forward input.
 2. **OCCT stays inside the kernel adapter.** No OpenCASCADE type crosses the adapter boundary.
    This keeps the rest of the code testable and makes a kernel change possible in theory.
 3. **The core never blocks the UI.** It runs on a background thread on Apple and in a Web Worker
-   on the web. The UI talks to it asynchronously.
+   on the web. The UI talks to it asynchronously. A new edit stops a running regeneration after
+   its current feature; the last model stays on screen until a newer one is ready.
 4. **The core is deterministic.** The same document regenerates to the same result on every
    platform. This is what makes golden-model tests possible.
 5. **No exceptions across the API boundary.** Every call returns a status and a structured
@@ -85,7 +86,7 @@ The M0.6 prototype implements this in the core:
 | Bodies | results in `regeneration.hpp` | A body's ID is the ID of the feature that created it |
 | JSON form | `document.hpp` (`toJson`, `parseDocument`) | Versioned (`formatVersion`, per-feature `namingVersion`); examples in `tests/documents/` |
 | Naming | `naming.hpp`, `core/src/kernel/occt_naming.cpp` | Faces from history and roles, edges and vertices by their faces |
-| Regeneration engine | `regeneration.hpp` | Per-feature cache keyed by the feature's definition with parameter values filled in; cancellation between features; failed features pass the model through |
+| Regeneration engine | `regeneration.hpp`, `cancellation.hpp` | Per-feature cache keyed by the feature's definition with parameter values filled in; cancellation between features and inside kernel operations that support it (OCCT Booleans and meshing; fillets run to the end); failed features pass the model through |
 | Session | `session.hpp` | Undo/redo of named steps; transactions make one step of a whole tool (M1.1). A step keeps the document before it, which is cheap at a few kilobytes |
 | C API | `facetry_core.h`, `session_json.hpp` | Sessions with JSON edits and summaries ([ADR-0011](adr/0011-document-api-json-over-c.md)); the apps open the M0.6 example through it |
 

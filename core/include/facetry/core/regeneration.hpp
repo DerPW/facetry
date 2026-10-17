@@ -7,6 +7,7 @@
 // see naming.hpp) or fails with an error. A failed feature leaves the model unchanged, and the
 // features after it still run.
 
+#include "facetry/core/cancellation.hpp"
 #include "facetry/core/document.hpp"
 #include "facetry/core/naming.hpp"
 
@@ -64,29 +65,17 @@ struct Regeneration {
 [[nodiscard]] Reference makeReference(const ModelState& model, std::string_view body,
                                       ElementKind kind, std::uint32_t id);
 
-// Cancels a running regeneration from another thread. Copies share the same flag.
-class CancelToken {
-  public:
-    void cancel() const noexcept {
-        flag_->store(true);
-    }
-    [[nodiscard]] bool cancelled() const noexcept {
-        return flag_->load();
-    }
-
-  private:
-    std::shared_ptr<std::atomic<bool>> flag_ = std::make_shared<std::atomic<bool>>(false);
-};
-
-// Reports progress: `done` of `total` features have been handled.
+// Reports progress: `done` of `total` features have been handled. Also called from time to time
+// during long kernel operations (with the same `done`), so it can cancel the token mid-feature.
 using ProgressCallback = std::function<void(std::size_t done, std::size_t total)>;
 
 // Regenerates documents and keeps a cache of each feature's result. A feature runs again only if
 // its definition (with parameter values filled in) or anything before it changed.
 class Regenerator {
   public:
-    // Checks `cancel` between features. After a cancellation the features that finished stay
-    // cached, so the next run continues where this one stopped.
+    // Checks `cancel` between features and inside long kernel operations. After a cancellation
+    // the features that finished stay cached, so the next run continues where this one stopped;
+    // a feature stopped halfway is not cached.
     Regeneration run(const Document& document, const CancelToken& cancel = {},
                      const ProgressCallback& progress = {});
 

@@ -401,8 +401,9 @@ export class FacetryCore {
   }
 
   /**
-   * Regenerates the document. `onProgress` is called after each feature; returning false cancels
-   * the rest, returning true continues. Feature failures do not throw; they are reported in {@link sessionState}.
+   * Regenerates the document. `onProgress` is called after each feature, and with the same count
+   * while a long kernel operation runs; returning false cancels the rest, returning true
+   * continues. Feature failures do not throw; they are reported in {@link sessionState}.
    */
   regenerate(session: number, onProgress?: (done: number, total: number) => boolean): void {
     const m = this.#m;
@@ -463,6 +464,11 @@ export class FacetryCore {
   /** Regenerates and tessellates every body: what the UI needs after an edit, in one call. */
   regenerateModel(session: number, options: TessellationOptions = {}): ModelSnapshot {
     this.regenerate(session);
+    return this.modelSnapshot(session, options);
+  }
+
+  /** The session summary and a display mesh per body of the last regeneration. */
+  modelSnapshot(session: number, options: TessellationOptions = {}): ModelSnapshot {
     const state = this.sessionState(session);
     const meshes: Record<string, MeshData> = {};
     for (const { id } of state.bodies) {

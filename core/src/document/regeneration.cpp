@@ -208,6 +208,8 @@ FeatureResult execute(const Feature& feature, const Document& document, ModelSta
         result.status = FeatureStatus::Error;
         result.messages.emplace_back(error.what());
         return result;
+    } catch (const Cancelled&) {
+        throw;  // the regeneration stops; this feature is not cached
     } catch (const std::exception& error) {
         result.status = FeatureStatus::Error;
         result.messages.push_back(std::string("Internal error: ") + error.what());
@@ -255,6 +257,13 @@ Regeneration Regenerator::run(const Document& document, const CancelToken& cance
 
     Regeneration regeneration;
     ModelState model;
+    std::size_t done = 0;
+    // Long kernel operations poll the progress callback, so it can cancel mid-feature.
+    const CancelScope scope(cancel, [&] {
+        if (progress) {
+            progress(done, end);
+        }
+    });
     // Cache entry i is valid while entries 0 … i - 1 matched in this run. Entries past the end of
     // the run are kept: moving the rollback marker forward again, or undoing the deletion of the
     // last feature, is then instant.
@@ -275,13 +284,20 @@ Regeneration Regenerator::run(const Document& document, const CancelToken& cance
                 regeneration.cancelled = true;
                 break;
             }
-            FeatureResult result = execute(feature, document, model);
+            FeatureResult result;
+            try {
+                result = execute(feature, document, model);
+            } catch (const Cancelled&) {
+                regeneration.cancelled = true;
+                break;
+            }
             ++regeneration.executed;
             cache_.push_back({.key = std::move(key), .result = result, .after = model});
             regeneration.features.push_back(std::move(result));
         }
+        done = i + 1;
         if (progress) {
-            progress(i + 1, end);
+            progress(done, end);
         }
     }
     for (std::size_t i = regeneration.features.size(); i < timeline.size(); ++i) {

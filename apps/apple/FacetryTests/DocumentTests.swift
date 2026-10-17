@@ -27,6 +27,18 @@ struct DocumentTests {
         #expect(try core.state(of: core.openSession(fileData: provisional)).features.isEmpty)
     }
 
+    @Test func newerChangesStopARunningRegeneration() async throws {
+        let engine = try DocumentEngine(fileData: FacetryDocument.example)
+        let obsolete = engine.control.next()
+        let current = engine.control.next()  // a newer change arrived
+        #expect(try await engine.regenerate(generation: obsolete) { _ in } == nil)
+        #expect(try await engine.needsRegeneration())
+        let snapshot = try await engine.regenerate(generation: current) { _ in }
+        #expect(snapshot?.state.features.map(\.status) == ["ok", "ok", "ok"])
+        #expect(snapshot?.state.regeneration.executed == 2)  // the sketch stayed cached
+        #expect(try await engine.needsRegeneration() == false)
+    }
+
     @Test func rejectsOtherAndNewerFiles() {
         #expect(throws: (any Error).self) { try FacetryDocument.validate(Data("not json".utf8)) }
         let newer = Data(#"{"format": "facetry", "formatVersion": 99}"#.utf8)
