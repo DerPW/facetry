@@ -5,6 +5,8 @@
 #include "facetry/core/error.hpp"
 #include "facetry/core/shape.hpp"
 
+#include <Message_ProgressIndicator.hxx>
+#include <Message_ProgressRange.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <Standard_Failure.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
@@ -44,6 +46,21 @@ Shape checkedResult(const TopoDS_Shape& shape, const char* operation);
 // Argument checks; they throw Error(InvalidArgument) with `name` in the message.
 void requirePositive(double value, const char* name);
 void requireFinite(double value, const char* name);
+
+// Progress for one OpenCASCADE algorithm: stops it once the current CancelScope's token is
+// cancelled (see cancellation.hpp). Pass range() to the algorithm, then call check(). Only some
+// algorithms honour the range (Boolean operations, meshing); the others run to the end.
+class Progress {
+  public:
+    Progress();
+    [[nodiscard]] Message_ProgressRange range() const;
+    // Throws Cancelled if the algorithm stopped early because the scope was cancelled. A result
+    // that was finished anyway is kept.
+    void check() const;
+
+  private:
+    Handle(Message_ProgressIndicator) indicator_;
+};
 
 // Routes OpenCASCADE's messenger output into facetry's log. Called by guard().
 void routeMessagesToLog();

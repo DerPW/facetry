@@ -1,7 +1,9 @@
 // Persistent naming in the kernel adapter (docs/adr/0006-persistent-naming.md).
 #include "facetry/core/naming.hpp"
 
+#include "facetry/core/cancellation.hpp"
 #include "facetry/core/error.hpp"
+#include "facetry/core/mesh.hpp"
 
 #include <doctest.h>
 
@@ -134,6 +136,34 @@ TEST_CASE("a fillet keeps face names and names its round after the edge") {
     CHECK(geometry.centroid.x == doctest::Approx(10.0 - offset));
     CHECK(geometry.centroid.y == doctest::Approx(6.0 - offset));
     CHECK(geometry.centroid.z == doctest::Approx(2.0));
+}
+
+TEST_CASE("long kernel operations stop once the current scope is cancelled") {
+    // Meshing honours OpenCASCADE's progress range, like the Boolean operations will.
+    const auto block = [] { return extrudeProfile(rectangle(10, 6), 4, "f2").shape; };
+    const CancelToken token;
+    int polls = 0;
+    {
+        const CancelScope scope(token, [&] { ++polls; });
+        CHECK(tessellate(block()).triangleCount() > 0);
+    }
+    CHECK(polls > 0);
+
+    {
+        const CancelScope scope(token, [&] {
+            token.cancel();  // as if the user pressed Cancel while the mesher ran
+        });
+        CHECK_THROWS_AS(static_cast<void>(tessellate(block())), Cancelled);
+        // An inner scope with its own token runs; the outer one counts again afterwards.
+        {
+            const CancelToken other;
+            const CancelScope inner(other);
+            CHECK_NOTHROW(static_cast<void>(tessellate(block())));
+        }
+        CHECK_THROWS_AS(static_cast<void>(tessellate(block())), Cancelled);
+    }
+    // Without a scope nothing is cancelled.
+    CHECK_NOTHROW(static_cast<void>(tessellate(block())));
 }
 
 TEST_CASE("rounds meeting at a corner are named after the shared vertex") {

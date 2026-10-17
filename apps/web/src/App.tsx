@@ -89,6 +89,8 @@ export function App() {
   const [fileName, setFileName] = useState("Untitled.facetry");
   const [repair, setRepair] = useState<Repair | null>(null);
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
+  // Shown while a regeneration takes longer than a step; the last model stays on screen.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
@@ -109,6 +111,7 @@ export function App() {
         viewport.setMesh(mesh ?? EMPTY_MESH);
       }
       setModel(snapshot.state);
+      setProgress(null);
       return mesh;
     },
     [viewport],
@@ -120,6 +123,7 @@ export function App() {
     viewport.setListeners({ onStats: setStats });
     let cancelled = false;
     const core = new CoreClient();
+    core.onProgress = (done, total) => setProgress({ done, total });
     void (async () => {
       try {
         const versions = await core.call("versions");
@@ -132,7 +136,7 @@ export function App() {
         } else {
           handle = await core.call("openSession", exampleDocument);
           const snapshot = await core.call("regenerateModel", handle, tessellation);
-          if (cancelled) return;
+          if (cancelled || !snapshot) return;
           session.current = { core, handle };
           mesh = show(snapshot);
         }
@@ -159,7 +163,8 @@ export function App() {
   }, [viewport, onError, show]);
 
   // Runs a change in the core worker, then regenerates and shows the result. Calls queue up in
-  // the worker and run in order.
+  // the worker and run in order; a newer change's regeneration takes over from a running one,
+  // which then resolves with null.
   const change = useCallback(
     async (run: (current: Session) => Promise<unknown>) => {
       const current = session.current;
@@ -167,8 +172,10 @@ export function App() {
       try {
         await run(current);
         setEditError(null);
-        show(await current.core.call("regenerateModel", current.handle, tessellation));
+        const snapshot = await current.core.call("regenerateModel", current.handle, tessellation);
+        if (snapshot) show(snapshot);
       } catch (error) {
+        setProgress(null);
         setEditError(error instanceof Error ? error.message : String(error));
       }
     },
@@ -233,7 +240,9 @@ export function App() {
         const handle = await current.core.call("openSessionFile", bytes);
         await current.core.call("releaseSession", current.handle);
         current.handle = handle;
-        show(await current.core.call("regenerateModel", handle, tessellation));
+        const snapshot = await current.core.call("regenerateModel", handle, tessellation);
+        if (!snapshot) return;
+        show(snapshot);
         viewport.fit();
         setFileName(file.name.endsWith(".facetry") ? file.name : `${file.name}.facetry`);
         setEditError(null);
@@ -303,6 +312,11 @@ export function App() {
             </p>
             {model && <p className="muted">{fileName}</p>}
             <p className="muted">{status}</p>
+            {progress && (
+              <p className="muted" role="status">
+                Regenerating… {progress.done} of {progress.total} features
+              </p>
+            )}
             {editError && <p className="error">{editError}</p>}
           </header>
           {model && (

@@ -3,6 +3,7 @@
 
 import Foundation
 import Observation
+import Synchronization
 
 /// What the UI needs after a regeneration.
 struct ModelSnapshot: Sendable {
@@ -12,10 +13,33 @@ struct ModelSnapshot: Sendable {
     let mesh: MeshData
 }
 
+/// Progress of a regeneration: `done` of `total` features are finished.
+struct RegenerationProgress: Equatable, Sendable {
+    let done: Int
+    let total: Int
+}
+
+/// Stops regenerations that a newer change made obsolete (#13). Every change starts a new
+/// generation; a regeneration of an older one stops after its current feature.
+final class RegenerationControl: Sendable {
+    private let latest = Atomic<Int>(0)
+
+    /// Starts a new generation and returns it.
+    func next() -> Int {
+        latest.wrappingAdd(1, ordering: .relaxed).newValue
+    }
+
+    func isCurrent(_ generation: Int) -> Bool {
+        latest.load(ordering: .relaxed) == generation
+    }
+}
+
 /// Owns the core and one session. An actor, so that core calls never run on the main thread.
 actor DocumentEngine {
     private let core: Core
     private let session: SessionHandle
+    /// Used from the main thread while the engine is busy.
+    nonisolated let control = RegenerationControl()
 
     init(fileData: Data) throws {
         core = try Core()
@@ -45,9 +69,29 @@ actor DocumentEngine {
         try core.saveFile(session)
     }
 
-    /// Regenerates and tessellates the first visible body.
-    func regenerate() throws -> ModelSnapshot {
-        try core.regenerate(session)
+    /// Whether the document changed since the last complete regeneration.
+    func needsRegeneration() throws -> Bool {
+        try core.state(of: session).needsRegeneration
+    }
+
+    /// Regenerates and tessellates the first visible body. Returns nil once a newer generation
+    /// started (see ``control``); the features that finished stay cached. A regeneration that
+    /// takes longer than a moment reports its progress.
+    func regenerate(generation: Int, progress: @escaping @Sendable (RegenerationProgress) -> Void)
+        throws -> ModelSnapshot?
+    {
+        let control = control
+        let start = ContinuousClock.now
+        var reported = 0
+        try core.regenerate(session) { done, total in
+            guard control.isCurrent(generation) else { return false }
+            if done > reported, ContinuousClock.now - start > .milliseconds(100) {
+                reported = done
+                progress(RegenerationProgress(done: done, total: total))
+            }
+            return true
+        }
+        guard control.isCurrent(generation) else { return nil }
         let state = try core.state(of: session)
         guard let body = state.bodies.first(where: \.visible) else {
             return ModelSnapshot(state: state, mesh: .empty)
@@ -79,6 +123,11 @@ final class DocumentModel {
     private(set) var state: SessionState?
     /// Number of regenerations running or waiting.
     private(set) var pending = 0
+    /// Progress of a regeneration that takes longer than a moment. The last model stays on
+    /// screen meanwhile.
+    private(set) var progress: RegenerationProgress?
+    /// The generation whose model is on screen (see ``RegenerationControl``).
+    private var shown = 0
     /// The core is running and the viewport shows something.
     private(set) var ready = false
     var error: String?
@@ -105,7 +154,7 @@ final class DocumentModel {
                 ready = true
                 return
             }
-            await regenerate()
+            await regenerate(engine.control.next())
         } catch {
             self.error = "Could not open the document: \(error)"
         }
@@ -203,14 +252,21 @@ final class DocumentModel {
 
     private func run(_ change: (DocumentEngine) async throws -> Void) async {
         guard let engine else { return }
+        // A regeneration still running for an earlier change is obsolete now. Stopping it lets
+        // this change run sooner; dragging a value then shows only the models that keep up.
+        let generation = engine.control.next()
         do {
             try await change(engine)
             error = nil
         } catch {
             self.error = "\(error)"
+            // The change failed, but the regeneration it stopped still has to finish.
+            if (try? await engine.needsRegeneration()) == true {
+                await regenerate(generation)
+            }
             return
         }
-        await regenerate()
+        await regenerate(generation)
         do {
             onSave(try await engine.saveFile())
         } catch {
@@ -218,19 +274,32 @@ final class DocumentModel {
         }
     }
 
-    private func regenerate() async {
+    private func regenerate(_ generation: Int) async {
         guard let engine else { return }
         pending += 1
         defer { pending -= 1 }
         do {
-            let snapshot = try await engine.regenerate()
+            let snapshot = try await engine.regenerate(generation: generation) { progress in
+                Task { @MainActor in self.report(progress, of: generation) }
+            }
+            guard let snapshot else { return }  // a newer change took over
+            shown = generation
+            progress = nil
             state = snapshot.state
             ready = true
             // Element IDs change with the geometry, so an old selection would point elsewhere.
             viewport.selection = .none
             viewport.mesh = snapshot.mesh
         } catch {
+            shown = generation
+            progress = nil
             self.error = "Regeneration failed: \(error)"
         }
+    }
+
+    private func report(_ progress: RegenerationProgress, of generation: Int) {
+        // Reports can arrive after their regeneration has been shown.
+        guard generation > shown else { return }
+        self.progress = progress
     }
 }

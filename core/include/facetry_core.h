@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 4
+#define FACETRY_API_VERSION_MINOR 5
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -221,9 +221,11 @@ FACETRY_API facetry_status facetry_session_undo(facetry_context* context, facetr
 FACETRY_API facetry_status facetry_session_redo(facetry_context* context, facetry_handle session,
                                                 int* out_changed);
 
-/* Called after each feature during regeneration. Return non-zero to cancel the rest: features
- * that finished stay cached, and the next regeneration continues from there. The callback must
- * not call into the same context. */
+/* Called after each feature during regeneration, and from time to time with the same `done`
+ * while a long kernel operation runs. Return non-zero to cancel the rest: features that finished
+ * stay cached, and the next regeneration continues from there. Operations that support it stop
+ * early (since API 0.5); the others run to the end. The callback must not call into the same
+ * context. */
 typedef int (*facetry_progress_callback)(uint32_t done, uint32_t total, void* user_data);
 
 /* Regenerates the document. Feature failures are not call failures: they are reported per

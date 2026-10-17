@@ -58,6 +58,9 @@ struct ContentView: View {
             Text("Facetry").font(.headline)
             Text(
                 "Version \(version) · tech preview\(model?.stress == true ? " · stress test" : "")")
+            if let progress = model?.progress {
+                Text("Regenerating… \(progress.done) of \(progress.total) features")
+            }
             Text(viewport.error ?? model?.error ?? coreStatus)
                 .foregroundStyle(model?.error != nil ? .red : .secondary)
         }
