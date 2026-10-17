@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 5
+#define FACETRY_API_VERSION_MINOR 6
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -235,7 +235,7 @@ FACETRY_API facetry_status facetry_session_regenerate(facetry_context* context,
                                                       facetry_progress_callback progress,
                                                       void* user_data);
 
-/* Summary as JSON: parameters, features with their status and messages, bodies, undo/redo
+/* Summary as JSON: units, parameters, features with their status and messages, bodies, undo/redo
  * state, and whether the document changed since the last regeneration. */
 FACETRY_API facetry_status facetry_session_state(facetry_context* context, facetry_handle session,
                                                  const char** out_json);

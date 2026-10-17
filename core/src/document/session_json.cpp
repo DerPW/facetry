@@ -178,6 +178,15 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
         }
         return;
     }
+    if (op == "setUnits") {
+        const Reader units = reader.at("units");
+        const auto unit = unitFromSymbol(units.string());
+        if (!unit) {
+            invalidEdit(path + ".units: unknown unit \"" + units.string() + "\"");
+        }
+        convertUnits(document, *unit);
+        return;
+    }
     if (op == "setOriginVisible") {
         const std::string id = reader.at("id").string();
         auto& visible = document.root.visibleOrigin;
@@ -294,6 +303,8 @@ std::string stepName(const Json& edit) {
         return flag("visible") ? "Show body" : "Hide body";
     if (op == "setOriginVisible")
         return flag("visible") ? "Show origin item" : "Hide origin item";
+    if (op == "setUnits")
+        return "Change units";
     return "Edit";
 }
 
@@ -383,6 +394,7 @@ std::string sessionStateJson(const Session& session) {
              {"visible", std::find(visible.begin(), visible.end(), item.id) != visible.end()}});
     }
     const Json state = {
+        {"units", unitSymbol(document.units)},
         {"parameters", std::move(parameters)},
         {"rollback", document.rollback ? Json(*document.rollback) : Json(nullptr)},
         {"canUndo", session.canUndo()},

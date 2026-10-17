@@ -423,6 +423,7 @@ export function App() {
             <ModelPanel
               state={model}
               onSetParameter={(name, value) => edit({ op: "setParameter", name, value })}
+              onSetUnits={(units) => edit({ op: "setUnits", units })}
             />
           )}
           {model && (

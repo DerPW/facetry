@@ -217,6 +217,24 @@ TEST_CASE("undo steps have names, transactions make one step") {
     CHECK_THROWS_AS(session.commitTransaction(), Error);
 }
 
+TEST_CASE("units are changed as one step and shown in the summary") {
+    Session session = cornerFilletSession();
+    CHECK(json::parse(sessionStateJson(session))["units"] == "mm");
+    applyJson(session, R"({"op": "setUnits", "units": "cm"})");
+    CHECK(session.undoName() == "Change units");
+    const json state = json::parse(sessionStateJson(session));
+    CHECK(state["units"] == "cm");
+    CHECK(state["parameters"][0]["value"].get<double>() == doctest::Approx(kWidth / 10));
+    // The same unit again changes nothing and adds no step.
+    const auto steps = session.undoCount();
+    applyJson(session, R"({"op": "setUnits", "units": "cm"})");
+    CHECK(session.undoCount() == steps);
+    CHECK_THROWS_AS(applyJson(session, R"({"op": "setUnits", "units": "ft"})"), Error);
+    REQUIRE(session.undo());
+    CHECK(session.document().units == LengthUnit::Millimeter);
+    CHECK(session.document().findParameter("width")->value == kWidth);
+}
+
 TEST_CASE("edit names") {
     CHECK(editName(R"({"op": "renameFeature", "id": "f1", "name": "x"})") == "Rename feature");
     CHECK(editName(R"([{"op": "setBodyVisible", "id": "f2", "visible": false}])") == "Hide body");

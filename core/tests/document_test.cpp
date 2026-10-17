@@ -56,15 +56,70 @@ TEST_CASE("documents round-trip through JSON") {
     CHECK(saved.find("\"format\": \"facetry-document\"") != std::string::npos);
 }
 
-TEST_CASE("the checked-in example document still loads and regenerates") {
-    // Written by an earlier version of this code; a format change must keep it readable.
-    const std::string saved =
-        readFile(std::filesystem::path(FACETRY_DOCUMENTS_DIR) / "corner-fillet.json");
-    REQUIRE_FALSE(saved.empty());
-    CHECK(toJson(parseDocument(saved)) == saved);
-    Session session = Session::load(saved);
+TEST_CASE("the checked-in example documents still load and regenerate") {
+    // Written by earlier versions of this code; a format change must keep them readable.
+    const auto example = [](const char* name) {
+        std::string saved = readFile(std::filesystem::path(FACETRY_DOCUMENTS_DIR) / name);
+        REQUIRE_FALSE(saved.empty());
+        return saved;
+    };
+    // Format version 1 has no units: millimeters.
+    const std::string version1 = example("corner-fillet.json");
+    const Document migrated = parseDocument(version1);
+    CHECK(migrated.units == LengthUnit::Millimeter);
+    CHECK(parseDocument(toJson(migrated)) == migrated);
+    Session session = Session::load(version1);
     expectRoundAt(session.regenerate(), kFillet, kWidth, kDepth, kHeight, kRadius,
                   kWidth * kDepth * kHeight);
+
+    // Version 2, in inches: 1 × 0.5 × 0.25 in, rounded by 0.125 in.
+    const std::string inches = example("corner-fillet-inch.json");
+    CHECK(toJson(parseDocument(inches)) == inches);
+    Session inchSession = Session::load(inches);
+    CHECK(inchSession.document().units == LengthUnit::Inch);
+    expectRoundAt(inchSession.regenerate(), kFillet, 25.4, 12.7, 6.35, 3.175, 25.4 * 12.7 * 6.35);
+}
+
+TEST_CASE("a document in inches regenerates the same geometry as its millimeter equivalent") {
+    Document inches = Session::load(readFile(std::filesystem::path(FACETRY_DOCUMENTS_DIR) /
+                                             "corner-fillet-inch.json"))
+                          .document();
+    Document millimeters = inches;
+    convertUnits(millimeters, LengthUnit::Millimeter);
+    CHECK(millimeters.units == LengthUnit::Millimeter);
+    CHECK(millimeters.findParameter("width")->value == doctest::Approx(25.4));
+    CHECK(millimeters.findParameter("radius")->value == doctest::Approx(3.175));
+
+    Session inchSession(inches);
+    Session millimeterSession(millimeters);
+    const auto& inchBody = *inchSession.regenerate().model.bodies.at("f2");
+    const auto& millimeterBody = *millimeterSession.regenerate().model.bodies.at("f2");
+    CHECK(inchBody.shape.properties().volume ==
+          doctest::Approx(millimeterBody.shape.properties().volume));
+    CHECK(inchBody.faces == millimeterBody.faces);
+}
+
+TEST_CASE("changing units converts every length and keeps the geometry") {
+    for (const LengthUnit unit : {LengthUnit::Centimeter, LengthUnit::Meter, LengthUnit::Inch}) {
+        CAPTURE(unitSymbol(unit));
+        Session session = cornerFilletSession();
+        session.edit([&](Document& document) {
+            // Literals as well as parameters.
+            std::get<Extrude>(document.root.timeline[1].data).distance = kHeight;
+            convertUnits(document, unit);
+        });
+        const Document& converted = session.document();
+        CHECK(converted.units == unit);
+        CHECK(converted.findParameter("width")->value ==
+              doctest::Approx(kWidth / millimetersPer(unit)));
+        CHECK(std::get<Extrude>(converted.root.timeline[1].data).distance.number ==
+              doctest::Approx(kHeight / millimetersPer(unit)));
+        expectRoundAt(session.regenerate(), kFillet, kWidth, kDepth, kHeight, kRadius,
+                      kWidth * kDepth * kHeight);
+        CHECK(parseDocument(toJson(converted)) == converted);
+    }
+    CHECK(unitFromSymbol("in") == LengthUnit::Inch);
+    CHECK_FALSE(unitFromSymbol("ft"));
 }
 
 TEST_CASE("malformed and newer documents are rejected") {
@@ -80,8 +135,11 @@ TEST_CASE("malformed and newer documents are rejected") {
     };
     CHECK(errorCode(load("not json")) == ErrorCode::InvalidArgument);
     CHECK(errorCode(load(R"({"format": "something-else"})")) == ErrorCode::InvalidArgument);
-    CHECK(errorCode(load(replaced("\"formatVersion\": 1", "\"formatVersion\": 2"))) ==
+    CHECK(errorCode(load(replaced("\"formatVersion\": 2", "\"formatVersion\": 3"))) ==
           ErrorCode::Unsupported);
+    CHECK(errorCode(load(replaced("\"units\": \"mm\"", "\"units\": \"ft\""))) ==
+          ErrorCode::InvalidArgument);
+    CHECK(errorCode(load(replaced(",\n  \"units\": \"mm\"", ""))) == ErrorCode::InvalidArgument);
     CHECK(errorCode(load(replaced("\"namingVersion\": 1", "\"namingVersion\": 9"))) ==
           ErrorCode::Unsupported);
     CHECK(errorCode(load(replaced("\"type\": \"extrude\"", "\"type\": \"loft\""))) ==

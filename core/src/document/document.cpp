@@ -129,6 +129,73 @@ std::vector<const Feature*> Document::bodyFeatures() const {
     return result;
 }
 
+double millimetersPer(LengthUnit unit) noexcept {
+    switch (unit) {
+        case LengthUnit::Millimeter:
+            return 1.0;
+        case LengthUnit::Centimeter:
+            return 10.0;
+        case LengthUnit::Meter:
+            return 1000.0;
+        case LengthUnit::Inch:
+            return 25.4;
+    }
+    return 1.0;
+}
+
+std::string_view unitSymbol(LengthUnit unit) noexcept {
+    switch (unit) {
+        case LengthUnit::Millimeter:
+            return "mm";
+        case LengthUnit::Centimeter:
+            return "cm";
+        case LengthUnit::Meter:
+            return "m";
+        case LengthUnit::Inch:
+            return "in";
+    }
+    return "mm";
+}
+
+std::optional<LengthUnit> unitFromSymbol(std::string_view symbol) noexcept {
+    for (const LengthUnit unit :
+         {LengthUnit::Millimeter, LengthUnit::Centimeter, LengthUnit::Meter, LengthUnit::Inch}) {
+        if (unitSymbol(unit) == symbol) {
+            return unit;
+        }
+    }
+    return std::nullopt;
+}
+
+void convertUnits(Document& document, LengthUnit units) {
+    const double factor = millimetersPer(document.units) / millimetersPer(units);
+    document.units = units;
+    if (factor == 1.0) {
+        return;
+    }
+    // Values that name a parameter follow it.
+    const auto convert = [factor](Value& value) {
+        if (value.parameter.empty()) {
+            value.number *= factor;
+        }
+    };
+    for (Parameter& parameter : document.parameters) {
+        parameter.value *= factor;
+    }
+    for (Feature& feature : document.root.timeline) {
+        if (auto* sketch = std::get_if<Sketch>(&feature.data)) {
+            for (SketchPoint& point : sketch->points) {
+                convert(point.x);
+                convert(point.y);
+            }
+        } else if (auto* extrude = std::get_if<Extrude>(&feature.data)) {
+            convert(extrude->distance);
+        } else if (auto* fillet = std::get_if<Fillet>(&feature.data)) {
+            convert(fillet->radius);
+        }
+    }
+}
+
 std::string Document::bodyName(std::string_view body) const {
     const auto setting = std::find_if(root.bodies.begin(), root.bodies.end(),
                                       [&](const BodySettings& s) { return s.id == body; });

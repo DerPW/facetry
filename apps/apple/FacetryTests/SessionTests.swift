@@ -99,4 +99,16 @@ struct SessionTests {
         #expect(json?[0]["index"] is NSNull)
         #expect(json?[1]["suppressed"] as? Bool == true)
     }
+
+    @Test func unitsChangeAndConvertEveryLength() throws {
+        let core = try Core()
+        let session = try openExample(core)
+        #expect(try core.state(of: session).units == .millimeter)
+        try core.apply(session, [.setUnits(.inch)])
+        let state = try core.state(of: session)
+        #expect(state.units == .inch)
+        #expect(state.undoName == "Change units")
+        let width = try #require(state.parameters.first { $0.name == "width" })
+        #expect(abs(width.value - 10 / 25.4) < 1e-12)
+    }
 }

@@ -77,11 +77,14 @@ TEST_CASE("files round-trip, with and without a thumbnail") {
     }
 }
 
-TEST_CASE("the checked-in example file still opens") {
-    const FileContents contents = readFile(readBytes("corner-fillet.facetry"));
-    const auto json = readBytes("corner-fillet.json");
-    CHECK(contents.document == parseDocument(std::string(json.begin(), json.end())));
-    CHECK(contents.thumbnail.empty());
+TEST_CASE("the checked-in example files still open") {
+    for (const std::string name : {"corner-fillet", "corner-fillet-inch"}) {
+        CAPTURE(name);
+        const FileContents contents = readFile(readBytes(name + ".facetry"));
+        const auto json = readBytes(name + ".json");
+        CHECK(contents.document == parseDocument(std::string(json.begin(), json.end())));
+        CHECK(contents.thumbnail.empty());
+    }
 }
 
 TEST_CASE("older and simpler forms open too") {

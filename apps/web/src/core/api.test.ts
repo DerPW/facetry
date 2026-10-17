@@ -111,6 +111,20 @@ describe("FacetryCore (WebAssembly)", () => {
       core.releaseSession(session);
     });
 
+    it("changes units and keeps the geometry", () => {
+      const session = core.openSession(example);
+      expect(core.regenerateModel(session).state.units).toBe("mm");
+      core.applyEdits(session, { op: "setUnits", units: "in" });
+      const state = core.regenerateModel(session).state;
+      expect(state.units).toBe("in");
+      expect(state.undoName).toBe("Change units");
+      expect(state.parameters.find((p) => p.name === "width")?.value).toBeCloseTo(10 / 25.4, 12);
+      const shape = core.bodyShape(session, "f2");
+      expect(core.properties(shape).volume).toBeCloseTo(cornerFilletVolume(10), 6);
+      core.release(shape);
+      core.releaseSession(session);
+    });
+
     it("saves and opens .facetry files", () => {
       const session = core.openSession(example);
       core.applyEdits(session, { op: "setParameter", name: "width", value: 12 });

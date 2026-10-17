@@ -27,6 +27,7 @@ namespace facetry::core {
 //   {"op": "renameBody", "id": "f2", "name": "Plate"}   ("" restores the default name)
 //   {"op": "setBodyVisible", "id": "f2", "visible": false}
 //   {"op": "setOriginVisible", "id": "xy", "visible": true}
+//   {"op": "setUnits", "units": "in"}       ("mm", "cm", "m" or "in"; converts every length)
 //
 // Features use the document's JSON form. In "addFeature", "id", "name", "suppressed" and
 // "namingVersion" may be left out: the feature gets a fresh ID and a default name. Without an
@@ -43,7 +44,7 @@ void applyEdits(Document& document, std::string_view json);
 
 // Summary of a session for the shells:
 //
-//   {"parameters": [{"name": "width", "value": 10}],
+//   {"units": "mm", "parameters": [{"name": "width", "value": 10}],
 //    "rollback": null, "canUndo": true, "canRedo": false, "undoName": "Change width",
 //    "redoName": null, "inTransaction": false, "undoCount": 1, "needsRegeneration": false,
 //    "features": [{"id": "f5", "name": "Fillet 1", "type": "fillet", "suppressed": false,
@@ -57,7 +58,7 @@ void applyEdits(Document& document, std::string_view json);
 // last regeneration and is "notRun" for features added since. "dependents" lists the later
 // features that use this one, directly or through others (what deleting it would break).
 // "definition" is the feature in the document's JSON form, ready to be changed and sent back with
-// "replaceFeature".
+// "replaceFeature". Lengths are in "units", in parameters and definitions alike.
 [[nodiscard]] std::string sessionStateJson(const Session& session);
 
 // Persistent names of a body's elements: {"faces": [...], "edges": [...], "vertices": [...]}.

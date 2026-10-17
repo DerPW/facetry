@@ -2,7 +2,7 @@
 //
 //   {
 //     "format": "facetry-document",
-//     "formatVersion": 1,
+//     "formatVersion": 2,
 //     "nextId": 12,
 //     "parameters": [{"name": "width", "value": 40}],
 //     "root": {"id": "root", "name": "Root", "timeline": [
@@ -14,10 +14,12 @@
 //        "name": "edge{f10:side[f1/l6]|f10:side[f1/l7]}",
 //        "shadow": {"id": 7, "type": "line", "centroid": [40, 20, 5], "size": 10}}]}
 //     ]},
-//     "rollback": null
+//     "rollback": null,
+//     "units": "mm"
 //   }
 //
-// A number in a feature is either a literal or the name of a parameter (a string).
+// A number in a feature is either a literal or the name of a parameter (a string). Lengths are in
+// the document's units; shadows are kernel geometry and always in millimeters.
 #include "document_json.hpp"
 
 #include "facetry/core/error.hpp"
@@ -209,6 +211,7 @@ std::string toJson(const Document& document) {
         {"parameters", std::move(parameters)},
         {"root", std::move(component)},
         {"rollback", document.rollback ? Json(*document.rollback) : Json(nullptr)},
+        {"units", unitSymbol(document.units)},
     };
     return result.dump(2) + "\n";
 }
@@ -263,6 +266,15 @@ Document parseDocument(std::string_view text) {
     }
     if (root.has("rollback")) {
         document.rollback = static_cast<std::size_t>(root.at("rollback").unsignedNumber());
+    }
+    // Version 1 has no units: millimeters.
+    if (version >= 2) {
+        const Reader units = root.at("units");
+        const auto unit = unitFromSymbol(units.string());
+        if (!unit) {
+            json::invalid("document.units: unknown unit \"" + units.string() + "\"");
+        }
+        document.units = *unit;
     }
     validate(document);
     return document;

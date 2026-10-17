@@ -10,6 +10,8 @@ regenerate it.
 |---|---|---|
 | `corner-fillet.json` | document 1 | The M0.6 prototype: a rectangle sketch on parameters, extruded, with one vertical edge filleted ([ADR-0006](../../docs/adr/0006-persistent-naming.md)) |
 | `corner-fillet.facetry` | file 1, document 1 | The same document as a native file ([ADR-0008](../../docs/adr/0008-native-file-format.md)), written by `facetry-cli pack`; the Apple app uses it as the content of new documents |
+| `corner-fillet-inch.json` | document 2 | The same model in inches (1 × 0.5 × 0.25 in, rounded by 0.125 in): document units ([#18](https://github.com/DerPW/facetry/issues/18)) |
+| `corner-fillet-inch.facetry` | file 1, document 2 | The inch document as a native file, for opening in the apps |
 
 Never edit a file here to make a test pass. When the format changes, add a migration and keep
 the old file; add a new example for the new version.
