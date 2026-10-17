@@ -107,7 +107,7 @@ Back to the [roadmap overview](../ROADMAP.md).
   - [x] selection filters, keys 1–5 ([#36](https://github.com/DerPW/facetry/issues/36))
   - [x] multi-select (Shift/Cmd on Mac, toggle mode on iPad)
         ([#36](https://github.com/DerPW/facetry/issues/36))
-  - [ ] window and crossing box selection
+  - [x] window and crossing box selection ([#37](https://github.com/DerPW/facetry/issues/37))
   - [ ] cycling through overlapping candidates; magnifier for precise touch picks
 - [x] Hover pre-highlight with mouse and with Pencil hover (M0.5; checked on a real iPad in
       [#7](https://github.com/DerPW/facetry/issues/7))

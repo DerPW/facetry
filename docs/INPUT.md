@@ -20,6 +20,12 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Orbit with the ViewCube | drag it | drag it | drag it | drag it |
 | Select | tap | tap | click | click |
 | Add to or remove from the selection | tap with **Multi** on | tap with **Multi** on | Shift/Cmd/Ctrl + click | Shift/Cmd + click |
+| Box selection | long press, then drag; or drag with **Box** on | drag with **Box** on | left drag in the Fusion preset, or with **Box** on | the same as the mouse |
+
+**Box selection:** dragged to the right, a *window* (solid blue) takes what lies entirely inside;
+dragged to the left, a *crossing box* (dashed green) also takes what it touches, like in Fusion.
+It follows the selection filter; with "All" it takes edges. Shift, Cmd, Ctrl or **Multi** add to
+the selection.
 | Highlight what is under the pointer | — | hover (supported iPads) | move | move |
 
 The mouse and trackpad columns show the **Facetry** preset, the default.

@@ -22,6 +22,11 @@ final class ViewportModel {
     var pickFilter = PickFilter.everything
     /// Every tap or click adds to the selection or removes from it (for touch, without keys).
     var multiSelect = false
+    /// Drags draw selection boxes (for the Pencil and fingers; the Fusion preset's left drag
+    /// always does).
+    var boxMode = false
+    /// The selection box being dragged, in view points; drawn by ``SelectionBoxOverlay``.
+    fileprivate(set) var selectionBox: (start: CGPoint, end: CGPoint)?
     /// Mouse and trackpad preset; the app stores it per device.
     var navigation = NavigationPreset.facetry
     /// One finger pans and two fingers orbit, instead of the other way round.
@@ -231,6 +236,21 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         select(renderer.pick(at: point, radius: radius), toggle: toggle || model.multiSelect)
     }
 
+    /// Shows the box being dragged, or hides it (nil).
+    func updateBox(from start: CGPoint?, to end: CGPoint = .zero) {
+        model.selectionBox = start.map { ($0, end) }
+    }
+
+    /// Selects what the box from `start` to `end` holds and hides the box.
+    func finishBox(from start: CGPoint, to end: CGPoint, add: Bool) {
+        model.selectionBox = nil
+        guard let renderer, hypot(end.x - start.x, end.y - start.y) > 4 else { return }
+        model.selected = renderer.boxSelect(
+            from: start, to: end, add: add || model.multiSelect)
+        model.selection = .none
+        shownSelection = .none
+    }
+
     fileprivate func select(_ pick: Pick, toggle: Bool) {
         guard let renderer else { return }
         let selected = renderer.select(pick, toggle: toggle)
@@ -238,6 +258,28 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         // The element just added, for repairs; nothing when it was just removed.
         model.selection = selected.contains(pick) ? pick : .none
         shownSelection = model.selection
+    }
+}
+
+/// The selection box being dragged: a window (to the right) solid blue, a crossing box (to the
+/// left) dashed green, like Fusion.
+struct SelectionBoxOverlay: View {
+    let model: ViewportModel
+
+    var body: some View {
+        Canvas { context, _ in
+            guard let (start, end) = model.selectionBox else { return }
+            let rect = CGRect(
+                x: min(start.x, end.x), y: min(start.y, end.y), width: abs(end.x - start.x),
+                height: abs(end.y - start.y))
+            let crossing = end.x < start.x
+            let color = crossing ? Color(red: 0.19, green: 0.63, blue: 0.31) : Color.accentColor
+            context.fill(Path(rect), with: .color(color.opacity(0.1)))
+            context.stroke(
+                Path(rect), with: .color(color),
+                style: StrokeStyle(lineWidth: 1, dash: crossing ? [5, 3] : []))
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -275,7 +317,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             coordinator?.hover(at: location(event), radius: PickRadius.mouse)
         }
 
-        override func mouseDown(with event: NSEvent) { begin(event, button: .left) }
+        override func mouseDown(with event: NSEvent) {
+            begin(event, button: .left)
+            if coordinator?.model.boxMode == true { dragAction = .select }
+        }
         override func rightMouseDown(with event: NSEvent) { begin(event, button: .right) }
         override func otherMouseDown(with event: NSEvent) {
             // Button 2 is the middle button; further buttons pan like it.
@@ -287,7 +332,12 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
 
         override func mouseUp(with event: NSEvent) {
             let point = location(event)
-            if let start = dragStart, hypot(point.x - start.x, point.y - start.y) <= 4 {
+            let add = !event.modifierFlags.intersection([.shift, .command]).isEmpty
+            if dragAction == .select, let start = dragStart,
+                hypot(point.x - start.x, point.y - start.y) > 4
+            {
+                coordinator?.finishBox(from: start, to: point, add: add)
+            } else if let start = dragStart, hypot(point.x - start.x, point.y - start.y) <= 4 {
                 // Shift or Command add to the selection or remove from it, like in Fusion.
                 let toggle = !event.modifierFlags.intersection([.shift, .command]).isEmpty
                 coordinator?.select(at: start, radius: PickRadius.mouse, toggle: toggle)
@@ -352,7 +402,9 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             switch dragAction {
             case .orbit: coordinator?.renderer?.orbit(dx: dx, dy: dy)
             case .pan: coordinator?.renderer?.pan(dx: dx, dy: dy)
-            case .none, .zoom, .select: break  // selection boxes come with #37
+            case .select:
+                if let start = dragStart { coordinator?.updateBox(from: start, to: point) }
+            case .none, .zoom: break
             }
         }
     }
@@ -386,6 +438,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         private var lastScrollTranslation: CGPoint = .zero
         private var lastScale: CGFloat = 1
         private var oneTouchAction = NavigationPreset.Action.orbit
+        private var boxStart: CGPoint?
 
         private var navigation: NavigationPreset {
             coordinator?.model.navigation ?? .facetry
@@ -405,6 +458,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             fit.numberOfTouchesRequired = 2
             fit.numberOfTapsRequired = 2
             let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover))
+            // Holding a finger still, then dragging, draws a selection box.
+            let longPress = UILongPressGestureRecognizer(
+                target: self, action: #selector(handleLongPress))
+            longPress.minimumPressDuration = 0.45
             // Scrolling without touches: a trackpad scrolls continuously, a mouse wheel in steps.
             let trackpad = UIPanGestureRecognizer(
                 target: self, action: #selector(handleTrackpadScroll))
@@ -413,7 +470,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             let wheel = UIPanGestureRecognizer(target: self, action: #selector(handleWheelScroll))
             wheel.allowedScrollTypesMask = .discrete
             wheel.allowedTouchTypes = []
-            for recognizer in [orbit, pan, pinch, tap, fit, hover, trackpad, wheel]
+            for recognizer in [orbit, pan, pinch, tap, fit, hover, longPress, trackpad, wheel]
                 as [UIGestureRecognizer]
             {
                 recognizer.delegate = gestureDelegate
@@ -451,13 +508,56 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
                 default:
                     oneTouchAction = oneFingerPans ? .pan : .orbit
                 }
+                // The Box toggle (or a long press already running) makes the drag a box.
+                if coordinator?.model.boxMode == true || boxStart != nil {
+                    oneTouchAction = .select
+                    boxStart =
+                        boxStart
+                        ?? CGPoint(
+                            x: recognizer.location(in: self).x - translation.x,
+                            y: recognizer.location(in: self).y - translation.y)
+                }
                 if oneTouchAction == .orbit {
                     coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
                 }
             case .changed:
-                move(oneTouchAction, by: translation, from: &lastTranslation)
+                if oneTouchAction == .select, let boxStart {
+                    coordinator?.updateBox(from: boxStart, to: recognizer.location(in: self))
+                } else {
+                    move(oneTouchAction, by: translation, from: &lastTranslation)
+                }
+            case .ended:
+                if oneTouchAction == .select, let start = boxStart {
+                    coordinator?.finishBox(
+                        from: start, to: recognizer.location(in: self),
+                        add: !recognizer.modifierFlags.intersection([.shift, .command]).isEmpty)
+                }
+                boxStart = nil
             default:
-                break
+                if oneTouchAction == .select { coordinator?.updateBox(from: nil) }
+                boxStart = nil
+            }
+        }
+
+        @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                boxStart = recognizer.location(in: self)
+                coordinator?.updateBox(from: boxStart, to: recognizer.location(in: self))
+            case .changed:
+                if let boxStart {
+                    coordinator?.updateBox(from: boxStart, to: recognizer.location(in: self))
+                }
+            case .ended:
+                // Without a drag the pan recognizer never ran: finish the box here.
+                if let start = boxStart {
+                    coordinator?.finishBox(
+                        from: start, to: recognizer.location(in: self), add: false)
+                }
+                boxStart = nil
+            default:
+                coordinator?.updateBox(from: nil)
+                boxStart = nil
             }
         }
 
@@ -470,7 +570,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
             switch action {
             case .orbit: coordinator?.renderer?.orbit(dx: dx, dy: dy)
             case .pan: coordinator?.renderer?.pan(dx: dx, dy: dy)
-            case .none, .zoom, .select: break  // selection boxes come with #37
+            case .none, .zoom, .select: break  // boxes are drawn by handleOrbit
             }
         }
 

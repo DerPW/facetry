@@ -178,6 +178,7 @@ export function App() {
   const [selection, setSelection] = useState<Pick[]>([]);
   const [pickFilter, setPickFilter] = useState<PickFilter>(PickFilter.Everything);
   const [multiSelect, setMultiSelect] = useState(false);
+  const [boxMode, setBoxMode] = useState(false);
   const [orthographic, setOrthographic] = useState(false);
   const [model, setModel] = useState<SessionState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -453,7 +454,8 @@ export function App() {
   useEffect(() => {
     viewport?.setPickFilter(pickFilter);
     viewport?.setMultiSelect(multiSelect);
-  }, [viewport, pickFilter, multiSelect]);
+    viewport?.setBoxMode(boxMode);
+  }, [viewport, pickFilter, multiSelect, boxMode]);
 
   // The shown body's opacity comes from the document; the style is a device setting.
   const opacity = model?.bodies.find((body) => body.visible)?.opacity ?? 1;
@@ -645,6 +647,14 @@ export function App() {
               onClick={() => setMultiSelect((on) => !on)}
             >
               Multi
+            </button>
+            <button
+              type="button"
+              aria-pressed={boxMode}
+              title="Drags draw a selection box: to the right a window, to the left a crossing box"
+              onClick={() => setBoxMode((on) => !on)}
+            >
+              Box
             </button>
             <button
               type="button"

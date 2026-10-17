@@ -28,6 +28,18 @@ struct RenderMesh {
 
 enum class PickKind : std::uint32_t { None = 0, Face = 1, Edge = 2, Vertex = 3, Body = 4 };
 
+// A face, edge, vertex or body, by ID.
+struct Element {
+    PickKind kind = PickKind::None;
+    std::uint32_t id = 0;
+
+    friend bool operator==(const Element&, const Element&) = default;
+};
+
+// Box selection (#37): from left to right a window takes what lies entirely inside the box, from
+// right to left a crossing box also what it touches, like in Fusion.
+enum class BoxMode : std::uint8_t { Window, Crossing };
+
 // What picking looks for (selection modes, keys 1–5 like Plasticity's).
 enum class PickFilter : std::uint32_t {
     Everything = 0,  // vertices before edges before faces, by the pick radius
@@ -70,6 +82,13 @@ class PickIndex {
     [[nodiscard]] PickResult pick(const Camera& camera, float x, float y, float radiusPoints,
                                   bool throughFaces = false,
                                   PickFilter filter = PickFilter::Everything) const;
+
+    // The elements in the screen box between (x0, y0) and (x1, y1), in ID order. "Everything"
+    // takes edges, the usual reason for a box (fillets); the other filters take their kind.
+    // Elements hidden behind faces stay out unless `throughFaces`.
+    [[nodiscard]] std::vector<Element> boxSelect(const Camera& camera, float x0, float y0, float x1,
+                                                 float y1, BoxMode mode, PickFilter filter,
+                                                 bool throughFaces) const;
 
     // Point under the pointer for orbiting and zooming: the hit point on the model, or the point
     // on the camera's target plane if nothing is hit.

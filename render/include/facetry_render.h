@@ -218,6 +218,13 @@ typedef enum facetry_select_mode {
 /* Changes the selection, which can hold any number of elements. */
 FACETRY_RENDER_API void facetry_renderer_select(facetry_renderer* renderer, uint32_t kind,
                                                 uint32_t id, uint32_t mode);
+/* Selects what lies in the screen box dragged from (x0, y0) to (x1, y1), by the pick filter:
+ * from left to right a window takes what lies entirely inside, from right to left a crossing box
+ * also what it touches (like Fusion). "Everything" takes edges. FACETRY_SELECT_REPLACE replaces
+ * the selection, FACETRY_SELECT_TOGGLE adds to it. Returns how many elements the box took. */
+FACETRY_RENDER_API uint32_t facetry_renderer_box_select(facetry_renderer* renderer, float x0,
+                                                        float y0, float x1, float y1,
+                                                        uint32_t mode);
 /* The selection as (kind, id) pairs, in the order selected. Writes at most `capacity` pairs to
  * `out` (2 × capacity uint32s) and returns how many there are. */
 FACETRY_RENDER_API uint32_t facetry_renderer_selection(const facetry_renderer* renderer,

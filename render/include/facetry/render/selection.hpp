@@ -10,19 +10,14 @@
 
 namespace facetry::render {
 
-struct Element {
-    PickKind kind = PickKind::None;
-    std::uint32_t id = 0;
-
-    friend bool operator==(const Element&, const Element&) = default;
-};
-
 class Selection {
   public:
     // Selects only `element`; PickKind::None clears the selection.
     void replace(Element element);
     // Adds `element`, or removes it if it is selected already. PickKind::None changes nothing.
     void toggle(Element element);
+    // Adds `element` unless it is selected already.
+    void add(Element element);
     void clear();
 
     // Whether the element is selected itself or, for a face, through its body.

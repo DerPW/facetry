@@ -251,6 +251,14 @@ final class ViewportRenderer {
         }
     }
 
+    /// Selects what lies in the box dragged from `start` to `end` (a window to the right, a
+    /// crossing box to the left); `add` keeps the current selection.
+    func boxSelect(from start: CGPoint, to end: CGPoint, add: Bool) -> [Pick] {
+        _ = facetry_renderer_box_select(
+            handle, Float(start.x), Float(start.y), Float(end.x), Float(end.y), add ? 1 : 0)
+        return select(.none, toggle: true)  // reads the selection without changing it
+    }
+
     func setPickFilter(_ filter: PickFilter) {
         facetry_renderer_set_pick_filter(handle, UInt32(filter.rawValue))
     }

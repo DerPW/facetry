@@ -25,6 +25,15 @@ void Selection::toggle(Element element) {
     ++version_;
 }
 
+void Selection::add(Element element) {
+    if (element.kind == PickKind::None ||
+        std::find(elements_.begin(), elements_.end(), element) != elements_.end()) {
+        return;
+    }
+    elements_.push_back(element);
+    ++version_;
+}
+
 void Selection::clear() {
     replace({});
 }
