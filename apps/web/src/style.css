@@ -461,3 +461,17 @@ body {
   background: var(--accent);
   color: #fff;
 }
+
+/* Selection boxes: a window (left to right) solid blue, a crossing box (right to left) dashed
+   green, like Fusion. */
+.selection-box {
+  position: fixed;
+  pointer-events: none;
+  border: 1px solid rgb(10 132 255);
+  background: rgb(10 132 255 / 10%);
+}
+
+.selection-box.crossing {
+  border: 1px dashed rgb(48 161 78);
+  background: rgb(48 161 78 / 10%);
+}

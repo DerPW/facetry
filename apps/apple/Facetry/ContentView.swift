@@ -19,6 +19,7 @@ struct ContentView: View {
     var body: some View {
         ViewportView(model: viewport)
             .ignoresSafeArea()
+            .overlay { SelectionBoxOverlay(model: viewport).ignoresSafeArea() }
             .overlay(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     header
@@ -138,6 +139,10 @@ struct ContentView: View {
             .fixedSize()
             Toggle("Multi", isOn: $viewport.multiSelect)
                 .toggleStyle(.button)
+            Toggle("Box", isOn: $viewport.boxMode)
+                .toggleStyle(.button)
+                .help(
+                    "Drags draw a selection box: to the right a window, to the left a crossing box")
             // Shortcuts of the menu items (docs/INPUT.md): O projection, G grid.
             Button("Toggle projection") { viewport.orthographic.toggle() }
                 .keyboardShortcut("o", modifiers: [])

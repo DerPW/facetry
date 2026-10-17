@@ -87,6 +87,8 @@ const CLICK_SLOP = 4;
 /** A two-finger tap lasts at most this long; two of them within the second limit fit the view. */
 const TAP_MILLISECONDS = 300;
 const DOUBLE_TAP_MILLISECONDS = 400;
+/** A finger held this long without moving starts a selection box (#37). */
+const LONG_PRESS_MILLISECONDS = 450;
 /** Wheel events further apart than this start a new orbit around the point under the pointer. */
 const SCROLL_GAP_MILLISECONDS = 200;
 
@@ -102,7 +104,12 @@ export class Viewport {
   readonly #scratch: number;
   readonly #cells: number;
   readonly #pointers = new Map<number, { x: number; y: number; startX: number; startY: number }>();
-  #gesture: "none" | "orbit" | "pan" | "select" | "touch" = "none";
+  #gesture: "none" | "orbit" | "pan" | "select" | "touch" | "box" = "none";
+  // Drags draw selection boxes (the Box toggle, for the Pencil and fingers).
+  #boxMode = false;
+  #box: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  #boxElement: HTMLDivElement | null = null;
+  #longPress = 0;
   // The current touch sequence, from the first finger down to the last finger up.
   #touch = { start: 0, fingers: 0, moved: false };
   #lastTwoFingerTap = 0;
@@ -243,6 +250,11 @@ export class Viewport {
     this.#m._facetry_renderer_set_pick_filter(this.#renderer, filter);
   }
 
+  /** With box mode on, a drag with a finger, the Pencil or the left button draws a box. */
+  setBoxMode(on: boolean): void {
+    this.#boxMode = on;
+  }
+
   /** With multi-select on, every tap adds to the selection or removes from it. */
   setMultiSelect(on: boolean): void {
     this.#multiSelect = on;
@@ -355,6 +367,7 @@ export class Viewport {
 
   dispose(): void {
     this.#disposed = true;
+    this.#boxElement?.remove();
     this.#m._facetry_renderer_destroy(this.#renderer);
     this.#m._free(this.#scratch);
     this.#m._free(this.#cells);
@@ -386,6 +399,12 @@ export class Viewport {
       if (e.button === 1) e.preventDefault();
     });
 
+    // The selection box: a window (left to right) is solid, a crossing box dashed.
+    this.#boxElement = document.createElement("div");
+    this.#boxElement.className = "selection-box";
+    this.#boxElement.hidden = true;
+    document.body.append(this.#boxElement);
+
     const frame = (time: number) => {
       if (this.#disposed) return;
       this.#recordFrame(time);
@@ -407,8 +426,26 @@ export class Viewport {
     if (e.pointerType === "touch") {
       if (this.#pointers.size === 1) this.#touch = { start: e.timeStamp, fingers: 0, moved: false };
       this.#touch.fingers = Math.max(this.#touch.fingers, this.#pointers.size);
+      window.clearTimeout(this.#longPress);
+      if (this.#pointers.size === 1 && this.#boxMode) {
+        this.#gesture = "box";
+        return;
+      }
       this.#gesture = "touch";
       this.#beginTouchOrbit();
+      // Holding one finger still starts a selection box.
+      if (this.#pointers.size === 1) {
+        this.#longPress = window.setTimeout(() => {
+          if (this.#pointers.size === 1 && !this.#touch.moved) {
+            this.#gesture = "box";
+            this.#updateBox(x, y, x, y);
+          }
+        }, LONG_PRESS_MILLISECONDS);
+      }
+      return;
+    }
+    if (this.#boxMode && e.button === 0) {
+      this.#gesture = "box";
       return;
     }
     // A pen drag orbits until drawing tools exist (M1.3); mouse buttons follow the preset.
@@ -454,7 +491,17 @@ export class Viewport {
     }
     pointer.x = x;
     pointer.y = y;
-    if (Math.hypot(x - pointer.startX, y - pointer.startY) > CLICK_SLOP) this.#touch.moved = true;
+    const moved = Math.hypot(x - pointer.startX, y - pointer.startY) > CLICK_SLOP;
+    if (moved) {
+      this.#touch.moved = true;
+      if (this.#gesture === "touch") window.clearTimeout(this.#longPress);
+    }
+    // Boxes: the Box toggle, a long press, or the left button in the Fusion preset.
+    if (this.#gesture === "box" || (this.#gesture === "select" && moved)) {
+      this.#gesture = "box";
+      this.#updateBox(pointer.startX, pointer.startY, x, y);
+      return;
+    }
     const orbit =
       this.#gesture === "orbit" ||
       (this.#gesture === "touch" && this.#navigation.oneFinger === "orbit");
@@ -500,6 +547,20 @@ export class Viewport {
   #pointerUp(e: PointerEvent, cancelled = false): void {
     const pointer = this.#pointers.get(e.pointerId);
     this.#pointers.delete(e.pointerId);
+    window.clearTimeout(this.#longPress);
+    const box = this.#box;
+    if (this.#gesture === "box" && this.#pointers.size === 0) {
+      this.#gesture = "none";
+      this.#updateBox(null);
+      // A box adds to the selection with Shift, Cmd, Ctrl or Multi.
+      if (box && !cancelled && Math.hypot(box.x1 - box.x0, box.y1 - box.y0) > CLICK_SLOP) {
+        const add = this.#multiSelect || e.shiftKey || e.metaKey || e.ctrlKey;
+        const { x0, y0, x1, y1 } = box;
+        this.#m._facetry_renderer_box_select(this.#renderer, x0, y0, x1, y1, add ? 1 : 0);
+        this.onSelectionChange(this.#readSelection(), { kind: PickKind.None, id: 0 });
+        return;
+      }
+    }
     const touch = e.pointerType === "touch";
     const lastFinger = touch && this.#pointers.size === 0;
     if (this.#pointers.size === 0) this.#gesture = "none";
@@ -562,10 +623,34 @@ export class Viewport {
     this.#canvas.style.cursor = pick.kind === PickKind.None ? "default" : "pointer";
   }
 
+  // Shows the selection box between two points in the canvas, or hides it (null).
+  #updateBox(x0: number | null, y0 = 0, x1 = 0, y1 = 0): void {
+    const element = this.#boxElement;
+    if (x0 === null) {
+      this.#box = null;
+      if (element) element.hidden = true;
+      return;
+    }
+    this.#box = { x0, y0, x1, y1 };
+    if (!element) return;
+    const rect = this.#canvas.getBoundingClientRect();
+    element.hidden = false;
+    element.classList.toggle("crossing", x1 < x0);
+    element.style.left = `${rect.left + Math.min(x0, x1)}px`;
+    element.style.top = `${rect.top + Math.min(y0, y1)}px`;
+    element.style.width = `${Math.abs(x1 - x0)}px`;
+    element.style.height = `${Math.abs(y1 - y0)}px`;
+  }
+
   // `toggle`: add or remove the element; otherwise select only it (nothing clears).
   #select(pick: Pick, toggle: boolean): void {
+    this.#m._facetry_renderer_select(this.#renderer, pick.kind, pick.id, toggle ? 1 : 0);
+    this.onSelectionChange(this.#readSelection(), pick);
+  }
+
+  // The renderer's selection, kept in #selection.
+  #readSelection(): Pick[] {
     const m = this.#m;
-    m._facetry_renderer_select(this.#renderer, pick.kind, pick.id, toggle ? 1 : 0);
     const count = m._facetry_renderer_selection(this.#renderer, 0, 0);
     const pairs = m._malloc(Math.max(count, 1) * 8);
     try {
@@ -578,7 +663,7 @@ export class Viewport {
     } finally {
       m._free(pairs);
     }
-    this.onSelectionChange(this.#selection, pick);
+    return this.#selection;
   }
 
   #recordFrame(time: number): void {

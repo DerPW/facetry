@@ -433,6 +433,19 @@ void Renderer::orbit(float dx, float dy) {
     camera_.orbit(dx, dy, orbitPivot_);
 }
 
+std::size_t Renderer::boxSelect(float x0, float y0, float x1, float y1, bool add) {
+    const BoxMode mode = x1 >= x0 ? BoxMode::Window : BoxMode::Crossing;
+    const auto elements =
+        pick_.boxSelect(camera_, x0, y0, x1, y1, mode, filter_, picksThroughFaces());
+    if (!add) {
+        selection_.clear();
+    }
+    for (const Element& element : elements) {
+        selection_.add(element);
+    }
+    return elements.size();
+}
+
 void Renderer::updateSelectionFlags() {
     Gpu& g = *gpu_;
     const auto update = [this](sg_buffer& buffer, const std::vector<std::uint32_t>& ids,

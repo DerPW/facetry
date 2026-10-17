@@ -1,8 +1,10 @@
 #include "facetry/render/pick.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 
 namespace facetry::render {
 namespace {
@@ -286,6 +288,151 @@ Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
             break;
     }
     return bounds;
+}
+
+namespace {
+
+struct ScreenBox {
+    float minX;
+    float minY;
+    float maxX;
+    float maxY;
+
+    [[nodiscard]] bool contains(float x, float y) const {
+        return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    }
+};
+
+// Whether the screen segment a–b touches the box (Liang–Barsky clipping).
+bool segmentTouches(const ScreenBox& box, float ax, float ay, float bx, float by) {
+    float t0 = 0.0F;
+    float t1 = 1.0F;
+    const float dx = bx - ax;
+    const float dy = by - ay;
+    const std::array<float, 4> p{-dx, dx, -dy, dy};
+    const std::array<float, 4> q{ax - box.minX, box.maxX - ax, ay - box.minY, box.maxY - ay};
+    for (std::size_t i = 0; i < 4; ++i) {
+        if (std::abs(p[i]) < 1e-12F) {
+            if (q[i] < 0.0F) {
+                return false;
+            }
+            continue;
+        }
+        const float t = q[i] / p[i];
+        if (p[i] < 0.0F) {
+            t0 = std::max(t0, t);
+        } else {
+            t1 = std::min(t1, t);
+        }
+        if (t0 > t1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether the screen point (x, y) lies in the triangle a, b, c.
+bool inTriangle(float x, float y, const Camera::Projected& a, const Camera::Projected& b,
+                const Camera::Projected& c) {
+    const auto side = [](float px, float py, const Camera::Projected& u,
+                         const Camera::Projected& v) {
+        return (v.x - u.x) * (py - u.y) - (v.y - u.y) * (px - u.x);
+    };
+    const float d0 = side(x, y, a, b);
+    const float d1 = side(x, y, b, c);
+    const float d2 = side(x, y, c, a);
+    return (d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0);
+}
+
+}  // namespace
+
+std::vector<Element> PickIndex::boxSelect(const Camera& camera, float x0, float y0, float x1,
+                                          float y1, BoxMode mode, PickFilter filter,
+                                          bool throughFaces) const {
+    const ScreenBox box{std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1)};
+    const bool window = mode == BoxMode::Window;
+    std::vector<Element> result;
+
+    if (filter == PickFilter::Vertices) {
+        for (std::size_t i = 0; i < vertexPoints_.size(); ++i) {
+            const auto p = camera.project(vertexPoints_[i]);
+            if (p.w > 0.0F && box.contains(p.x, p.y) &&
+                (throughFaces || isVisible(camera, vertexPoints_[i]))) {
+                result.push_back({PickKind::Vertex, vertexIds_[i]});
+            }
+        }
+    } else if (filter == PickFilter::Edges || filter == PickFilter::Everything) {
+        // Per edge: inside (window: every segment inside; crossing: any segment touching) and
+        // visible somewhere.
+        std::map<std::uint32_t, std::pair<bool, bool>> edges;  // id -> (in box, visible)
+        for (const Segment& segment : segments_) {
+            const auto a = camera.project(segment.a);
+            const auto b = camera.project(segment.b);
+            auto& [inBox, visible] = edges.try_emplace(segment.edgeId, window, false).first->second;
+            const bool front = a.w > 0.0F && b.w > 0.0F;
+            if (window) {
+                inBox = inBox && front && box.contains(a.x, a.y) && box.contains(b.x, b.y);
+            } else {
+                inBox = inBox || (front && segmentTouches(box, a.x, a.y, b.x, b.y));
+            }
+            if (!visible && front) {
+                visible = throughFaces || isVisible(camera, lerp(segment.a, segment.b, 0.5F));
+            }
+        }
+        for (const auto& [id, state] : edges) {
+            if (state.first && state.second) {
+                result.push_back({PickKind::Edge, id});
+            }
+        }
+    } else {
+        // Faces, or the body: by their triangles; a face is visible where a ray through one of
+        // its triangles in the box hits it first.
+        std::map<std::uint32_t, std::pair<bool, bool>> faces;  // id -> (in box, visible)
+        for (std::size_t t = 0; t < faceIds_.size(); ++t) {
+            const auto first = static_cast<std::uint32_t>(t * 3);
+            const auto a = camera.project(vertex(first));
+            const auto b = camera.project(vertex(first + 1));
+            const auto c = camera.project(vertex(first + 2));
+            auto& [inBox, visible] = faces.try_emplace(faceIds_[t], window, false).first->second;
+            const bool front = a.w > 0.0F && b.w > 0.0F && c.w > 0.0F;
+            const bool inside =
+                front && box.contains(a.x, a.y) && box.contains(b.x, b.y) && box.contains(c.x, c.y);
+            const bool touches = front && (inside || segmentTouches(box, a.x, a.y, b.x, b.y) ||
+                                           segmentTouches(box, b.x, b.y, c.x, c.y) ||
+                                           segmentTouches(box, c.x, c.y, a.x, a.y) ||
+                                           inTriangle(box.minX, box.minY, a, b, c));
+            inBox = window ? inBox && inside : inBox || touches;
+            if (!visible && touches) {
+                if (throughFaces) {
+                    visible = true;
+                } else {
+                    const Ray ray =
+                        camera.rayAt((a.x + b.x + c.x) / 3.0F, (a.y + b.y + c.y) / 3.0F);
+                    const auto hit = raycast(ray);
+                    visible = hit && hit->faceId == faceIds_[t];
+                }
+            }
+        }
+        if (filter == PickFilter::Bodies) {
+            // The shown model is body 1: in the box as a whole (window) or touched (crossing).
+            bool all = !faces.empty();
+            bool any = false;
+            for (const auto& [id, state] : faces) {
+                all = all && state.first;
+                any = any || (state.first && state.second);
+            }
+            if (window ? all : any) {
+                result.push_back({PickKind::Body, 1});
+            }
+        } else {
+            for (const auto& [id, state] : faces) {
+                if (state.first && state.second) {
+                    result.push_back({PickKind::Face, id});
+                }
+            }
+        }
+    }
+    return result;
 }
 
 }  // namespace facetry::render

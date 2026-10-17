@@ -274,6 +274,15 @@ void facetry_renderer_select(facetry_renderer* renderer, uint32_t kind, uint32_t
     });
 }
 
+uint32_t facetry_renderer_box_select(facetry_renderer* renderer, float x0, float y0, float x1,
+                                     float y1, uint32_t mode) {
+    uint32_t count = 0;
+    run(renderer, [&](Renderer& r) {
+        count = static_cast<uint32_t>(r.boxSelect(x0, y0, x1, y1, mode != FACETRY_SELECT_REPLACE));
+    });
+    return count;
+}
+
 uint32_t facetry_renderer_selection(const facetry_renderer* renderer, uint32_t* out,
                                     uint32_t capacity) {
     if (renderer == nullptr || !renderer->renderer) {

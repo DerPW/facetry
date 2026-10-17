@@ -4,6 +4,8 @@
 
 #include <doctest.h>
 
+#include <algorithm>
+
 using namespace facetry::render;
 
 TEST_CASE("selections replace, toggle and clear") {
@@ -54,4 +56,75 @@ TEST_CASE("pick filters restrict what is picked") {
     const auto middle = camera.project({0.5F, 0.0F, 0.5F});
     CHECK(index.pick(camera, middle.x, middle.y, 6, false, PickFilter::Edges).kind ==
           PickKind::None);
+}
+
+namespace {
+
+struct BoxScene {
+    PickIndex index{test::unitCube()};
+    Camera camera;
+
+    BoxScene() {
+        camera.setViewport(400, 400);
+        camera.setSceneBounds(index.bounds());
+        // Slightly from above: the front and top faces show; the back bottom edge (2) hides.
+        camera.lookAt({0.5F, -4.0F, 1.5F}, {0.5F, 0.5F, 0.5F});
+    }
+
+    [[nodiscard]] std::vector<Element> box(float x0, float y0, float x1, float y1, BoxMode mode,
+                                           PickFilter filter, bool throughFaces = false) const {
+        return index.boxSelect(camera, x0, y0, x1, y1, mode, filter, throughFaces);
+    }
+};
+
+bool has(const std::vector<Element>& elements, Element element) {
+    return std::find(elements.begin(), elements.end(), element) != elements.end();
+}
+
+}  // namespace
+
+TEST_CASE("a window around the model takes its visible edges, through faces all of them") {
+    const BoxScene scene;
+    const auto edges = scene.box(0, 0, 400, 400, BoxMode::Window, PickFilter::Everything);
+    CHECK(edges.size() >= 5);
+    CHECK(edges.size() < 12);
+    CHECK_FALSE(has(edges, {PickKind::Edge, 2}));  // hidden behind the front face
+    for (const Element& edge : edges) {
+        CHECK(edge.kind == PickKind::Edge);
+    }
+    CHECK(scene.box(0, 0, 400, 400, BoxMode::Window, PickFilter::Edges, true).size() == 12);
+    CHECK(scene.box(0, 0, 400, 400, BoxMode::Window, PickFilter::Vertices, true).size() == 8);
+}
+
+TEST_CASE("a crossing box takes what it touches, a window only what lies inside") {
+    const BoxScene scene;
+    // A small box over the middle of the front top edge.
+    const auto middle = scene.camera.project({0.5F, 0.0F, 1.0F});
+    const auto edge = scene.index.pick(scene.camera, middle.x, middle.y, 3);
+    REQUIRE(edge.kind == PickKind::Edge);
+    const auto crossing = scene.box(middle.x + 3, middle.y - 3, middle.x - 3, middle.y + 3,
+                                    BoxMode::Crossing, PickFilter::Edges);
+    CHECK(crossing == std::vector<Element>{{PickKind::Edge, edge.id}});
+    CHECK(scene
+              .box(middle.x - 3, middle.y - 3, middle.x + 3, middle.y + 3, BoxMode::Window,
+                   PickFilter::Edges)
+              .empty());
+    // The same box touches the front and top faces, and the body.
+    const auto faces = scene.box(middle.x + 3, middle.y - 3, middle.x - 3, middle.y + 3,
+                                 BoxMode::Crossing, PickFilter::Faces);
+    CHECK(faces.size() == 2);
+    CHECK(scene.box(middle.x + 3, middle.y - 3, middle.x - 3, middle.y + 3, BoxMode::Crossing,
+                    PickFilter::Bodies) == std::vector<Element>{{PickKind::Body, 1}});
+    CHECK(scene
+              .box(middle.x - 3, middle.y - 3, middle.x + 3, middle.y + 3, BoxMode::Window,
+                   PickFilter::Bodies)
+              .empty());
+}
+
+TEST_CASE("a window around the model takes the visible faces") {
+    const BoxScene scene;
+    const auto faces = scene.box(0, 0, 400, 400, BoxMode::Window, PickFilter::Faces);
+    CHECK(faces.size() == 2);  // front (3) and top (6)
+    CHECK(has(faces, {PickKind::Face, 3}));
+    CHECK(has(faces, {PickKind::Face, 6}));
 }

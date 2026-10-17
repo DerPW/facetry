@@ -85,6 +85,10 @@ class Renderer {
     [[nodiscard]] PickResult pick(float x, float y, float radius) const {
         return pick_.pick(camera_, x, y, radius, picksThroughFaces(), filter_);
     }
+    // Selects what lies in the box dragged from (x0, y0) to (x1, y1): a window from left to
+    // right, a crossing box from right to left. `add` keeps the current selection. Returns how
+    // many elements the box took.
+    std::size_t boxSelect(float x0, float y0, float x1, float y1, bool add);
 
     void draw(const FrameTarget& target);
     [[nodiscard]] FrameStats stats() const {
