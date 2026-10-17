@@ -1,4 +1,6 @@
 // Implementation of facetry_render.h. Every entry point catches all exceptions.
+#include "facetry/render/navigation.hpp"
+
 #include "facetry_render.h"
 #include "renderer.hpp"
 
@@ -220,6 +222,24 @@ void facetry_renderer_stats(const facetry_renderer* renderer, facetry_render_sta
     out->triangles = stats.triangles;
     out->edge_segments = stats.edgeSegments;
     out->vertices = stats.vertices;
+}
+
+uint32_t facetry_navigation_drag(uint32_t preset, uint32_t button, uint32_t modifiers) {
+    using namespace facetry::render;
+    if (preset > 2 || button > 2) {
+        return FACETRY_NAVIGATE_NONE;
+    }
+    return static_cast<uint32_t>(dragAction(static_cast<NavigationPreset>(preset),
+                                            static_cast<MouseButton>(button), modifiers));
+}
+
+uint32_t facetry_navigation_scroll(uint32_t preset, uint32_t modifiers, int trackpad) {
+    using namespace facetry::render;
+    if (preset > 2) {
+        return FACETRY_NAVIGATE_ZOOM;
+    }
+    return static_cast<uint32_t>(
+        scrollAction(static_cast<NavigationPreset>(preset), modifiers, trackpad != 0));
 }
 
 }  // extern "C"

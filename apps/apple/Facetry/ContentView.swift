@@ -6,6 +6,9 @@ struct ContentView: View {
     @State private var model: DocumentModel?
     @State private var selectedFeature: String?
     @Environment(\.undoManager) private var undoManager
+    // Navigation settings belong to the device, not the document (docs/INPUT.md).
+    @AppStorage("navigationPreset") private var navigationPreset = NavigationPreset.facetry
+    @AppStorage("oneFingerPans") private var oneFingerPans = false
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -36,6 +39,12 @@ struct ContentView: View {
                     }
                 }
                 .padding(.bottom, 56)
+            }
+            .onChange(of: navigationPreset, initial: true) { _, preset in
+                viewport.navigation = preset
+            }
+            .onChange(of: oneFingerPans, initial: true) { _, pans in
+                viewport.oneFingerPans = pans
             }
             .onChange(of: viewport.selection) { _, pick in
                 Task { await model?.completeRepair(with: pick) }
@@ -90,6 +99,15 @@ struct ContentView: View {
                 viewport.orthographic.toggle()
             }
             .keyboardShortcut("o", modifiers: [])
+            Menu("Navigation") {
+                Picker("Mouse and trackpad", selection: $navigationPreset) {
+                    ForEach(NavigationPreset.allCases) { Text($0.title).tag($0) }
+                }
+                #if os(iOS)
+                    Toggle("One finger pans", isOn: $oneFingerPans)
+                #endif
+            }
+            .fixedSize()
             // Esc clears the selection (docs/INPUT.md).
             Button("Clear selection") { viewport.selection = .none }
                 .keyboardShortcut(.escape, modifiers: [])

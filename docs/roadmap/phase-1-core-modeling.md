@@ -85,9 +85,11 @@ Back to the [roadmap overview](../ROADMAP.md).
 **Size:** M · **Depends on:** M0.4, M1.1
 
 - [x] Touch gestures: one finger orbits, two fingers pan, pinch zooms (M0.5)
-- [ ] Two-finger double-tap fits the view; all gestures configurable
-- [ ] Mouse and trackpad: navigation presets (Fusion-like: middle drag pans, Shift + middle drag
+- [x] Two-finger double-tap fits the view; all gestures configurable
+      ([#32](https://github.com/DerPW/facetry/issues/32)): one finger orbits or pans
+- [x] Mouse and trackpad: navigation presets (Fusion-like: middle drag pans, Shift + middle drag
       orbits, wheel zooms; plus a trackpad-friendly preset)
+      ([#32](https://github.com/DerPW/facetry/issues/32))
 - [ ] ViewCube: click faces, edges and corners to change the view; drag to orbit
 - [x] Fit all and perspective/orthographic toggle (`F`, `O`; M0.5)
 - [ ] Named views (top, front, right, iso, …), fit selection
