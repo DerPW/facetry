@@ -16,7 +16,7 @@ Each phase has its own document with the detailed feature list:
 
 Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Prior art & lessons](PRIOR-ART.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview; the app also runs on a real iPad. Phase 1 has started with M1.1 (document, timeline & undo): the apps open documents through the core's C API.
+**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview; the app also runs on a real iPad. In Phase 1, M1.1 (document, timeline & undo) is done: the apps open, edit, save and autosave documents, with a timeline, a browser panel, named undo steps and document units. New geometry cannot be created yet; that comes with sketching and solid features (M1.3–M1.5). Next is M1.2 (viewport, navigation & selection).
 
 ---
 
@@ -82,8 +82,8 @@ relative sizes stay as they were.
 
 | ID | Milestone | Size | Status |
 |---|---|---|---|
-| M1.1 | Document, timeline & undo | L | 🟡 |
-| M1.2 | Viewport, navigation & selection | M | ⬜ |
+| M1.1 | Document, timeline & undo | L | ✅ |
+| M1.2 | Viewport, navigation & selection | M | 🟡 |
 | M1.3 | Sketching: geometry, snapping & inference | L | ⬜ |
 | M1.4 | Sketch constraints & dimensions | L | ⬜ |
 | M1.5 | Solid features: primitives, extrude, revolve, fillet, chamfer, combine | L | ⬜ |
