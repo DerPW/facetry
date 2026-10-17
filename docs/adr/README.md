@@ -32,3 +32,4 @@ a new ADR that supersedes the old one and set the old one's status to
 | [0009](0009-minimum-os-and-browser-versions.md) | Minimum versions: iPadOS/macOS 26, a feature-based browser floor | Accepted |
 | [0011](0011-document-api-json-over-c.md) | Document API: sessions with JSON edits over the C API | Accepted |
 | [0012](0012-document-units.md) | Document units: values in the document's unit, geometry in millimeters | Accepted |
+| [0013](0013-sketch-model.md) | Sketch model: entities on shared points, a plane by name or face reference | Accepted |

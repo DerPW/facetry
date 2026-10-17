@@ -72,6 +72,27 @@ describe("FacetryCore (WebAssembly)", () => {
   });
 
   describe("sessions", () => {
+    it("regenerate sketches on origin planes and faces, with arcs and circles", () => {
+      const session = core.openSession(
+        readFileSync(
+          new URL("../../../../tests/documents/sketch-planes.json", import.meta.url),
+          "utf8",
+        ),
+      );
+      const snapshot = core.regenerateModel(session);
+      expect(snapshot.state.features.map((f) => f.status)).toEqual(Array(6).fill("ok"));
+      expect(snapshot.state.features[2]?.definition.plane).toBe("face");
+      const volume = (body: string) => {
+        const shape = core.bodyShape(session, body);
+        const result = core.properties(shape).volume;
+        core.release(shape);
+        return result;
+      };
+      expect(volume("f2")).toBeCloseTo((20 * 10 + Math.PI * 25) * 8, 6);
+      expect(volume("f4")).toBeCloseTo(Math.PI * 9 * 4, 6);
+      core.releaseSession(session);
+    });
+
     it("open, regenerate and edit the example document", () => {
       const session = core.openSession(example);
       const snapshot = core.regenerateModel(session);

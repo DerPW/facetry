@@ -23,11 +23,24 @@
 
 namespace facetry::core {
 
+// A curve of a sketch, in sketch coordinates; its segment is named "<sketch>/<curve>".
+struct SketchCurve {
+    ProfileSegment segment;
+    std::string start;  // point IDs; empty for circles
+    std::string end;
+    bool construction = false;
+};
+
+// What a sketch adds to the model: its plane and its curves.
+struct SketchGeometry {
+    SketchFrame frame;
+    std::vector<SketchCurve> curves;
+};
+
 // The model at one point of the timeline. Results are shared between cache entries, not copied.
 struct ModelState {
     std::map<std::string, std::shared_ptr<const NamedShape>> bodies;  // by creating feature ID
-    std::map<std::string, std::shared_ptr<const std::vector<ProfileSegment>>>
-        profiles;  // by sketch ID
+    std::map<std::string, std::shared_ptr<const SketchGeometry>> sketches;  // by sketch ID
 };
 
 enum class FeatureStatus {

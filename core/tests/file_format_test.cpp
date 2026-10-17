@@ -78,7 +78,7 @@ TEST_CASE("files round-trip, with and without a thumbnail") {
 }
 
 TEST_CASE("the checked-in example files still open") {
-    for (const std::string name : {"corner-fillet", "corner-fillet-inch"}) {
+    for (const std::string name : {"corner-fillet", "corner-fillet-inch", "sketch-planes"}) {
         CAPTURE(name);
         const FileContents contents = readFile(readBytes(name + ".facetry"));
         const auto json = readBytes(name + ".json");

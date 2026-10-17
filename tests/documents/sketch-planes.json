@@ -1,0 +1,229 @@
+{
+  "format": "facetry-document",
+  "formatVersion": 3,
+  "nextId": 21,
+  "parameters": [
+    {
+      "name": "length",
+      "value": 20.0
+    },
+    {
+      "name": "radius",
+      "value": 5.0
+    },
+    {
+      "name": "depth",
+      "value": 8.0
+    },
+    {
+      "name": "boss",
+      "value": 3.0
+    }
+  ],
+  "root": {
+    "id": "root",
+    "name": "Root",
+    "timeline": [
+      {
+        "id": "f1",
+        "type": "sketch",
+        "name": "Slot",
+        "suppressed": false,
+        "namingVersion": 1,
+        "plane": "xz",
+        "points": [
+          {
+            "id": "p1",
+            "x": 0.0,
+            "y": 0.0
+          },
+          {
+            "id": "p2",
+            "x": "length",
+            "y": 0.0
+          },
+          {
+            "id": "p3",
+            "x": "length",
+            "y": 10.0
+          },
+          {
+            "id": "p4",
+            "x": 0.0,
+            "y": 10.0
+          },
+          {
+            "id": "p5",
+            "x": "length",
+            "y": "radius"
+          },
+          {
+            "id": "p6",
+            "x": 0.0,
+            "y": "radius"
+          }
+        ],
+        "lines": [
+          {
+            "id": "l7",
+            "start": "p1",
+            "end": "p2"
+          },
+          {
+            "id": "l8",
+            "start": "p3",
+            "end": "p4"
+          },
+          {
+            "id": "l9",
+            "start": "p6",
+            "end": "p5",
+            "construction": true
+          }
+        ],
+        "arcs": [
+          {
+            "id": "a10",
+            "center": "p5",
+            "start": "p2",
+            "end": "p3"
+          },
+          {
+            "id": "a11",
+            "center": "p6",
+            "start": "p4",
+            "end": "p1"
+          }
+        ],
+        "constraints": [
+          {
+            "id": "k12",
+            "type": "horizontal",
+            "entities": [
+              "l7"
+            ]
+          },
+          {
+            "id": "k13",
+            "type": "tangent",
+            "entities": [
+              "l7",
+              "a10"
+            ]
+          },
+          {
+            "id": "k14",
+            "type": "equal",
+            "entities": [
+              "a10",
+              "a11"
+            ]
+          },
+          {
+            "id": "k15",
+            "type": "fix",
+            "entities": [
+              "p1"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "f2",
+        "type": "extrude",
+        "name": "Extrude 1",
+        "suppressed": false,
+        "namingVersion": 1,
+        "profile": "f1",
+        "distance": "depth"
+      },
+      {
+        "id": "f3",
+        "type": "sketch",
+        "name": "Boss sketch",
+        "suppressed": false,
+        "namingVersion": 1,
+        "plane": "face",
+        "face": {
+          "body": "f2",
+          "kind": "face",
+          "name": "f2:end",
+          "shadow": {
+            "id": 6,
+            "type": "plane",
+            "centroid": [
+              10.0,
+              -8.0,
+              5.0
+            ],
+            "size": 278.5398163397448
+          }
+        },
+        "points": [
+          {
+            "id": "p16",
+            "x": 10.0,
+            "y": 5.0
+          }
+        ],
+        "lines": [],
+        "circles": [
+          {
+            "id": "c17",
+            "center": "p16",
+            "radius": "boss"
+          }
+        ]
+      },
+      {
+        "id": "f4",
+        "type": "extrude",
+        "name": "Extrude 2",
+        "suppressed": false,
+        "namingVersion": 1,
+        "profile": "f3",
+        "distance": 4.0
+      },
+      {
+        "id": "f5",
+        "type": "sketch",
+        "name": "Pin sketch",
+        "suppressed": false,
+        "namingVersion": 1,
+        "plane": "yz",
+        "points": [
+          {
+            "id": "p18",
+            "x": -4.0,
+            "y": 15.0
+          }
+        ],
+        "lines": [],
+        "circles": [
+          {
+            "id": "c19",
+            "center": "p18",
+            "radius": 2.0
+          },
+          {
+            "id": "c20",
+            "center": "p18",
+            "radius": 4.0,
+            "construction": true
+          }
+        ]
+      },
+      {
+        "id": "f6",
+        "type": "extrude",
+        "name": "Extrude 3",
+        "suppressed": false,
+        "namingVersion": 1,
+        "profile": "f5",
+        "distance": 30.0
+      }
+    ]
+  },
+  "rollback": null,
+  "units": "mm"
+}

@@ -90,6 +90,16 @@ Reference readReference(const Reader& reader) {
 FeatureData readFeatureData(const Reader& reader, const std::string& type) {
     if (type == "sketch") {
         Sketch sketch;
+        // Format version 2 and older: no plane (XY), only points and lines.
+        if (reader.has("plane")) {
+            sketch.plane = reader.at("plane").string();
+        }
+        if (reader.has("face")) {
+            sketch.face.push_back(readReference(reader.at("face")));
+        }
+        const auto construction = [](const Reader& curve) {
+            return curve.has("construction") && curve.at("construction").boolean();
+        };
         for (const Reader& point : reader.at("points").items()) {
             sketch.points.push_back({.id = point.at("id").string(),
                                      .x = point.at("x").value(),
@@ -98,7 +108,36 @@ FeatureData readFeatureData(const Reader& reader, const std::string& type) {
         for (const Reader& line : reader.at("lines").items()) {
             sketch.lines.push_back({.id = line.at("id").string(),
                                     .start = line.at("start").string(),
-                                    .end = line.at("end").string()});
+                                    .end = line.at("end").string(),
+                                    .construction = construction(line)});
+        }
+        if (reader.has("arcs")) {
+            for (const Reader& arc : reader.at("arcs").items()) {
+                sketch.arcs.push_back({.id = arc.at("id").string(),
+                                       .center = arc.at("center").string(),
+                                       .start = arc.at("start").string(),
+                                       .end = arc.at("end").string(),
+                                       .construction = construction(arc)});
+            }
+        }
+        if (reader.has("circles")) {
+            for (const Reader& circle : reader.at("circles").items()) {
+                sketch.circles.push_back({.id = circle.at("id").string(),
+                                          .center = circle.at("center").string(),
+                                          .radius = circle.at("radius").value(),
+                                          .construction = construction(circle)});
+            }
+        }
+        if (reader.has("constraints")) {
+            for (const Reader& constraint : reader.at("constraints").items()) {
+                SketchConstraint entry{.id = constraint.at("id").string(),
+                                       .type = constraint.at("type").string(),
+                                       .entities = {}};
+                for (const Reader& entity : constraint.at("entities").items()) {
+                    entry.entities.push_back(entity.string());
+                }
+                sketch.constraints.push_back(std::move(entry));
+            }
         }
         return sketch;
     }
@@ -154,6 +193,17 @@ Json featureToJson(const Feature& feature) {
     result["suppressed"] = feature.suppressed;
     result["namingVersion"] = feature.namingVersion;
     if (const auto* sketch = std::get_if<Sketch>(&feature.data)) {
+        result["plane"] = sketch->plane;
+        if (!sketch->face.empty()) {
+            result["face"] = referenceToJson(sketch->face.front());
+        }
+        // The construction flag is written only when set, to keep documents short.
+        const auto curve = [](Json json, bool construction) {
+            if (construction) {
+                json["construction"] = true;
+            }
+            return json;
+        };
         Json points = Json::array();
         for (const SketchPoint& point : sketch->points) {
             points.push_back(
@@ -161,10 +211,41 @@ Json featureToJson(const Feature& feature) {
         }
         Json lines = Json::array();
         for (const SketchLine& line : sketch->lines) {
-            lines.push_back({{"id", line.id}, {"start", line.start}, {"end", line.end}});
+            lines.push_back(curve({{"id", line.id}, {"start", line.start}, {"end", line.end}},
+                                  line.construction));
         }
         result["points"] = std::move(points);
         result["lines"] = std::move(lines);
+        if (!sketch->arcs.empty()) {
+            Json arcs = Json::array();
+            for (const SketchArc& arc : sketch->arcs) {
+                arcs.push_back(curve({{"id", arc.id},
+                                      {"center", arc.center},
+                                      {"start", arc.start},
+                                      {"end", arc.end}},
+                                     arc.construction));
+            }
+            result["arcs"] = std::move(arcs);
+        }
+        if (!sketch->circles.empty()) {
+            Json circles = Json::array();
+            for (const SketchCircle& circle : sketch->circles) {
+                circles.push_back(curve({{"id", circle.id},
+                                         {"center", circle.center},
+                                         {"radius", valueToJson(circle.radius)}},
+                                        circle.construction));
+            }
+            result["circles"] = std::move(circles);
+        }
+        if (!sketch->constraints.empty()) {
+            Json constraints = Json::array();
+            for (const SketchConstraint& constraint : sketch->constraints) {
+                constraints.push_back({{"id", constraint.id},
+                                       {"type", constraint.type},
+                                       {"entities", constraint.entities}});
+            }
+            result["constraints"] = std::move(constraints);
+        }
     } else if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
         result["profile"] = extrude->profile;
         result["distance"] = valueToJson(extrude->distance);

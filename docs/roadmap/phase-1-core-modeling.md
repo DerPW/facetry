@@ -120,8 +120,10 @@ and with a mouse on the first or second attempt.
 
 **Size:** L · **Depends on:** M1.2
 
-- [ ] Sketch model in the core: points, lines, arcs, circles and constraints with stable IDs that
-      sketch-based features reference (extends the M0.6 sketch, ADR-0006)
+- [x] Sketch model in the core: points, lines, arcs, circles and constraints with stable IDs that
+      sketch-based features reference (extends the M0.6 sketch, ADR-0006); sketches on origin
+      planes and planar faces ([#46](https://github.com/DerPW/facetry/issues/46),
+      [ADR-0013](../adr/0013-sketch-model.md))
 - [ ] Create a sketch on an origin plane or a planar face; the view turns to face the sketch
 - [ ] Drawing tools:
   - [ ] line / polyline (with tangent arc by dragging back from the last point)
