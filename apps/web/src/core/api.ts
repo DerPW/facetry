@@ -96,6 +96,13 @@ export interface SessionState {
   rollback: number | null;
   canUndo: boolean;
   canRedo: boolean;
+  /** Names of the steps undo and redo would take back or repeat, e.g. "Rename feature". */
+  undoName: string | null;
+  redoName: string | null;
+  /** A transaction (one undo step for a whole tool) is open. */
+  inTransaction: boolean;
+  /** Number of steps undo can take back. */
+  undoCount: number;
   /** The document changed since the last complete regeneration. */
   needsRegeneration: boolean;
   features: {
@@ -367,6 +374,18 @@ export class FacetryCore {
     } finally {
       this.#m._free(json);
     }
+  }
+
+  /** Groups the following edits into one undo step until {@link endTransaction}. */
+  beginTransaction(session: number, name: string): void {
+    this.#withString(name, (text) =>
+      this.#check(this.#m._facetry_session_begin_transaction(this.#context, session, text)),
+    );
+  }
+
+  /** Commits the open transaction as one undo step, or cancels it (restoring the document). */
+  endTransaction(session: number, commit: boolean): void {
+    this.#check(this.#m._facetry_session_end_transaction(this.#context, session, commit ? 1 : 0));
   }
 
   /** Returns false if there was nothing to undo. */

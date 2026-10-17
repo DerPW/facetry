@@ -81,6 +81,8 @@ export interface FacetryCoreModule {
     sizeOut: number,
   ): number;
   _facetry_session_apply(context: number, session: number, editJson: number): number;
+  _facetry_session_begin_transaction(context: number, session: number, name: number): number;
+  _facetry_session_end_transaction(context: number, session: number, commit: number): number;
   _facetry_session_undo(context: number, session: number, changedOut: number): number;
   _facetry_session_redo(context: number, session: number, changedOut: number): number;
   _facetry_session_regenerate(

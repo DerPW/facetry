@@ -62,8 +62,9 @@ Back to the [roadmap overview](../ROADMAP.md).
   - [ ] runs off the UI thread (background thread on Apple, Web Worker on web)
   - [ ] progress and cancel between features (core, M0.6) and inside long kernel operations
   - [x] a failed feature does not block independent later features (core, M0.6)
-- [ ] Command system with unlimited undo/redo per session; a tool session is one undo step
-      (replaces the M0.6 document snapshots)
+- [x] Command system with unlimited undo/redo per session; a tool session is one undo step
+      (transactions); steps have names; Apple's undo manager and the web shortcuts drive it
+      ([#12](https://github.com/DerPW/facetry/issues/12))
 - [x] Native file format v1 (`.facetry`, [ADR-0008](../adr/0008-native-file-format.md)): a zip
       container written by the core (miniz) with manifest, versioned document, migration hook,
       optional thumbnail; opens the provisional M0.5 files as empty documents. Thumbnails are

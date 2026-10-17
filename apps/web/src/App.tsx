@@ -268,21 +268,24 @@ export function App() {
   // Keyboard shortcuts (docs/INPUT.md).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        event.target instanceof HTMLInputElement
-      ) {
+      if (event.target instanceof HTMLInputElement) return;
+      // Undo: Cmd/Ctrl+Z. Redo: Shift+Cmd/Ctrl+Z, or Ctrl+Y.
+      const command = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (command && !event.altKey && (key === "z" || (key === "y" && event.ctrlKey))) {
+        event.preventDefault();
+        const redo = key === "y" || event.shiftKey;
+        void change(({ core, handle }) => core.call(redo ? "redo" : "undo", handle));
         return;
       }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "f") viewport?.fit();
       else if (event.key === "o") setOrthographic((value) => !value);
       else if (event.key === "Escape") viewport?.clearSelection();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [viewport]);
+  }, [viewport, change]);
 
   return (
     <>
@@ -333,6 +336,7 @@ export function App() {
           <button
             type="button"
             disabled={!model?.canUndo}
+            title={model?.undoName ? `Undo ${model.undoName} (⌘Z / Ctrl+Z)` : "Undo"}
             onClick={() => void change(({ core, handle }) => core.call("undo", handle))}
           >
             Undo
@@ -340,6 +344,7 @@ export function App() {
           <button
             type="button"
             disabled={!model?.canRedo}
+            title={model?.redoName ? `Redo ${model.redoName} (⇧⌘Z / Ctrl+Y)` : "Redo"}
             onClick={() => void change(({ core, handle }) => core.call("redo", handle))}
           >
             Redo

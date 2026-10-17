@@ -403,9 +403,31 @@ facetry_status facetry_session_apply(facetry_context* context, facetry_handle se
     return run(context, [&](facetry_context& ctx) {
         const std::string_view edits = requireString(edit_json, "edit_json");
         ctx.get<std::unique_ptr<Session>>(session, "session")
-            ->edit([&](facetry::core::Document& document) {
-                facetry::core::applyEdits(document, edits);
-            });
+            ->edit(
+                [&](facetry::core::Document& document) {
+                    facetry::core::applyEdits(document, edits);
+                },
+                facetry::core::editName(edits));
+    });
+}
+
+facetry_status facetry_session_begin_transaction(facetry_context* context, facetry_handle session,
+                                                 const char* name) {
+    return run(context, [&](facetry_context& ctx) {
+        ctx.get<std::unique_ptr<Session>>(session, "session")
+            ->beginTransaction(requireString(name, "name"));
+    });
+}
+
+facetry_status facetry_session_end_transaction(facetry_context* context, facetry_handle session,
+                                               int commit) {
+    return run(context, [&](facetry_context& ctx) {
+        Session& target = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        if (commit != 0) {
+            target.commitTransaction();
+        } else {
+            target.cancelTransaction();
+        }
     });
 }
 

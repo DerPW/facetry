@@ -117,7 +117,43 @@ final class DocumentModel {
 
     /// Applies edits as one undo step.
     func edit(_ edits: [DocumentEdit]) async {
+        let steps = state?.undoCount ?? 0
         await run { try await $0.apply(edits) }
+        registerUndo(after: steps)
+    }
+
+    // MARK: - Undo
+
+    /// The window's undo manager. Edits register steps with it, so the Edit menu, Cmd+Z and the
+    /// iPad's three-finger gestures undo and redo through the core.
+    weak var undoManager: UndoManager?
+
+    /// Registers the core's last step with the undo manager, if the core made one: a failed edit
+    /// or one that changed nothing adds no step.
+    private func registerUndo(after steps: Int) {
+        guard let state, state.undoCount > steps, let name = state.undoName, let undoManager
+        else { return }
+        undoManager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.undoFromSystem(name) }
+        }
+        undoManager.setActionName(name)
+    }
+
+    /// Called by the undo manager: registers the redo step, then undoes in the core.
+    private func undoFromSystem(_ name: String) {
+        undoManager?.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.redoFromSystem(name) }
+        }
+        undoManager?.setActionName(name)
+        Task { await run { _ = try await $0.undo() } }
+    }
+
+    private func redoFromSystem(_ name: String) {
+        undoManager?.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.undoFromSystem(name) }
+        }
+        undoManager?.setActionName(name)
+        Task { await run { _ = try await $0.redo() } }
     }
 
     /// A broken reference waiting for the user to pick its replacement in the viewport (ADR-0006).
@@ -137,6 +173,7 @@ final class DocumentModel {
             edges.indices.contains(repair.index)
         else { return }
         self.repair = nil
+        let steps = state.undoCount
         await run { engine in
             var replaced = edges
             replaced[repair.index] = try await engine.reference(body: body, edge: pick.id)
@@ -144,14 +181,24 @@ final class DocumentModel {
             definition["edges"] = .array(replaced)
             try await engine.apply([.replaceFeature(definition)])
         }
+        registerUndo(after: steps)
     }
 
+    /// Undo and redo go through the undo manager when there is one, so it stays in step.
     func undo() async {
-        await run { _ = try await $0.undo() }
+        if let undoManager, undoManager.canUndo {
+            undoManager.undo()
+        } else {
+            await run { _ = try await $0.undo() }
+        }
     }
 
     func redo() async {
-        await run { _ = try await $0.redo() }
+        if let undoManager, undoManager.canRedo {
+            undoManager.redo()
+        } else {
+            await run { _ = try await $0.redo() }
+        }
     }
 
     private func run(_ change: (DocumentEngine) async throws -> Void) async {

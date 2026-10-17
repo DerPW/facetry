@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 3
+#define FACETRY_API_VERSION_MINOR 4
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -205,6 +205,15 @@ FACETRY_API facetry_status facetry_session_save_file(facetry_context* context,
  * nothing. */
 FACETRY_API facetry_status facetry_session_apply(facetry_context* context, facetry_handle session,
                                                  const char* edit_json);
+
+/* Groups the edits until facetry_session_end_transaction() into one undo step named `name`, e.g.
+ * everything a tool does until the user confirms it. `commit` = 0 cancels: the document returns to
+ * how it was before the transaction. Undo and redo fail while a transaction is open. */
+FACETRY_API facetry_status facetry_session_begin_transaction(facetry_context* context,
+                                                             facetry_handle session,
+                                                             const char* name);
+FACETRY_API facetry_status facetry_session_end_transaction(facetry_context* context,
+                                                           facetry_handle session, int commit);
 
 /* `out_changed` (optional) is set to 1 if there was something to undo or redo, else 0. */
 FACETRY_API facetry_status facetry_session_undo(facetry_context* context, facetry_handle session,
