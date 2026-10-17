@@ -189,3 +189,4 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0012](adr/0012-document-units.md) | Document units: values in the document's unit, geometry in millimeters | Accepted | M1.1 |
 | [0013](adr/0013-sketch-model.md) | Sketch model: entities on shared points, a plane by name or face reference | Accepted | M1.3 |
 | [0014](adr/0014-sketch-profiles.md) | Sketch profiles: regions from splitting the sketch plane, named by the curves around them | Accepted | M1.3 |
+| [0015](adr/0015-sketch-tools.md) | Sketch tools: state machines in the core, driven by pointer events on the sketch plane | Accepted | M1.3 |

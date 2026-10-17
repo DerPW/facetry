@@ -33,7 +33,9 @@ enum class PickKind : std::uint32_t {
     Edge = 2,
     Vertex = 3,
     Body = 4,
-    Region = 5
+    Region = 5,
+    SketchCurve = 6,  // a curve of the sketch being edited (Renderer::setSketch)
+    SketchPoint = 7,  // a point of it
 };
 
 // A face, edge, vertex, body or sketch region, by ID.
@@ -142,16 +144,23 @@ class PickIndex {
     Bounds bounds_;
 };
 
-// Picking with sketch regions over the model (Renderer::setRegions). With "Everything" or
-// "Regions" the region under (x, y) comes first, whatever lies in front of it, since regions are
-// drawn over the model; "Regions" takes nothing else. `regions` may be empty.
-[[nodiscard]] PickResult pickWithRegions(const PickIndex& model, const PickIndex& regions,
-                                         const Camera& camera, float x, float y, float radiusPoints,
-                                         bool throughFaces, PickFilter filter);
-[[nodiscard]] std::vector<PickResult> candidatesWithRegions(const PickIndex& model,
-                                                            const PickIndex& regions,
-                                                            const Camera& camera, float x, float y,
-                                                            float radiusPoints, bool throughFaces,
-                                                            PickFilter filter);
+// What is drawn over the model and picked before it: a sketch's regions to choose profiles from
+// (Renderer::setRegions) and the sketch being edited (Renderer::setSketch). Either may be empty.
+struct Overlays {
+    const PickIndex& regions;
+    const PickIndex& sketch;
+};
+
+// Picking with the overlays first, whatever lies in front of them, since they are drawn over the
+// model. With "Everything" the region under (x, y) comes first, then the sketch's points and
+// curves within the radius; "Regions" takes only regions.
+[[nodiscard]] PickResult pickWithOverlays(const PickIndex& model, Overlays overlays,
+                                          const Camera& camera, float x, float y,
+                                          float radiusPoints, bool throughFaces, PickFilter filter);
+[[nodiscard]] std::vector<PickResult> candidatesWithOverlays(const PickIndex& model,
+                                                             Overlays overlays,
+                                                             const Camera& camera, float x, float y,
+                                                             float radiusPoints, bool throughFaces,
+                                                             PickFilter filter);
 
 }  // namespace facetry::render

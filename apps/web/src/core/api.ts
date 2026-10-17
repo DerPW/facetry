@@ -88,6 +88,26 @@ export interface MeshData {
 export const ElementKind = { Face: 0, Edge: 1, Vertex: 2 } as const;
 export type ElementKind = (typeof ElementKind)[keyof typeof ElementKind];
 
+/** Sketch drawing tools (facetry_sketch_tool_kind). */
+export const SketchTool = {
+  Line: 0,
+  RectangleTwoPoint: 1,
+  RectangleThreePoint: 2,
+  RectangleCenter: 3,
+  CircleCenter: 4,
+  CircleTwoPoint: 5,
+  CircleThreePoint: 6,
+  ArcThreePoint: 7,
+  ArcCenter: 8,
+  ArcTangent: 9,
+  Point: 10,
+} as const;
+export type SketchTool = (typeof SketchTool)[keyof typeof SketchTool];
+
+/** A pointer event for a sketch tool (facetry_pointer_event). */
+export const ToolEvent = { Down: 0, Move: 1, Up: 2 } as const;
+export type ToolEvent = (typeof ToolEvent)[keyof typeof ToolEvent];
+
 export type FeatureStatus = "ok" | "warning" | "error" | "suppressed" | "rolledBack" | "notRun";
 
 /** Summary of a session (the JSON is described in core/include/facetry/core/session_json.hpp). */
@@ -201,7 +221,9 @@ export type Edit =
   | { op: "setBodyVisible"; id: string; visible: boolean }
   | { op: "setOriginVisible"; id: string; visible: boolean }
   /** Converts every length, so the geometry stays the same. */
-  | { op: "setUnits"; units: LengthUnit };
+  | { op: "setUnits"; units: LengthUnit }
+  /** Makes curves of a sketch construction curves, or normal ones again. */
+  | { op: "setConstruction"; sketch: string; entities: string[]; construction: boolean };
 
 /** The model after a regeneration: the session summary and a display mesh per body. */
 export interface ModelSnapshot {
@@ -327,6 +349,67 @@ export class FacetryCore {
       ),
     );
     return this.#takeMesh(this.#u32(this.#scratch));
+  }
+
+  // ---- Sketch tools (docs/adr/0015-sketch-tools.md) -------------------------------------------
+
+  /** A drawing tool for the sketch feature `sketch`; release it when done. */
+  createSketchTool(sketch: string, kind: SketchTool, construction: boolean): number {
+    return this.#withString(sketch, (text) => {
+      this.#check(
+        this.#m._facetry_sketch_tool_create(
+          this.#context,
+          text,
+          kind,
+          construction ? 1 : 0,
+          this.#scratch,
+        ),
+      );
+      return this.#u32(this.#scratch);
+    });
+  }
+
+  /** A pointer event at (u, v) on the sketch plane in millimeters; positions within
+   * `snapRadius` millimeters of a sketch point use it. True if the document changed. */
+  sketchToolPointer(
+    session: number,
+    tool: number,
+    event: ToolEvent,
+    u: number,
+    v: number,
+    snapRadius: number,
+  ): boolean {
+    this.#check(
+      this.#m._facetry_sketch_tool_pointer(
+        this.#context,
+        session,
+        tool,
+        event,
+        u,
+        v,
+        snapRadius,
+        this.#scratch,
+      ),
+    );
+    return this.#u32(this.#scratch) !== 0;
+  }
+
+  /** Esc: drops the shape in progress. False if nothing was in progress. */
+  cancelSketchTool(tool: number): boolean {
+    this.#check(this.#m._facetry_sketch_tool_cancel(this.#context, tool, this.#scratch));
+    return this.#u32(this.#scratch) !== 0;
+  }
+
+  /** What the tool would draw next, like sketchMesh(). */
+  sketchToolPreview(session: number, tool: number, deflection = 0.01): MeshData {
+    this.#check(
+      this.#m._facetry_sketch_tool_preview(this.#context, session, tool, deflection, this.#scratch),
+    );
+    return this.#takeMesh(this.#u32(this.#scratch));
+  }
+
+  releaseSketchTool(tool: number): void {
+    this.#check(this.#m._facetry_sketch_tool_release(this.#context, tool));
   }
 
   /** A sketch for display: edge ID i + 1 is its curve i (see sketchCurves()), sampled within

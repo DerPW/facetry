@@ -135,8 +135,39 @@ struct ContentView: View {
             let name = model.state?.features.first { $0.id == sketching }?.name ?? "sketch"
             HStack {
                 Text("Sketching \(name)").font(.caption)
+                Picker("Tool", selection: Binding(get: { model.tool }, set: { model.tool = $0 })) {
+                    Text("Select").tag(SketchToolKind?.none)
+                    ForEach(SketchToolKind.allCases) { kind in
+                        Text(
+                            kind.key.map { "\(kind.title) (\(String($0).uppercased()))" }
+                                ?? kind.title
+                        )
+                        .tag(Optional(kind))
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                Toggle(
+                    "Construction",
+                    isOn: Binding(
+                        get: { model.construction },
+                        set: { _ in Task { await model.toggleConstruction() } })
+                )
+                .toggleStyle(.button)
+                .help("Construction curves (X): new ones, or the selected ones")
                 Button("Finish sketch") { Task { await model.finishSketch(keep: true) } }
                 Button("Cancel") { Task { await model.finishSketch(keep: false) } }
+                // Keys choose tools while sketching (docs/INPUT.md).
+                ForEach(SketchToolKind.allCases.filter { $0.key != nil }) { kind in
+                    Button(kind.title) { model.tool = kind }
+                        .keyboardShortcut(KeyEquivalent(kind.key ?? " "), modifiers: [])
+                        .hidden()
+                        .frame(width: 0, height: 0)
+                }
+                Button("Construction") { Task { await model.toggleConstruction() } }
+                    .keyboardShortcut("x", modifiers: [])
+                    .hidden()
+                    .frame(width: 0, height: 0)
             }
             .panel()
         }
@@ -188,11 +219,18 @@ struct ContentView: View {
                 .keyboardShortcut("g", modifiers: [])
                 .hidden()
                 .frame(width: 0, height: 0)
-            // Esc clears the selection (docs/INPUT.md).
-            Button("Clear selection") { viewport.selection = .none }
-                .keyboardShortcut(.escape, modifiers: [])
-                .hidden()
-                .frame(width: 0, height: 0)
+            // Esc ends the drawing tool's shape or the tool, else clears the selection
+            // (docs/INPUT.md).
+            Button("Clear selection") {
+                if let model, model.tool != nil {
+                    model.cancelTool()
+                } else {
+                    viewport.selection = .none
+                }
+            }
+            .keyboardShortcut(.escape, modifiers: [])
+            .hidden()
+            .frame(width: 0, height: 0)
             // Keys 1–5 choose what clicks select.
             ForEach(PickFilter.allCases) { filter in
                 Button(filter.title) { viewport.pickFilter = filter }
@@ -224,6 +262,8 @@ struct ContentView: View {
         let names: [(Pick.Kind, String, String)] = [
             (.vertex, "Vertex", "vertices"), (.edge, "Edge", "edges"), (.face, "Face", "faces"),
             (.body, "Body", "bodies"), (.region, "Profile", "profiles"),
+            (.sketchCurve, "Sketch curve", "sketch curves"),
+            (.sketchPoint, "Sketch point", "sketch points"),
         ]
         guard let only = selection.first else { return "Nothing selected" }
         if selection.count == 1 {

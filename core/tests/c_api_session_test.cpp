@@ -247,3 +247,40 @@ TEST_CASE("session calls validate their arguments") {
     CHECK(facetry_session_release(c.ctx, session) == FACETRY_OK);
     CHECK(facetry_session_release(c.ctx, session) == FACETRY_ERROR_INVALID_HANDLE);
 }
+
+TEST_CASE("sketch tools draw through the C API") {
+    Context c;
+    facetry_handle session = 0;
+    REQUIRE(facetry_session_create(c.ctx, example().c_str(), &session) == FACETRY_OK);
+    REQUIRE(facetry_session_regenerate(c.ctx, session, nullptr, nullptr) == FACETRY_OK);
+    REQUIRE(facetry_session_begin_transaction(c.ctx, session, "Sketch") == FACETRY_OK);
+    facetry_handle tool = 0;
+    REQUIRE(facetry_sketch_tool_create(c.ctx, "f1", FACETRY_TOOL_CIRCLE_CENTER, 0, &tool) ==
+            FACETRY_OK);
+    int changed = -1;
+    const auto pointer = [&](uint32_t event, double u, double v) {
+        REQUIRE(facetry_sketch_tool_pointer(c.ctx, session, tool, event, u, v, 0.1, &changed) ==
+                FACETRY_OK);
+    };
+    pointer(FACETRY_POINTER_DOWN, 5, 3);
+    pointer(FACETRY_POINTER_UP, 5, 3);
+    CHECK(changed == 0);
+    pointer(FACETRY_POINTER_MOVE, 6, 3);
+    facetry_handle preview = 0;
+    REQUIRE(facetry_sketch_tool_preview(c.ctx, session, tool, 0.01, &preview) == FACETRY_OK);
+    const void* ids = nullptr;
+    size_t count = 0;
+    REQUIRE(facetry_mesh_buffer(c.ctx, preview, FACETRY_MESH_EDGE_IDS, &ids, &count) == FACETRY_OK);
+    CHECK(count == 1);
+    REQUIRE(facetry_mesh_release(c.ctx, preview) == FACETRY_OK);
+    pointer(FACETRY_POINTER_UP, 6, 3);
+    CHECK(changed == 1);
+    int busy = -1;
+    REQUIRE(facetry_sketch_tool_cancel(c.ctx, tool, &busy) == FACETRY_OK);
+    CHECK(busy == 0);
+    REQUIRE(facetry_session_end_transaction(c.ctx, session, 1) == FACETRY_OK);
+    CHECK(state(c.ctx, session)["undoName"] == "Sketch");
+    REQUIRE(facetry_sketch_tool_release(c.ctx, tool) == FACETRY_OK);
+    CHECK(facetry_sketch_tool_release(c.ctx, tool) == FACETRY_ERROR_INVALID_HANDLE);
+    CHECK(facetry_sketch_tool_create(c.ctx, "f1", 99, 0, &tool) == FACETRY_ERROR_INVALID_ARGUMENT);
+}

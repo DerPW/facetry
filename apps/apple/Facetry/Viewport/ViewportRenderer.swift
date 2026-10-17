@@ -24,6 +24,10 @@ struct Pick: Equatable, Sendable {
         case body = 4
         /// A sketch region (profile) shown with ``ViewportRenderer/setRegions(_:)``.
         case region = 5
+        /// A curve or point of the sketch shown with ``ViewportRenderer/setSketch(_:construction:)``,
+        /// by edge or vertex ID.
+        case sketchCurve = 6
+        case sketchPoint = 7
     }
 
     var kind: Kind = .none
@@ -108,6 +112,13 @@ struct ViewCubeCell: Equatable, Sendable {
     }
 }
 
+/// A sketch plane in space: origin and unit axes, in millimeters.
+struct SketchPlane: Equatable, Sendable {
+    let origin: SIMD3<Float>
+    let xAxis: SIMD3<Float>
+    let yAxis: SIMD3<Float>
+}
+
 /// The shared C++ viewport renderer on Metal. Only one can exist at a time.
 @MainActor
 final class ViewportRenderer {
@@ -155,6 +166,31 @@ final class ViewportRenderer {
             return facetry_renderer_set_sketch(handle, nil, nil, 0)
         }
         try check(status)
+    }
+
+    /// What the sketch tool would draw next, drawn like the sketch, or nothing (nil).
+    func setSketchPreview(_ mesh: MeshData?) throws {
+        if let mesh {
+            try check(withRenderMesh(mesh) { facetry_renderer_set_sketch_preview(handle, $0) })
+        } else {
+            try check(facetry_renderer_set_sketch_preview(handle, nil))
+        }
+    }
+
+    /// Where `point` lies on the sketch plane `frame` (origin, x axis, y axis), and how far one
+    /// point reaches there; nil if the plane is seen edge-on.
+    func sketchPoint(at point: CGPoint, on frame: SketchPlane) -> (
+        u: Double, v: Double, perPoint: Double
+    )? {
+        var plane = [
+            frame.origin.x, frame.origin.y, frame.origin.z, frame.xAxis.x, frame.xAxis.y,
+            frame.xAxis.z, frame.yAxis.x, frame.yAxis.y, frame.yAxis.z,
+        ]
+        var out: [Float] = [0, 0, 0]
+        let status = facetry_renderer_sketch_point(
+            handle, Float(point.x), Float(point.y), &plane, &out)
+        guard status == FACETRY_RENDER_OK else { return nil }
+        return (Double(out[0]), Double(out[1]), Double(out[2]))
     }
 
     /// Clicks and hovering pick only the regions (while choosing profiles).

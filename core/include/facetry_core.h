@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 10
+#define FACETRY_API_VERSION_MINOR 11
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -285,6 +285,58 @@ FACETRY_API facetry_status facetry_session_make_reference(
 
 FACETRY_API facetry_status facetry_session_release(facetry_context* context,
                                                    facetry_handle session);
+
+/* ---- Sketch tools (#49, docs/adr/0015-sketch-tools.md) --------------------------------- */
+
+/* Drawing tools: they turn pointer events on the sketch plane into sketch entities, the same on
+ * every platform. Run them inside a transaction (facetry_session_begin_transaction) so a whole
+ * sketch is one undo step. */
+typedef enum facetry_sketch_tool_kind {
+    FACETRY_TOOL_LINE = 0, /* a polyline; dragging back from its last point draws a tangent arc */
+    FACETRY_TOOL_RECTANGLE_TWO_POINT = 1,   /* opposite corners, sides along the sketch axes */
+    FACETRY_TOOL_RECTANGLE_THREE_POINT = 2, /* one side, then the width */
+    FACETRY_TOOL_RECTANGLE_CENTER = 3,      /* the center, then a corner */
+    FACETRY_TOOL_CIRCLE_CENTER = 4,         /* the center, then a point on the circle */
+    FACETRY_TOOL_CIRCLE_TWO_POINT = 5,      /* the ends of a diameter */
+    FACETRY_TOOL_CIRCLE_THREE_POINT = 6,    /* three points on the circle */
+    FACETRY_TOOL_ARC_THREE_POINT = 7,       /* start, end, then a point on the arc */
+    FACETRY_TOOL_ARC_CENTER = 8,  /* the center, the start, the end; the way round follows the
+                                     pointer */
+    FACETRY_TOOL_ARC_TANGENT = 9, /* from the end of a line or arc, tangent to it */
+    FACETRY_TOOL_POINT = 10
+} facetry_sketch_tool_kind;
+
+typedef enum facetry_pointer_event {
+    FACETRY_POINTER_DOWN = 0,
+    FACETRY_POINTER_MOVE = 1,
+    FACETRY_POINTER_UP = 2
+} facetry_pointer_event;
+
+/* A tool for the sketch feature `sketch_id`; new curves are construction curves if
+ * `construction` is non-zero. Release it with facetry_sketch_tool_release(). */
+FACETRY_API facetry_status facetry_sketch_tool_create(facetry_context* context,
+                                                      const char* sketch_id, uint32_t kind,
+                                                      int construction, facetry_handle* out_tool);
+/* A pointer event at (u, v) on the sketch plane, in millimeters along the sketch's axes
+ * (facetry_renderer_sketch_point). A click is down then up at about the same place; a drag counts
+ * as two clicks. Positions within `snap_radius` millimeters of a sketch point use that point.
+ * `out_changed` (may be NULL) is 1 when the tool changed the document: regenerate then. */
+FACETRY_API facetry_status facetry_sketch_tool_pointer(facetry_context* context,
+                                                       facetry_handle session, facetry_handle tool,
+                                                       uint32_t event, double u, double v,
+                                                       double snap_radius, int* out_changed);
+/* Esc: drops the shape in progress or ends the polyline. `out_was_busy` (may be NULL) is 0 when
+ * nothing was in progress; the shell then leaves the tool. */
+FACETRY_API facetry_status facetry_sketch_tool_cancel(facetry_context* context, facetry_handle tool,
+                                                      int* out_was_busy);
+/* What the tool would draw next, as a mesh like facetry_session_sketch_mesh (the curves as edges,
+ * the points placed so far and the pointer as vertices). Release it with facetry_mesh_release(). */
+FACETRY_API facetry_status facetry_sketch_tool_preview(facetry_context* context,
+                                                       facetry_handle session, facetry_handle tool,
+                                                       double linear_deflection,
+                                                       facetry_handle* out_mesh);
+FACETRY_API facetry_status facetry_sketch_tool_release(facetry_context* context,
+                                                       facetry_handle tool);
 
 #ifdef __cplusplus
 }

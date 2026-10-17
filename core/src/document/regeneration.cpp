@@ -151,15 +151,24 @@ SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
 }  // namespace
 
 Mesh sketchMesh(const SketchGeometry& sketch, double deflection) {
+    std::vector<ProfileSegment> curves;
+    for (const SketchCurve& curve : sketch.curves) {
+        curves.push_back(curve.segment);
+    }
+    return curvesMesh(sketch.frame, curves, sketch.points, deflection);
+}
+
+Mesh curvesMesh(const SketchFrame& frame, std::span<const ProfileSegment> curves,
+                std::span<const Vec3> points, double deflection) {
     Mesh mesh;
     const auto add = [&](double x, double y) {
-        const Vec3 p = sketch.frame.at(x, y);
+        const Vec3 p = frame.at(x, y);
         mesh.edgePoints.insert(
             mesh.edgePoints.end(),
             {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
     };
-    for (std::size_t i = 0; i < sketch.curves.size(); ++i) {
-        const ProfileSegment& curve = sketch.curves[i].segment;
+    for (std::size_t i = 0; i < curves.size(); ++i) {
+        const ProfileSegment& curve = curves[i];
         if (curve.kind == ProfileSegment::Kind::Line) {
             add(curve.x0, curve.y0);
             add(curve.x1, curve.y1);
@@ -194,14 +203,18 @@ Mesh sketchMesh(const SketchGeometry& sketch, double deflection) {
         mesh.edgeOffsets.push_back(static_cast<std::uint32_t>(mesh.edgePoints.size() / 3));
         mesh.edgeIds.push_back(static_cast<std::uint32_t>(i + 1));
     }
-    for (std::size_t i = 0; i < sketch.points.size(); ++i) {
-        const Vec3& p = sketch.points[i];
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        const Vec3& p = points[i];
         mesh.vertexPositions.insert(
             mesh.vertexPositions.end(),
             {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
         mesh.vertexIds.push_back(static_cast<std::uint32_t>(i + 1));
     }
     return mesh;
+}
+
+double lengthInMillimeters(const Value& value, const Document& document) {
+    return length(value, document);
 }
 
 namespace {

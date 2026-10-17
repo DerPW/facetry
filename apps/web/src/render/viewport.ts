@@ -1,16 +1,33 @@
 // The 3D viewport: the shared C++ renderer (render/include/facetry_render.h) on WebGL2, driven by
 // pointer and wheel input. Runs on the UI thread; meshes come from the core worker.
 
-import type { MeshData } from "../core/api";
+import { ToolEvent, type MeshData, type SketchFrame } from "../core/api";
 import createFacetryRender, { type FacetryRenderModule } from "./wasm/facetry-render.mjs";
 
-/** `Region`: a sketch region (profile) shown with setRegions(). */
-export const PickKind = { None: 0, Face: 1, Edge: 2, Vertex: 3, Body: 4, Region: 5 } as const;
+/** `Region`: a sketch region (profile) shown with setRegions(). `SketchCurve` and `SketchPoint`:
+ * a curve or point of the sketch shown with setSketch(), by edge or vertex ID. */
+export const PickKind = {
+  None: 0,
+  Face: 1,
+  Edge: 2,
+  Vertex: 3,
+  Body: 4,
+  Region: 5,
+  SketchCurve: 6,
+  SketchPoint: 7,
+} as const;
 export type PickKind = (typeof PickKind)[keyof typeof PickKind];
 
 export interface Pick {
   kind: PickKind;
   id: number;
+}
+
+/** Pointer input for a sketch drawing tool: events on the sketch plane, in millimeters along its
+ * axes, with the snap radius for the pointer (docs/INPUT.md). */
+export interface DrawingInput {
+  plane: SketchFrame;
+  onPointer: (event: ToolEvent, u: number, v: number, snapRadius: number) => void;
 }
 
 /** What picking and hovering look for (facetry_pick_filter); keys 1–5. `Regions` takes only the
@@ -118,7 +135,12 @@ export class Viewport {
   readonly #scratch: number;
   readonly #cells: number;
   readonly #pointers = new Map<number, { x: number; y: number; startX: number; startY: number }>();
-  #gesture: "none" | "orbit" | "pan" | "select" | "touch" | "box" | "precise" = "none";
+  // "drawPending": a finger is down while drawing, but has neither moved nor lifted yet, so a
+  // second finger can still make it a navigation gesture.
+  #gesture:
+    "none" | "orbit" | "pan" | "select" | "touch" | "box" | "precise" | "draw" | "drawPending" =
+    "none";
+  #drawing: DrawingInput | null = null;
   #crosshair: HTMLDivElement | null = null;
   // Drags draw selection boxes (the Box toggle, for the Pencil and fingers).
   #boxMode = false;
@@ -215,6 +237,53 @@ export class Viewport {
     } finally {
       m._free(ids);
     }
+  }
+
+  /** What the sketch tool would draw next, drawn like the sketch, or nothing (null). */
+  setSketchPreview(mesh: MeshData | null): void {
+    if (mesh) {
+      this.#withMesh(mesh, (struct) =>
+        this.#m._facetry_renderer_set_sketch_preview(this.#renderer, struct),
+      );
+    } else {
+      this.#check(this.#m._facetry_renderer_set_sketch_preview(this.#renderer, 0));
+    }
+  }
+
+  /** While set, the left button, the pen and one finger draw instead of selecting or orbiting. */
+  setDrawing(input: DrawingInput | null): void {
+    this.#drawing = input;
+    if (!input && (this.#gesture === "draw" || this.#gesture === "drawPending")) {
+      this.#gesture = "none";
+    }
+  }
+
+  /** Where (x, y) lies on a sketch plane, and how far one point reaches there; null if the plane
+   * is seen edge-on. */
+  sketchPoint(
+    x: number,
+    y: number,
+    plane: SketchFrame,
+  ): { u: number; v: number; perPoint: number } | null {
+    const m = this.#m;
+    const values = m._malloc(12 * 4);
+    try {
+      m.HEAPF32.set([...plane.origin, ...plane.xAxis, ...plane.yAxis], values >> 2);
+      const status = m._facetry_renderer_sketch_point(this.#renderer, x, y, values, values + 36);
+      if (status !== 0) return null;
+      const out = m.HEAPF32.subarray((values + 36) >> 2, (values + 48) >> 2);
+      return { u: out[0] ?? 0, v: out[1] ?? 0, perPoint: out[2] ?? 0 };
+    } finally {
+      m._free(values);
+    }
+  }
+
+  #toolEvent(event: ToolEvent, x: number, y: number, pointerType: string): void {
+    const drawing = this.#drawing;
+    const point = drawing ? this.sketchPoint(x, y, drawing.plane) : null;
+    if (!drawing || !point) return;
+    const radius = PICK_RADIUS[pointerType] ?? 6;
+    drawing.onPointer(event, point.u, point.v, radius * point.perPoint);
   }
 
   /** Selects exactly `picks`. */
@@ -489,6 +558,7 @@ export class Viewport {
     this.#canvas.setPointerCapture(e.pointerId);
     const { x, y } = this.#local(e);
     this.#pointers.set(e.pointerId, { x, y, startX: x, startY: y });
+    if (this.#drawing && this.#drawingDown(e, x, y)) return;
     if (e.pointerType === "touch") {
       if (this.#pointers.size === 1) this.#touch = { start: e.timeStamp, fingers: 0, moved: false };
       this.#touch.fingers = Math.max(this.#touch.fingers, this.#pointers.size);
@@ -536,6 +606,36 @@ export class Viewport {
     if (action === Action.Orbit) this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
   }
 
+  // While drawing: the left button (without keys), the pen and one finger draw; Alt with the left
+  // button orbits; two fingers navigate. True if the event was handled.
+  #drawingDown(e: PointerEvent, x: number, y: number): boolean {
+    if (e.pointerType === "touch") {
+      if (this.#pointers.size === 1) {
+        this.#touch = { start: e.timeStamp, fingers: 1, moved: false };
+        this.#gesture = "drawPending";
+        return true;
+      }
+      if (this.#gesture === "draw") return true; // more fingers while drawing are ignored
+      // A second finger before the first moved: navigation.
+      this.#touch.fingers = Math.max(this.#touch.fingers, this.#pointers.size);
+      this.#gesture = "touch";
+      this.#beginTouchOrbit();
+      return true;
+    }
+    const plain = e.button === 0 && !e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey;
+    if (e.pointerType === "pen" || plain) {
+      this.#gesture = "draw";
+      this.#toolEvent(ToolEvent.Down, x, y, e.pointerType);
+      return true;
+    }
+    if (e.button === 0 && e.altKey) {
+      this.#gesture = "orbit";
+      this.#m._facetry_camera_orbit_begin(this.#renderer, x, y);
+      return true;
+    }
+    return false;
+  }
+
   // Orbits start at the point under one finger, or under the midpoint of two.
   #beginTouchOrbit(): void {
     const points = [...this.#pointers.values()];
@@ -549,6 +649,26 @@ export class Viewport {
   #pointerMove(e: PointerEvent): void {
     const { x, y } = this.#local(e);
     const pointer = this.#pointers.get(e.pointerId);
+    if (!pointer && this.#drawing && e.pointerType !== "touch") {
+      this.#toolEvent(ToolEvent.Move, x, y, e.pointerType); // the preview follows a hover
+      return;
+    }
+    if (pointer && this.#gesture === "drawPending") {
+      if (Math.hypot(x - pointer.startX, y - pointer.startY) > CLICK_SLOP) {
+        this.#gesture = "draw";
+        this.#toolEvent(ToolEvent.Down, pointer.startX, pointer.startY, e.pointerType);
+        this.#toolEvent(ToolEvent.Move, x, y, e.pointerType);
+      }
+      pointer.x = x;
+      pointer.y = y;
+      return;
+    }
+    if (pointer && this.#gesture === "draw") {
+      pointer.x = x;
+      pointer.y = y;
+      this.#toolEvent(ToolEvent.Move, x, y, e.pointerType);
+      return;
+    }
     if (!pointer) {
       // Hover: mouse, or a pen hovering above the screen.
       const radius = PICK_RADIUS[e.pointerType] ?? 6;
@@ -624,6 +744,17 @@ export class Viewport {
     const pointer = this.#pointers.get(e.pointerId);
     this.#pointers.delete(e.pointerId);
     window.clearTimeout(this.#longPress);
+    if (this.#gesture === "draw" || this.#gesture === "drawPending") {
+      // A tap or click while pending: down and up where it started.
+      const pending = this.#gesture === "drawPending";
+      if (this.#pointers.size === 0) this.#gesture = "none";
+      if (pointer && !cancelled) {
+        const at = pending ? { x: pointer.startX, y: pointer.startY } : pointer;
+        if (pending) this.#toolEvent(ToolEvent.Down, at.x, at.y, e.pointerType);
+        this.#toolEvent(ToolEvent.Up, at.x, at.y, e.pointerType);
+      }
+      return;
+    }
     if (this.#gesture === "precise" && this.#pointers.size === 0) {
       this.#gesture = "none";
       this.#updateCrosshair(null);

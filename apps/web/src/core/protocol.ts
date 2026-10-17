@@ -1,6 +1,13 @@
 // Messages between the UI thread (CoreClient) and the core worker (core.worker.ts).
 
-import type { FacetryCore, LogLevel, ModelSnapshot, TessellationOptions } from "./api";
+import type {
+  FacetryCore,
+  LogLevel,
+  MeshData,
+  ModelSnapshot,
+  TessellationOptions,
+  ToolEvent,
+} from "./api";
 import type { AutosaveEntry } from "./autosave";
 
 /** Core methods callable from the UI thread. */
@@ -27,7 +34,19 @@ export type CoreMethods = Pick<
   | "elementNames"
   | "makeReference"
   | "releaseSession"
+  | "createSketchTool"
+  | "cancelSketchTool"
+  | "releaseSketchTool"
 > & {
+  /** A pointer event for a sketch tool: whether the document changed, and the tool's preview. */
+  sketchToolEvent(
+    session: number,
+    tool: number,
+    event: ToolEvent,
+    u: number,
+    v: number,
+    snapRadius: number,
+  ): { changed: boolean; preview: MeshData };
   /**
    * Regenerates in steps (see regenerate.ts) and tessellates every body. Resolves with null when
    * a newer regeneration of the session, or releasing it, took over.

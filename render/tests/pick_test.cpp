@@ -107,12 +107,13 @@ TEST_CASE("sketch regions are picked over the model") {
         mesh.triangleFaceIds.insert(mesh.triangleFaceIds.end(), {r + 1, r + 1});
     }
     const PickIndex regions(mesh);
+    const PickIndex none;
     const auto left = camera.project({0.25F, 0.0F, 0.5F});
     const auto right = camera.project({0.75F, 0.0F, 0.5F});
     const auto between = camera.project({0.5F, 0.0F, 0.5F});
 
     const auto pick = [&](const Camera::Projected& at, PickFilter filter) {
-        return pickWithRegions(model, regions, camera, at.x, at.y, 6, false, filter);
+        return pickWithOverlays(model, {regions, none}, camera, at.x, at.y, 6, false, filter);
     };
     CHECK(pick(left, PickFilter::Everything).kind == PickKind::Region);
     CHECK(pick(left, PickFilter::Everything).id == 1);
@@ -122,17 +123,48 @@ TEST_CASE("sketch regions are picked over the model") {
     CHECK(pick(left, PickFilter::Faces).kind == PickKind::Face);
 
     // A click's candidates: the region, then the model's elements behind it.
-    const auto candidates = candidatesWithRegions(model, regions, camera, left.x, left.y, 6, false,
-                                                  PickFilter::Everything);
+    const auto candidates = candidatesWithOverlays(model, {regions, none}, camera, left.x, left.y,
+                                                   6, false, PickFilter::Everything);
     REQUIRE(candidates.size() >= 2);
     CHECK(candidates[0].kind == PickKind::Region);
     CHECK(candidates[1].kind == PickKind::Face);
-    CHECK(
-        candidatesWithRegions(model, regions, camera, left.x, left.y, 6, false, PickFilter::Regions)
-            .size() == 1);
+    CHECK(candidatesWithOverlays(model, {regions, none}, camera, left.x, left.y, 6, false,
+                                 PickFilter::Regions)
+              .size() == 1);
 
     // Without regions, picking is the model's.
-    CHECK(pickWithRegions(model, PickIndex(), camera, left.x, left.y, 6, false,
-                          PickFilter::Everything)
+    CHECK(pickWithOverlays(model, {none, none}, camera, left.x, left.y, 6, false,
+                           PickFilter::Everything)
               .kind == PickKind::Face);
+}
+
+TEST_CASE("sketch points and curves are picked over the model") {
+    const PickIndex model(test::unitCube());
+    const Camera camera = frontCamera(model);
+    // A sketch line across the front face, from (0.2, 0, 0.5) to (0.8, 0, 0.5), with its ends.
+    RenderMesh mesh;
+    mesh.edgePoints = {0.2F, 0.0F, 0.5F, 0.8F, 0.0F, 0.5F};
+    mesh.edgeOffsets = {0, 2};
+    mesh.edgeIds = {1};
+    mesh.vertexPositions = {0.2F, 0.0F, 0.5F, 0.8F, 0.0F, 0.5F};
+    mesh.vertexIds = {1, 2};
+    const PickIndex sketch(mesh);
+    const PickIndex none;
+    const auto pick = [&](Vec3 at, PickFilter filter) {
+        const auto p = camera.project(at);
+        return pickWithOverlays(model, {none, sketch}, camera, p.x, p.y, 6, false, filter);
+    };
+    const PickResult end = pick({0.8F, 0.0F, 0.5F}, PickFilter::Everything);
+    CHECK(end.kind == PickKind::SketchPoint);
+    CHECK(end.id == 2);
+    CHECK(pick({0.5F, 0.0F, 0.5F}, PickFilter::Everything).kind == PickKind::SketchCurve);
+    CHECK(pick({0.5F, 0.0F, 0.9F}, PickFilter::Everything).kind == PickKind::Face);
+    CHECK(pick({0.5F, 0.0F, 0.5F}, PickFilter::Faces).kind == PickKind::Face);
+
+    const auto p = camera.project({0.5F, 0.0F, 0.5F});
+    const auto candidates = candidatesWithOverlays(model, {none, sketch}, camera, p.x, p.y, 6,
+                                                   false, PickFilter::Everything);
+    REQUIRE(candidates.size() >= 2);
+    CHECK(candidates[0].kind == PickKind::SketchCurve);
+    CHECK(candidates[1].kind == PickKind::Face);
 }

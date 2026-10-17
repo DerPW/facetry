@@ -93,6 +93,32 @@ export interface FacetryCoreModule {
   ): number;
   _facetry_session_state(context: number, session: number, jsonOut: number): number;
   _facetry_session_body_shape(context: number, session: number, body: number, out: number): number;
+  _facetry_sketch_tool_create(
+    context: number,
+    sketch: number,
+    kind: number,
+    construction: number,
+    out: number,
+  ): number;
+  _facetry_sketch_tool_pointer(
+    context: number,
+    session: number,
+    tool: number,
+    event: number,
+    u: number,
+    v: number,
+    snapRadius: number,
+    out: number,
+  ): number;
+  _facetry_sketch_tool_cancel(context: number, tool: number, out: number): number;
+  _facetry_sketch_tool_preview(
+    context: number,
+    session: number,
+    tool: number,
+    deflection: number,
+    out: number,
+  ): number;
+  _facetry_sketch_tool_release(context: number, tool: number): number;
   _facetry_session_sketch_mesh(
     context: number,
     session: number,

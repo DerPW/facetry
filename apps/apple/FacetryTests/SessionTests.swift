@@ -141,6 +141,37 @@ struct SessionTests {
         #expect(state.features[3].frame?.normal == [0, -1, 0])
     }
 
+    @Test func sketchToolsDrawInTheCore() throws {
+        let core = try Core()
+        let session = try openExample(core)
+        try core.regenerate(session)
+        try core.beginTransaction(session, name: "Sketch")
+        let tool = try core.createSketchTool(sketch: "f1", kind: .circleCenter, construction: true)
+        let click = { (u: Double, v: Double) throws -> Bool in
+            _ = try core.sketchToolPointer(
+                session, tool: tool, event: .down, u: u, v: v, snapRadius: 0.1)
+            return try core.sketchToolPointer(
+                session, tool: tool, event: .up, u: u, v: v, snapRadius: 0.1)
+        }
+        #expect(try click(5, 3) == false)
+        _ = try core.sketchToolPointer(
+            session, tool: tool, event: .move, u: 6, v: 3, snapRadius: 0.1)
+        #expect(try core.sketchToolPreview(session, tool: tool).edgeIDs == [1])
+        #expect(try click(6, 3))
+        #expect(try core.cancelSketchTool(tool) == false)
+        try core.releaseSketchTool(tool)
+        try core.endTransaction(session, commit: true)
+        let sketch = try core.state(of: session).features[0]
+        #expect(sketch.sketchCurves.last?.construction == true)
+        #expect(sketch.sketchCurves.count == 5)
+
+        // The construction flag goes back off with an edit.
+        let circle = try #require(sketch.sketchCurves.last?.id)
+        try core.apply(
+            session, [.setConstruction(sketch: "f1", entities: [circle], construction: false)])
+        #expect(try core.state(of: session).features[0].sketchCurves.last?.construction == false)
+    }
+
     @Test func unitsChangeAndConvertEveryLength() throws {
         let core = try Core()
         let session = try openExample(core)

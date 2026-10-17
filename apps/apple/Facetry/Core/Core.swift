@@ -18,6 +18,63 @@ struct ShapeHandle: Hashable, Sendable {
     let rawValue: UInt32
 }
 
+/// A sketch drawing tool in a ``Core`` context (docs/adr/0015-sketch-tools.md).
+struct ToolHandle: Hashable, Sendable {
+    let rawValue: UInt32
+}
+
+/// The drawing tools (facetry_sketch_tool_kind), with their keys (docs/INPUT.md).
+enum SketchToolKind: UInt32, CaseIterable, Identifiable, Sendable {
+    case line = 0
+    case rectangleTwoPoint = 1
+    case rectangleThreePoint = 2
+    case rectangleCenter = 3
+    case circleCenter = 4
+    case circleTwoPoint = 5
+    case circleThreePoint = 6
+    case arcThreePoint = 7
+    case arcCenter = 8
+    case arcTangent = 9
+    case point = 10
+
+    var id: UInt32 { rawValue }
+
+    var title: String {
+        switch self {
+        case .line: "Line"
+        case .rectangleTwoPoint: "Rectangle: 2 corners"
+        case .rectangleThreePoint: "Rectangle: 3 points"
+        case .rectangleCenter: "Rectangle: center"
+        case .circleCenter: "Circle: center"
+        case .circleTwoPoint: "Circle: 2 points"
+        case .circleThreePoint: "Circle: 3 points"
+        case .arcThreePoint: "Arc: 3 points"
+        case .arcCenter: "Arc: center"
+        case .arcTangent: "Arc: tangent"
+        case .point: "Point"
+        }
+    }
+
+    /// The key that chooses it (docs/INPUT.md).
+    var key: Character? {
+        switch self {
+        case .line: "l"
+        case .rectangleTwoPoint: "r"
+        case .circleCenter: "c"
+        case .arcThreePoint: "a"
+        case .point: "p"
+        default: nil
+        }
+    }
+}
+
+/// A pointer event for a sketch tool (facetry_pointer_event).
+enum ToolEvent: UInt32, Sendable {
+    case down = 0
+    case move = 1
+    case up = 2
+}
+
 enum BooleanOperation {
     case fuse, cut, common
 
@@ -276,6 +333,8 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case replaceFeature(JSONValue)
     /// Adds a feature (a definition without `id`) at `index` in the timeline, or at the end.
     case addFeature(JSONValue, index: Int?)
+    /// Makes curves of a sketch construction curves, or normal ones again.
+    case setConstruction(sketch: String, entities: [String], construction: Bool)
     /// An empty name restores the default ("Body 1", …).
     case renameBody(id: String, name: String)
     case setBodyVisible(id: String, visible: Bool)
@@ -286,7 +345,8 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case setUnits(LengthUnit)
 
     private enum Key: String, CodingKey {
-        case op, name, value, id, suppressed, index, feature, visible, units, opacity
+        case op, name, value, id, suppressed, index, feature, visible, units, opacity, sketch
+        case entities, construction
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -324,6 +384,11 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
             try c.encode(op, forKey: .op)
             try c.encode(definition, forKey: .feature)
             try c.encodeIfPresent(index, forKey: .index)
+        case .setConstruction(let sketch, let entities, let construction):
+            try c.encode(op, forKey: .op)
+            try c.encode(sketch, forKey: .sketch)
+            try c.encode(entities, forKey: .entities)
+            try c.encode(construction, forKey: .construction)
         case .renameBody(let id, let name):
             try c.encode(op, forKey: .op)
             try c.encode(id, forKey: .id)
@@ -353,6 +418,7 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .setRollback: "setRollback"
         case .replaceFeature: "replaceFeature"
         case .addFeature: "addFeature"
+        case .setConstruction: "setConstruction"
         case .renameBody: "renameBody"
         case .setBodyVisible: "setBodyVisible"
         case .setOriginVisible: "setOriginVisible"
@@ -472,6 +538,52 @@ final class Core {
         try check(
             facetry_session_sketch_mesh(context, session.rawValue, sketch, deflection, &mesh))
         return try takeMesh(mesh)
+    }
+
+    // MARK: - Sketch tools
+
+    /// A drawing tool for the sketch feature `sketch`. Release it when done.
+    func createSketchTool(sketch: String, kind: SketchToolKind, construction: Bool) throws
+        -> ToolHandle
+    {
+        var handle: facetry_handle = 0
+        try check(
+            facetry_sketch_tool_create(
+                context, sketch, kind.rawValue, construction ? 1 : 0, &handle))
+        return ToolHandle(rawValue: handle)
+    }
+
+    /// A pointer event at (u, v) on the sketch plane in millimeters; positions within
+    /// `snapRadius` millimeters of a sketch point use it. True if the document changed.
+    func sketchToolPointer(
+        _ session: SessionHandle, tool: ToolHandle, event: ToolEvent, u: Double, v: Double,
+        snapRadius: Double
+    ) throws -> Bool {
+        var changed: Int32 = 0
+        try check(
+            facetry_sketch_tool_pointer(
+                context, session.rawValue, tool.rawValue, event.rawValue, u, v, snapRadius,
+                &changed))
+        return changed != 0
+    }
+
+    /// Esc: drops the shape in progress. False if nothing was in progress.
+    func cancelSketchTool(_ tool: ToolHandle) throws -> Bool {
+        var busy: Int32 = 0
+        try check(facetry_sketch_tool_cancel(context, tool.rawValue, &busy))
+        return busy != 0
+    }
+
+    /// What the tool would draw next, like ``sketchMesh(_:sketch:deflection:)``.
+    func sketchToolPreview(_ session: SessionHandle, tool: ToolHandle) throws -> MeshData {
+        var mesh: facetry_handle = 0
+        try check(
+            facetry_sketch_tool_preview(context, session.rawValue, tool.rawValue, 0.01, &mesh))
+        return try takeMesh(mesh)
+    }
+
+    func releaseSketchTool(_ tool: ToolHandle) throws {
+        try check(facetry_sketch_tool_release(context, tool.rawValue))
     }
 
     /// Copies a mesh out of the core and releases it.

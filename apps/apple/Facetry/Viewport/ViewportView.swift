@@ -30,6 +30,11 @@ final class ViewportModel {
     var regions: RegionChoice?
     /// The sketch being edited, drawn over everything.
     var sketch: SketchDisplay?
+    /// What the sketch tool would draw next.
+    var sketchPreview: MeshData?
+    /// While set, the left button, the Pencil and one finger draw with a sketch tool instead of
+    /// selecting or orbiting (docs/INPUT.md).
+    @ObservationIgnored var drawing: DrawingInput?
     /// The selection box being dragged, in view points; drawn by ``SelectionBoxOverlay``.
     fileprivate(set) var selectionBox: (start: CGPoint, end: CGPoint)?
     /// Where the precision selector's crosshair points (#38), above the finger.
@@ -89,6 +94,13 @@ final class ViewportModel {
     }
 }
 
+/// Pointer input for a sketch drawing tool: events on the sketch plane, in millimeters along its
+/// axes, with the snap radius for the pointer.
+struct DrawingInput {
+    let plane: SketchPlane
+    let onPointer: (ToolEvent, Double, Double, Double) -> Void
+}
+
 /// A sketch for display: its mesh and the edge IDs of its construction curves (dashed).
 struct SketchDisplay: Equatable {
     let mesh: MeshData
@@ -119,6 +131,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownPickFilter: (filter: PickFilter, regionsOnly: Bool)?
     private var shownRegions: RegionChoice?
     private var shownSketch: SketchDisplay?
+    private var shownPreview: MeshData?
     private var shownGrid: (visible: Bool, unit: Double)?
     private var shownStyle: (style: VisualStyle, opacity: Double)?
     private var lastFrameTime: CFTimeInterval = 0
@@ -191,6 +204,14 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
                 model.error = "\(error)"
             }
             shownSketch = model.sketch
+        }
+        if model.sketchPreview != shownPreview {
+            do {
+                try renderer.setSketchPreview(model.sketchPreview)
+            } catch {
+                model.error = "\(error)"
+            }
+            shownPreview = model.sketchPreview
         }
         let regionsOnly = model.regions != nil
         if shownPickFilter?.filter != model.pickFilter
@@ -280,6 +301,19 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     }
 
     // MARK: - Input, shared by both platforms
+
+    /// A pointer event for the sketch tool at `point` on screen; `radius` is the pointer's pick
+    /// radius in points. False if no tool is drawing.
+    @discardableResult
+    func toolEvent(_ event: ToolEvent, at point: CGPoint, radius: Double) -> Bool {
+        guard let drawing = model.drawing else { return false }
+        if let renderer, let spot = renderer.sketchPoint(at: point, on: drawing.plane) {
+            drawing.onPointer(event, spot.u, spot.v, radius * spot.perPoint)
+        }
+        return true
+    }
+
+    var isDrawing: Bool { model.drawing != nil }
 
     func hover(at point: CGPoint, radius: Double) {
         guard let renderer else { return }
@@ -384,6 +418,8 @@ struct SelectionBoxOverlay: View {
         private var lastPoint: CGPoint = .zero
         private var dragAction = NavigationPreset.Action.none
         private var lastScroll: TimeInterval = 0
+        /// The left button is down for a sketch tool.
+        private var drawingPress = false
 
         private var navigation: NavigationPreset {
             coordinator?.model.navigation ?? .facetry
@@ -406,10 +442,31 @@ struct SelectionBoxOverlay: View {
         }
 
         override func mouseMoved(with event: NSEvent) {
+            if coordinator?.toolEvent(.move, at: location(event), radius: PickRadius.mouse) == true
+            {
+                return  // the tool's preview follows the pointer
+            }
             coordinator?.hover(at: location(event), radius: PickRadius.mouse)
         }
 
         override func mouseDown(with event: NSEvent) {
+            // While drawing, the left button draws; with Option it orbits (docs/INPUT.md).
+            if coordinator?.isDrawing == true {
+                let keys = event.modifierFlags.intersection([.shift, .command, .control, .option])
+                if keys.isEmpty {
+                    drawingPress = true
+                    coordinator?.toolEvent(.down, at: location(event), radius: PickRadius.mouse)
+                    return
+                }
+                if keys == .option {
+                    let point = location(event)
+                    dragStart = point
+                    lastPoint = point
+                    dragAction = .orbit
+                    coordinator?.renderer?.orbitBegin(at: point)
+                    return
+                }
+            }
             begin(event, button: .left)
             if coordinator?.model.boxMode == true { dragAction = .select }
         }
@@ -418,12 +475,23 @@ struct SelectionBoxOverlay: View {
             // Button 2 is the middle button; further buttons pan like it.
             begin(event, button: .middle)
         }
-        override func mouseDragged(with event: NSEvent) { drag(event) }
+        override func mouseDragged(with event: NSEvent) {
+            if drawingPress {
+                coordinator?.toolEvent(.move, at: location(event), radius: PickRadius.mouse)
+                return
+            }
+            drag(event)
+        }
         override func rightMouseDragged(with event: NSEvent) { drag(event) }
         override func otherMouseDragged(with event: NSEvent) { drag(event) }
 
         override func mouseUp(with event: NSEvent) {
             let point = location(event)
+            if drawingPress {
+                drawingPress = false
+                coordinator?.toolEvent(.up, at: point, radius: PickRadius.mouse)
+                return
+            }
             let add = !event.modifierFlags.intersection([.shift, .command]).isEmpty
             if dragAction == .select, let start = dragStart,
                 hypot(point.x - start.x, point.y - start.y) > 4
@@ -533,6 +601,8 @@ struct SelectionBoxOverlay: View {
         private var boxStart: CGPoint?
         /// The precision selector is running (a long press over geometry).
         private var precise = false
+        /// The one-touch drag draws with a sketch tool.
+        private var drawingTouch = false
 
         private var navigation: NavigationPreset {
             coordinator?.model.navigation ?? .facetry
@@ -589,6 +659,30 @@ struct SelectionBoxOverlay: View {
             switch recognizer.state {
             case .began:
                 lastTranslation = .zero
+                // While drawing, the Pencil, a finger and the left mouse button draw: the drag
+                // starts where the touch went down (docs/INPUT.md).
+                let mouseButton =
+                    gestureDelegate.lastTouchType == .indirectPointer
+                    && !recognizer.buttonMask.contains(.secondary)
+                    && !recognizer.buttonMask.contains(.button(3))
+                let keys = recognizer.modifierFlags.intersection([
+                    .shift, .command, .control, .alternate,
+                ])
+                if coordinator?.isDrawing == true,
+                    gestureDelegate.lastTouchType != .indirectPointer
+                        || (mouseButton && keys.isEmpty)
+                {
+                    drawingTouch = true
+                    let toolRadius = radius(for: gestureDelegate.lastTouchType)
+                    let start = CGPoint(
+                        x: recognizer.location(in: self).x - translation.x,
+                        y: recognizer.location(in: self).y - translation.y)
+                    coordinator?.toolEvent(.down, at: start, radius: toolRadius)
+                    coordinator?.toolEvent(
+                        .move, at: recognizer.location(in: self), radius: toolRadius)
+                    return
+                }
+                drawingTouch = false
                 switch gestureDelegate.lastTouchType {
                 case .indirectPointer:
                     // The button that started the drag: a mouse's right or middle button too.
@@ -618,12 +712,25 @@ struct SelectionBoxOverlay: View {
                     coordinator?.renderer?.orbitBegin(at: recognizer.location(in: self))
                 }
             case .changed:
+                if drawingTouch {
+                    coordinator?.toolEvent(
+                        .move, at: recognizer.location(in: self),
+                        radius: radius(for: gestureDelegate.lastTouchType))
+                    return
+                }
                 if oneTouchAction == .select, let boxStart {
                     coordinator?.updateBox(from: boxStart, to: recognizer.location(in: self))
                 } else {
                     move(oneTouchAction, by: translation, from: &lastTranslation)
                 }
             case .ended:
+                if drawingTouch {
+                    drawingTouch = false
+                    coordinator?.toolEvent(
+                        .up, at: recognizer.location(in: self),
+                        radius: radius(for: gestureDelegate.lastTouchType))
+                    return
+                }
                 if oneTouchAction == .select, let start = boxStart {
                     coordinator?.finishBox(
                         from: start, to: recognizer.location(in: self),
@@ -631,6 +738,7 @@ struct SelectionBoxOverlay: View {
                 }
                 boxStart = nil
             default:
+                drawingTouch = false
                 if oneTouchAction == .select { coordinator?.updateBox(from: nil) }
                 boxStart = nil
             }
@@ -639,6 +747,7 @@ struct SelectionBoxOverlay: View {
         // A finger held still: over geometry the precision selector (a crosshair above the
         // finger, selecting where it points on release), over empty space a selection box.
         @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard coordinator?.isDrawing != true else { return }  // drawing has no long press
             let location = recognizer.location(in: self)
             let aim = CGPoint(x: location.x, y: location.y - Self.precisionOffset)
             switch recognizer.state {
@@ -753,9 +862,17 @@ struct SelectionBoxOverlay: View {
         }
 
         @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+            // While drawing, a tap is a click for the tool.
+            let pickRadius = radius(for: gestureDelegate.lastTouchType)
+            if coordinator?.isDrawing == true {
+                let point = recognizer.location(in: self)
+                coordinator?.toolEvent(.down, at: point, radius: pickRadius)
+                coordinator?.toolEvent(.up, at: point, radius: pickRadius)
+                return
+            }
             coordinator?.select(
                 at: recognizer.location(in: self),
-                radius: radius(for: gestureDelegate.lastTouchType),
+                radius: pickRadius,
                 toggle: !recognizer.modifierFlags.intersection([.shift, .command]).isEmpty
             )
         }
@@ -765,6 +882,12 @@ struct SelectionBoxOverlay: View {
             case .began, .changed:
                 // Hover comes from a hovering Pencil (zOffset > 0) or a trackpad/mouse pointer.
                 let pencil = recognizer.zOffset > 0
+                if coordinator?.toolEvent(
+                    .move, at: recognizer.location(in: self),
+                    radius: pencil ? PickRadius.pencil : PickRadius.mouse) == true
+                {
+                    return
+                }
                 coordinator?.hover(
                     at: recognizer.location(in: self),
                     radius: pencil ? PickRadius.pencil : PickRadius.mouse)

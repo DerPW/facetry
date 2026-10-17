@@ -47,6 +47,7 @@ constexpr std::array<float, 4> kRegionOutline = {0.08F, 0.32F, 0.80F, 0.9F};
 constexpr std::array<float, 4> kSketchCurve = {0.05F, 0.22F, 0.70F, 1.0F};
 constexpr std::array<float, 4> kSketchConstruction = {0.90F, 0.45F, 0.10F, 1.0F};
 constexpr std::array<float, 4> kSketchPoint = {0.05F, 0.10F, 0.30F, 1.0F};
+constexpr std::array<float, 4> kSketchPreview = {0.30F, 0.55F, 1.00F, 1.0F};
 constexpr float kSketchCurveHalfWidth = 0.9F;
 constexpr float kSketchPointRadius = 2.5F;
 constexpr std::array<float, 4> kGridMinor = {0.0F, 0.0F, 0.0F, 0.07F};
@@ -85,6 +86,34 @@ void destroy(sg_buffer& buffer) {
         buffer = {};
     }
 }
+
+// A sketch drawn over everything: segments of its curves and of its construction curves (dashed)
+// and its points, each with the curve or point ID (1-based) and a selection flag.
+struct SketchLayer {
+    sg_buffer curves{};
+    sg_buffer construction{};
+    sg_buffer points{};
+    sg_buffer curveFlags{};
+    sg_buffer constructionFlags{};
+    sg_buffer pointFlags{};
+    std::vector<std::uint32_t> curveIds;
+    std::vector<std::uint32_t> constructionIds;
+    std::vector<std::uint32_t> pointIds;
+
+    void upload(const RenderMesh& mesh, std::span<const std::uint32_t> constructionCurves);
+    // Flags the curves and points in `selection` (none for a preview).
+    void flag(const Selection* selection);
+
+    void release() {
+        for (sg_buffer* buffer :
+             {&curves, &construction, &points, &curveFlags, &constructionFlags, &pointFlags}) {
+            destroy(*buffer);
+        }
+        curveIds.clear();
+        constructionIds.clear();
+        pointIds.clear();
+    }
+};
 
 // Triangles on the GPU: positions, normals, a face ID per mesh vertex and indices.
 struct TriangleBuffers {
@@ -198,23 +227,9 @@ struct Renderer::Gpu {
         segmentCount = vertexCount = 0;
     }
 
-    // The sketch being edited: segments of its curves and of its construction curves, its points,
-    // and all-zero flags for the shaders' selection inputs.
-    sg_buffer sketchCurves{};
-    sg_buffer sketchConstruction{};
-    sg_buffer sketchPoints{};
-    sg_buffer sketchFlags{};
-    std::uint32_t sketchCurveCount = 0;
-    std::uint32_t sketchConstructionCount = 0;
-    std::uint32_t sketchPointCount = 0;
-
-    void releaseSketch() {
-        destroy(sketchCurves);
-        destroy(sketchConstruction);
-        destroy(sketchPoints);
-        destroy(sketchFlags);
-        sketchCurveCount = sketchConstructionCount = sketchPointCount = 0;
-    }
+    // The sketch being edited, and what the sketch tool would draw next.
+    SketchLayer sketch;
+    SketchLayer preview;
 
     void releaseRegions() {
         regions.release();
@@ -401,6 +416,8 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
 }
 
 Renderer::~Renderer() {
+    gpu_->sketch.release();
+    gpu_->preview.release();
     gpu_.reset();
     if (gSokolActive) {
         sg_shutdown();
@@ -534,40 +551,76 @@ void Renderer::setRegions(const RenderMesh& mesh) {
     }
 }
 
-void Renderer::setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction) {
-    Gpu& g = *gpu_;
-    g.releaseSketch();
+void SketchLayer::upload(const RenderMesh& mesh,
+                         std::span<const std::uint32_t> constructionCurves) {
+    release();
     std::vector<std::uint32_t> edgeIds;
     const std::vector<float> segments = edgeSegments(mesh, edgeIds);
-    std::vector<float> curves;
+    std::vector<float> solid;
     std::vector<float> dashed;
     for (std::size_t i = 0; i < edgeIds.size(); ++i) {
-        const bool isConstruction =
-            std::find(construction.begin(), construction.end(), edgeIds[i]) != construction.end();
-        auto& target = isConstruction ? dashed : curves;
+        const bool isConstruction = std::find(constructionCurves.begin(), constructionCurves.end(),
+                                              edgeIds[i]) != constructionCurves.end();
+        auto& target = isConstruction ? dashed : solid;
         target.insert(target.end(), segments.begin() + static_cast<std::ptrdiff_t>(i * 7),
                       segments.begin() + static_cast<std::ptrdiff_t>(i * 7 + 7));
+        (isConstruction ? constructionIds : curveIds).push_back(edgeIds[i]);
     }
-    std::vector<float> points;
+    std::vector<float> dots;
     for (std::size_t v = 0; v < mesh.vertexIds.size(); ++v) {
         const float* p = &mesh.vertexPositions[v * 3];
-        points.insert(points.end(), {p[0], p[1], p[2], static_cast<float>(mesh.vertexIds[v])});
+        dots.insert(dots.end(), {p[0], p[1], p[2], static_cast<float>(mesh.vertexIds[v])});
+        pointIds.push_back(mesh.vertexIds[v]);
     }
-    g.sketchCurveCount = static_cast<std::uint32_t>(curves.size() / 7);
-    g.sketchConstructionCount = static_cast<std::uint32_t>(dashed.size() / 7);
-    g.sketchPointCount = static_cast<std::uint32_t>(points.size() / 4);
-    if (!curves.empty()) {
-        g.sketchCurves = makeBuffer(curves, false, "sketch curves");
+    if (!solid.empty()) {
+        curves = makeBuffer(solid, false, "sketch curves");
     }
     if (!dashed.empty()) {
-        g.sketchConstruction = makeBuffer(dashed, false, "sketch construction curves");
+        construction = makeBuffer(dashed, false, "sketch construction curves");
     }
-    if (!points.empty()) {
-        g.sketchPoints = makeBuffer(points, false, "sketch points");
+    if (!dots.empty()) {
+        points = makeBuffer(dots, false, "sketch points");
     }
-    const std::size_t flags = std::max(
-        {g.sketchCurveCount, g.sketchConstructionCount, g.sketchPointCount, std::uint32_t{1}});
-    g.sketchFlags = makeBuffer(std::vector<float>(flags, 0.0F), false, "sketch flags");
+    flag(nullptr);
+}
+
+void SketchLayer::flag(const Selection* selection) {
+    const auto update = [&](sg_buffer& buffer, const std::vector<std::uint32_t>& ids,
+                            PickKind kind) {
+        destroy(buffer);
+        if (ids.empty()) {
+            return;
+        }
+        std::vector<float> flags(ids.size(), 0.0F);
+        for (std::size_t i = 0; selection != nullptr && i < ids.size(); ++i) {
+            flags[i] = selection->contains({kind, ids[i]}) ? 1.0F : 0.0F;
+        }
+        buffer = makeBuffer(flags, false, "sketch flags");
+    };
+    update(curveFlags, curveIds, PickKind::SketchCurve);
+    update(constructionFlags, constructionIds, PickKind::SketchCurve);
+    update(pointFlags, pointIds, PickKind::SketchPoint);
+}
+
+void Renderer::setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction) {
+    gpu_->sketch.upload(mesh, construction);
+    sketch_ = PickIndex(mesh);
+    // Curve and point IDs change with the sketch, so selected ones are forgotten.
+    const std::vector<Element> kept = selection_.elements();
+    selection_.clear();
+    for (const Element& element : kept) {
+        if (element.kind != PickKind::SketchCurve && element.kind != PickKind::SketchPoint) {
+            selection_.add(element);
+        }
+    }
+    if (highlight_.hoverKind == PickKind::SketchCurve ||
+        highlight_.hoverKind == PickKind::SketchPoint) {
+        highlight_ = {};
+    }
+}
+
+void Renderer::setSketchPreview(const RenderMesh& mesh) {
+    gpu_->preview.upload(mesh, {});
 }
 
 void Renderer::setViewport(float width, float height, float pixelRatio) {
@@ -584,12 +637,13 @@ void Renderer::orbit(float dx, float dy) {
 }
 
 PickResult Renderer::pick(float x, float y, float radius) const {
-    return pickWithRegions(pick_, regions_, camera_, x, y, radius, picksThroughFaces(), filter_);
+    return pickWithOverlays(pick_, {regions_, sketch_}, camera_, x, y, radius, picksThroughFaces(),
+                            filter_);
 }
 
 PickResult Renderer::click(float x, float y, float radius, bool toggle) {
-    const auto candidates =
-        candidatesWithRegions(pick_, regions_, camera_, x, y, radius, picksThroughFaces(), filter_);
+    const auto candidates = candidatesWithOverlays(pick_, {regions_, sketch_}, camera_, x, y,
+                                                   radius, picksThroughFaces(), filter_);
     if (toggle) {
         clickCycle_.reset();
         const PickResult pick = candidates.empty() ? PickResult{} : candidates.front();
@@ -634,6 +688,7 @@ void Renderer::updateSelectionFlags() {
     };
     update(g.faces.selected, g.faces.vertexFaceIds, PickKind::Face, "selected faces");
     update(g.regions.selected, g.regions.vertexFaceIds, PickKind::Region, "selected regions");
+    g.sketch.flag(&selection_);
     update(g.segmentSelected, g.segmentEdgeIds, PickKind::Edge, "selected edges");
     update(g.vertexSelected, g.dotVertexIds, PickKind::Vertex, "selected vertices");
 }
@@ -650,9 +705,18 @@ bool Renderer::picksThroughFaces() const {
 void Renderer::fitSelection() {
     Bounds bounds;
     for (const Element& element : selection_.elements()) {
-        const Bounds element_bounds = element.kind == PickKind::Region
-                                          ? regions_.elementBounds(PickKind::Face, element.id)
-                                          : pick_.elementBounds(element.kind, element.id);
+        const Bounds element_bounds = [&] {
+            switch (element.kind) {
+                case PickKind::Region:
+                    return regions_.elementBounds(PickKind::Face, element.id);
+                case PickKind::SketchCurve:
+                    return sketch_.elementBounds(PickKind::Edge, element.id);
+                case PickKind::SketchPoint:
+                    return sketch_.elementBounds(PickKind::Vertex, element.id);
+                default:
+                    return pick_.elementBounds(element.kind, element.id);
+            }
+        }();
         if (!element_bounds.isEmpty()) {
             bounds.merge(element_bounds);
         }
@@ -886,54 +950,72 @@ void Renderer::draw(const FrameTarget& target) {
         sg_draw(0, 6, static_cast<int>(g.regionSegmentCount));
     }
 
-    // The sketch being edited, over everything.
-    const auto sketchCurves = [&](sg_buffer segments, std::uint32_t count, bool construction) {
-        edge_vs_params_t vs{};
-        copyMatrix(vs.view_proj, viewProjection);
-        std::memcpy(vs.viewport, viewport, sizeof(viewport));
-        vs.viewport[2] = kSketchCurveHalfWidth * pixelRatio_;
-        vs.viewport[3] = kSketchCurveHalfWidth * pixelRatio_;
-        edge_fs_params_t fs{};
-        copy4(fs.color, construction ? kSketchConstruction : kSketchCurve);
-        fs.ids[2] = construction ? kDashPeriod * pixelRatio_ : 0.0F;
+    // The sketch being edited and the tool's preview, over everything. Picked sketch curves
+    // and points highlight like edges and vertices.
+    const auto sketchLayer = [&](const SketchLayer& layer, bool preview) {
+        const float hoverCurve =
+            preview ? 0.0F : idFor(h.hoverKind, PickKind::SketchCurve, h.hoverId);
+        const auto curves = [&](sg_buffer segments, sg_buffer flags, std::size_t count,
+                                bool construction) {
+            if (count == 0) {
+                return;
+            }
+            edge_vs_params_t vs{};
+            copyMatrix(vs.view_proj, viewProjection);
+            std::memcpy(vs.viewport, viewport, sizeof(viewport));
+            vs.viewport[2] = kSketchCurveHalfWidth * pixelRatio_;
+            vs.viewport[3] = kEdgeHalfWidthHighlighted * pixelRatio_;
+            vs.ids[0] = hoverCurve;
+            edge_fs_params_t fs{};
+            copy4(fs.color, preview        ? kSketchPreview
+                            : construction ? kSketchConstruction
+                                           : kSketchCurve);
+            copy4(fs.hover_color, kHoverColor);
+            copy4(fs.select_color, kSelectColor);
+            fs.ids[0] = hoverCurve;
+            fs.ids[2] = construction ? kDashPeriod * pixelRatio_ : 0.0F;
 
-        sg_bindings bindings{};
-        bindings.vertex_buffers[0] = g.edgeQuad;
-        bindings.vertex_buffers[1] = segments;
-        bindings.vertex_buffers[2] = g.sketchFlags;
-        bindings.index_buffer = g.quadIndices;
-        sg_apply_pipeline(g.regionOutlinePipeline);
-        sg_apply_bindings(&bindings);
-        sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
-        sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
-        sg_draw(0, 6, static_cast<int>(count));
-    };
-    if (g.sketchConstructionCount > 0) {
-        sketchCurves(g.sketchConstruction, g.sketchConstructionCount, /*construction=*/true);
-    }
-    if (g.sketchCurveCount > 0) {
-        sketchCurves(g.sketchCurves, g.sketchCurveCount, /*construction=*/false);
-    }
-    if (g.sketchPointCount > 0) {
+            sg_bindings bindings{};
+            bindings.vertex_buffers[0] = g.edgeQuad;
+            bindings.vertex_buffers[1] = segments;
+            bindings.vertex_buffers[2] = flags;
+            bindings.index_buffer = g.quadIndices;
+            sg_apply_pipeline(g.regionOutlinePipeline);
+            sg_apply_bindings(&bindings);
+            sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
+            sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
+            sg_draw(0, 6, static_cast<int>(count));
+        };
+        curves(layer.construction, layer.constructionFlags, layer.constructionIds.size(), true);
+        curves(layer.curves, layer.curveFlags, layer.curveIds.size(), false);
+        if (layer.pointIds.empty()) {
+            return;
+        }
         point_vs_params_t vs{};
         copyMatrix(vs.view_proj, viewProjection);
         std::memcpy(vs.viewport, viewport, sizeof(viewport));
         vs.viewport[2] = kSketchPointRadius * pixelRatio_;
-        vs.viewport[3] = kSketchPointRadius * pixelRatio_;
+        vs.viewport[3] = kVertexRadiusHighlighted * pixelRatio_;
+        vs.ids[0] = preview ? 0.0F : idFor(h.hoverKind, PickKind::SketchPoint, h.hoverId);
         point_fs_params_t fs{};
-        copy4(fs.color, kSketchPoint);
+        copy4(fs.color, preview ? kSketchPreview : kSketchPoint);
+        copy4(fs.hover_color, kHoverColor);
+        copy4(fs.select_color, kSelectColor);
+        fs.ids[0] = vs.ids[0];
 
         sg_bindings bindings{};
         bindings.vertex_buffers[0] = g.pointQuad;
-        bindings.vertex_buffers[1] = g.sketchPoints;
-        bindings.vertex_buffers[2] = g.sketchFlags;
+        bindings.vertex_buffers[1] = layer.points;
+        bindings.vertex_buffers[2] = layer.pointFlags;
         bindings.index_buffer = g.quadIndices;
         sg_apply_pipeline(g.sketchPointPipeline);
         sg_apply_bindings(&bindings);
         sg_apply_uniforms(UB_point_vs_params, SG_RANGE(vs));
         sg_apply_uniforms(UB_point_fs_params, SG_RANGE(fs));
-        sg_draw(0, 6, static_cast<int>(g.sketchPointCount));
-    }
+        sg_draw(0, 6, static_cast<int>(layer.pointIds.size()));
+    };
+    sketchLayer(g.sketch, /*preview=*/false);
+    sketchLayer(g.preview, /*preview=*/true);
 
     sg_end_pass();
     sg_commit();
