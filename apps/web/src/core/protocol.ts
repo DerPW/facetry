@@ -19,6 +19,8 @@ export type CoreMethods = Pick<
   | "saveSessionFile"
   | "applyEdits"
   | "undo"
+  | "beginTransaction"
+  | "endTransaction"
   | "redo"
   | "sessionState"
   | "elementNames"

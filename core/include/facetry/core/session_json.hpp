@@ -37,10 +37,15 @@ namespace facetry::core {
 // changed then; Session::edit() applies edits to a copy, so a session is never left half-edited.
 void applyEdits(Document& document, std::string_view json);
 
+// The undo step name for edits, e.g. "Rename feature" or "Change width"; for several edits the
+// name of the first. "Edit" if the JSON cannot be read (applyEdits() reports that).
+[[nodiscard]] std::string editName(std::string_view json);
+
 // Summary of a session for the shells:
 //
 //   {"parameters": [{"name": "width", "value": 10}],
-//    "rollback": null, "canUndo": true, "canRedo": false, "needsRegeneration": false,
+//    "rollback": null, "canUndo": true, "canRedo": false, "undoName": "Change width",
+//    "redoName": null, "inTransaction": false, "undoCount": 1, "needsRegeneration": false,
 //    "features": [{"id": "f5", "name": "Fillet 1", "type": "fillet", "suppressed": false,
 //                  "status": "ok", "messages": [], "brokenReferences": [],
 //                  "dependents": [], "definition": {…}}],

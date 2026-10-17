@@ -1,5 +1,7 @@
 #include "facetry/core/session.hpp"
 
+#include "facetry/core/error.hpp"
+
 #include <utility>
 
 namespace facetry::core {
@@ -8,34 +10,92 @@ Session::Session(Document document) : document_(std::move(document)) {
     validate(document_);
 }
 
-void Session::edit(const std::function<void(Document&)>& change) {
+void Session::edit(const std::function<void(Document&)>& change, std::string_view name) {
     Document next = document_;
     change(next);
     validate(next);
-    undo_.push_back(std::move(document_));
+    if (next == document_) {
+        return;
+    }
+    if (!transaction_) {
+        undo_.push_back({.document = std::move(document_), .name = std::string(name)});
+        redo_.clear();
+    }
     document_ = std::move(next);
-    redo_.clear();
     stale_ = true;
 }
 
+void Session::beginTransaction(std::string_view name) {
+    if (transaction_) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "\"" + transaction_->name + "\" is still open; finish it first");
+    }
+    transaction_ = Step{.document = document_, .name = std::string(name)};
+}
+
+void Session::commitTransaction() {
+    if (!transaction_) {
+        throw Error(ErrorCode::InvalidArgument, "There is no open transaction to commit");
+    }
+    Step step = std::move(*transaction_);
+    transaction_.reset();
+    if (step.document != document_) {
+        undo_.push_back(std::move(step));
+        redo_.clear();
+    }
+}
+
+void Session::cancelTransaction() {
+    if (!transaction_) {
+        throw Error(ErrorCode::InvalidArgument, "There is no open transaction to cancel");
+    }
+    if (transaction_->document != document_) {
+        document_ = std::move(transaction_->document);
+        stale_ = true;
+    }
+    transaction_.reset();
+}
+
+std::string_view Session::undoName() const noexcept {
+    return undo_.empty() ? std::string_view{} : std::string_view(undo_.back().name);
+}
+
+std::string_view Session::redoName() const noexcept {
+    return redo_.empty() ? std::string_view{} : std::string_view(redo_.back().name);
+}
+
+namespace {
+
+void requireNoTransaction(bool open) {
+    if (open) {
+        throw Error(ErrorCode::InvalidArgument, "Finish the current tool before undo or redo");
+    }
+}
+
+}  // namespace
+
 bool Session::undo() {
+    requireNoTransaction(transaction_.has_value());
     if (undo_.empty()) {
         return false;
     }
-    redo_.push_back(std::move(document_));
-    document_ = std::move(undo_.back());
+    Step step = std::move(undo_.back());
     undo_.pop_back();
+    redo_.push_back({.document = std::move(document_), .name = step.name});
+    document_ = std::move(step.document);
     stale_ = true;
     return true;
 }
 
 bool Session::redo() {
+    requireNoTransaction(transaction_.has_value());
     if (redo_.empty()) {
         return false;
     }
-    undo_.push_back(std::move(document_));
-    document_ = std::move(redo_.back());
+    Step step = std::move(redo_.back());
     redo_.pop_back();
+    undo_.push_back({.document = std::move(document_), .name = step.name});
+    document_ = std::move(step.document);
     stale_ = true;
     return true;
 }

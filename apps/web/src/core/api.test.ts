@@ -126,6 +126,22 @@ describe("FacetryCore (WebAssembly)", () => {
       expect(() => core.openSessionFile(new TextEncoder().encode("junk"))).toThrow(CoreError);
     });
 
+    it("names undo steps and groups transactions", () => {
+      const session = core.openSession(example);
+      core.applyEdits(session, { op: "renameFeature", id: "f2", name: "Block" });
+      expect(core.sessionState(session).undoName).toBe("Rename feature");
+      core.beginTransaction(session, "Extrude tool");
+      core.applyEdits(session, { op: "setParameter", name: "height", value: 7 });
+      core.applyEdits(session, { op: "setParameter", name: "width", value: 9 });
+      expect(core.sessionState(session).inTransaction).toBe(true);
+      core.endTransaction(session, true);
+      expect(core.sessionState(session).undoName).toBe("Extrude tool");
+      expect(core.undo(session)).toBe(true);
+      expect(core.sessionState(session).parameters.map((p) => p.value)).toEqual([10, 6, 4, 1.5]);
+      expect(core.sessionState(session).redoName).toBe("Extrude tool");
+      core.releaseSession(session);
+    });
+
     it("cancels from the progress callback", () => {
       const session = core.openSession(example);
       const calls: number[] = [];

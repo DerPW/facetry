@@ -112,6 +112,13 @@ struct SessionState: Decodable, Sendable, Equatable {
     let rollback: Int?
     let canUndo: Bool
     let canRedo: Bool
+    /// Names of the steps undo and redo would take back or repeat, e.g. "Rename feature".
+    let undoName: String?
+    let redoName: String?
+    /// A transaction (one undo step for a whole tool) is open.
+    let inTransaction: Bool
+    /// Number of steps undo can take back.
+    let undoCount: Int
     let needsRegeneration: Bool
     let features: [Feature]
     /// Bodies of the last regeneration; a body's ID is the ID of the feature that created it.
@@ -450,6 +457,16 @@ final class Core {
     /// Applies one edit or a JSON array of edits (see core/include/facetry/core/session_json.hpp).
     func apply(_ session: SessionHandle, json: String) throws {
         try check(facetry_session_apply(context, session.rawValue, json))
+    }
+
+    /// Groups the following edits into one undo step until ``endTransaction(_:commit:)``.
+    func beginTransaction(_ session: SessionHandle, name: String) throws {
+        try check(facetry_session_begin_transaction(context, session.rawValue, name))
+    }
+
+    /// Commits the open transaction as one undo step, or cancels it (restoring the document).
+    func endTransaction(_ session: SessionHandle, commit: Bool) throws {
+        try check(facetry_session_end_transaction(context, session.rawValue, commit ? 1 : 0))
     }
 
     /// Returns false if there was nothing to undo.

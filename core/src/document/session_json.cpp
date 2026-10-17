@@ -261,6 +261,42 @@ std::map<std::string, std::vector<std::string>> dependents(const std::vector<Fea
     return result;
 }
 
+std::string stepName(const Json& edit) {
+    if (!edit.is_object() || !edit.contains("op") || !edit["op"].is_string()) {
+        return "Edit";
+    }
+    const std::string op = edit["op"].get<std::string>();
+    const auto flag = [&](const char* key) {
+        return edit.contains(key) && edit[key].is_boolean() && edit[key].get<bool>();
+    };
+    if (op == "setParameter" && edit.contains("name") && edit["name"].is_string()) {
+        return "Change " + edit["name"].get<std::string>();
+    }
+    if (op == "addParameter")
+        return "Add parameter";
+    if (op == "deleteParameter")
+        return "Delete parameter";
+    if (op == "addFeature")
+        return "Add feature";
+    if (op == "replaceFeature")
+        return "Edit feature";
+    if (op == "deleteFeature")
+        return "Delete feature";
+    if (op == "renameFeature")
+        return "Rename feature";
+    if (op == "suppressFeature")
+        return flag("suppressed") ? "Suppress feature" : "Unsuppress feature";
+    if (op == "setRollback")
+        return "Move rollback marker";
+    if (op == "renameBody")
+        return "Rename body";
+    if (op == "setBodyVisible")
+        return flag("visible") ? "Show body" : "Hide body";
+    if (op == "setOriginVisible")
+        return flag("visible") ? "Show origin item" : "Hide origin item";
+    return "Edit";
+}
+
 const char* statusName(FeatureStatus status) {
     switch (status) {
         case FeatureStatus::Ok:
@@ -295,6 +331,14 @@ void applyEdits(Document& document, std::string_view text) {
     } else {
         applyEdit(document, parsed, "edit");
     }
+}
+
+std::string editName(std::string_view text) {
+    const Json parsed = Json::parse(text, nullptr, false);
+    if (parsed.is_array()) {
+        return parsed.empty() ? "Edit" : stepName(parsed.front());
+    }
+    return stepName(parsed);
 }
 
 std::string sessionStateJson(const Session& session) {
@@ -343,6 +387,10 @@ std::string sessionStateJson(const Session& session) {
         {"rollback", document.rollback ? Json(*document.rollback) : Json(nullptr)},
         {"canUndo", session.canUndo()},
         {"canRedo", session.canRedo()},
+        {"undoName", session.canUndo() ? Json(std::string(session.undoName())) : Json(nullptr)},
+        {"redoName", session.canRedo() ? Json(std::string(session.redoName())) : Json(nullptr)},
+        {"inTransaction", session.inTransaction()},
+        {"undoCount", session.undoCount()},
         {"needsRegeneration", session.needsRegeneration()},
         {"features", std::move(features)},
         {"bodies", std::move(bodies)},

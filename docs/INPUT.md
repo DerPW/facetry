@@ -36,6 +36,11 @@ Mac, iPad with a hardware keyboard, and the web app:
 | `F` | Fit the model into the view |
 | `O` | Toggle orthographic / perspective |
 | `Esc` | Clear the selection |
+| `⌘Z` / `Ctrl+Z` | Undo the last step (its name is shown on the Undo button) |
+| `⇧⌘Z` / `Shift+Ctrl+Z` / `Ctrl+Y` | Redo |
+
+On Apple, undo goes through the system's undo manager: the Edit menu and, on iPad, the
+three-finger undo and redo gestures work too.
 
 The full shortcut set close to Fusion 360 (`L` line, `E` extrude, `S` command search, …) comes
 with M1.8.

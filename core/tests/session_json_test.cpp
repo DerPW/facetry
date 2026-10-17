@@ -17,7 +17,7 @@ using nlohmann::json;
 namespace {
 
 void applyJson(Session& session, const std::string& edits) {
-    session.edit([&](Document& document) { applyEdits(document, edits); });
+    session.edit([&](Document& document) { applyEdits(document, edits); }, editName(edits));
 }
 
 std::vector<std::string> featureIds(const Session& session) {
@@ -178,4 +178,49 @@ TEST_CASE("bodies can be renamed and hidden, origin items shown") {
     CHECK_THROWS_AS(applyJson(session, R"({"op": "renameBody", "id": "f1", "name": "x"})"), Error);
     CHECK_THROWS_AS(applyJson(session, R"({"op": "setOriginVisible", "id": "w", "visible": true})"),
                     Error);
+}
+
+TEST_CASE("undo steps have names, transactions make one step") {
+    Session session = cornerFilletSession();  // adding the fillet is one step already
+    applyJson(session, R"({"op": "setParameter", "name": "width", "value": 12})");
+    CHECK(session.undoName() == "Change width");
+    applyJson(session, R"({"op": "setParameter", "name": "width", "value": 12})");  // no change
+    CHECK(session.undoName() == "Change width");
+
+    session.beginTransaction("Extrude tool");
+    applyJson(session, R"({"op": "setParameter", "name": "height", "value": 5})");
+    applyJson(session, R"({"op": "renameFeature", "id": "f2", "name": "Block"})");
+    CHECK_FALSE(session.canUndo());
+    CHECK_THROWS_AS(session.undo(), Error);
+    CHECK_THROWS_AS(session.beginTransaction("Other"), Error);
+    session.commitTransaction();
+    CHECK(session.undoName() == "Extrude tool");
+    json state = json::parse(sessionStateJson(session));
+    CHECK(state["undoName"] == "Extrude tool");
+    CHECK(state["redoName"].is_null());
+    CHECK(state["inTransaction"] == false);
+
+    REQUIRE(session.undo());  // both edits at once
+    CHECK(session.document().findParameter("height")->value == kHeight);
+    CHECK(session.document().findFeature("f2")->name == "Extrude 1");
+    CHECK(session.redoName() == "Extrude tool");
+    REQUIRE(session.redo());
+    CHECK(session.document().findFeature("f2")->name == "Block");
+
+    // A cancelled transaction leaves no trace.
+    const Document before = session.document();
+    session.beginTransaction("Fillet tool");
+    applyJson(session, R"({"op": "setParameter", "name": "radius", "value": 2})");
+    session.cancelTransaction();
+    CHECK(session.document() == before);
+    CHECK(session.undoName() == "Extrude tool");
+    CHECK_THROWS_AS(session.commitTransaction(), Error);
+}
+
+TEST_CASE("edit names") {
+    CHECK(editName(R"({"op": "renameFeature", "id": "f1", "name": "x"})") == "Rename feature");
+    CHECK(editName(R"([{"op": "setBodyVisible", "id": "f2", "visible": false}])") == "Hide body");
+    CHECK(editName(R"({"op": "suppressFeature", "id": "f1", "suppressed": true})") ==
+          "Suppress feature");
+    CHECK(editName("not json") == "Edit");
 }

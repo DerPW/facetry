@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var viewport = ViewportModel()
     @State private var model: DocumentModel?
     @State private var selectedFeature: String?
+    @Environment(\.undoManager) private var undoManager
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -46,6 +47,7 @@ struct ContentView: View {
                     // Marks the document as edited; SwiftUI saves it.
                     document.data = data
                 }
+                model.undoManager = undoManager
                 self.model = model
                 await model.load(document.data)
             }
@@ -75,8 +77,10 @@ struct ContentView: View {
         HStack {
             Button("Undo") { Task { await model?.undo() } }
                 .disabled(model?.state?.canUndo != true)
+                .help(model?.state?.undoName.map { "Undo \($0)" } ?? "Undo")
             Button("Redo") { Task { await model?.redo() } }
                 .disabled(model?.state?.canRedo != true)
+                .help(model?.state?.redoName.map { "Redo \($0)" } ?? "Redo")
             Button("Fit") { viewport.fit() }
                 .keyboardShortcut("f", modifiers: [])
             Button(viewport.orthographic ? "Perspective" : "Orthographic") {
