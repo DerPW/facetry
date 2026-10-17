@@ -1,6 +1,7 @@
 // Messages between the UI thread (CoreClient) and the core worker (core.worker.ts).
 
 import type { FacetryCore, LogLevel, ModelSnapshot, TessellationOptions } from "./api";
+import type { AutosaveEntry } from "./autosave";
 
 /** Core methods callable from the UI thread. */
 export type CoreMethods = Pick<
@@ -32,6 +33,13 @@ export type CoreMethods = Pick<
    * a newer regeneration of the session, or releasing it, took over.
    */
   regenerateModel(session: number, options?: TessellationOptions): ModelSnapshot | null;
+  /** Saves the session as an autosave (autosave.ts). False when the browser has no storage. */
+  autosave(session: number, entry: Omit<AutosaveEntry, "savedAt">): boolean;
+  /** The autosaves of every tab. */
+  listAutosaves(): AutosaveEntry[];
+  /** Opens an autosave as a new session. */
+  openAutosave(id: string): number;
+  removeAutosave(id: string): void;
 };
 export type CoreMethod = keyof CoreMethods;
 

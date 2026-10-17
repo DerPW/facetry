@@ -104,6 +104,18 @@ reference to something deleted cannot attach to something new.
 
 The format is versioned from the first release. Each version bump comes with a migration.
 
+### Autosave and crash recovery
+
+- **Apple:** the document architecture (DocumentGroup) saves the file itself. After every
+  change the app hands it the new bytes. iPadOS writes them about 15 s after an edit (measured
+  in the simulator) and right away when the app goes to the background. macOS autosaves in
+  place as well; its delay is not measured yet.
+- **Web:** the core worker writes the open document, in the native format, to the origin
+  private file system (IndexedDB where a worker cannot write it) about a second after a change
+  and when the tab is hidden (`apps/web/src/core/autosave.ts`). Each tab holds a Web Lock while
+  it is open. On start, autosaves whose tab no longer holds its lock are offered for recovery.
+  Saving the file removes the tab's autosave.
+
 ## Repository layout
 
 Set up in M0.1. How to build each part: [Building](BUILDING.md).

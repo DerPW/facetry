@@ -72,7 +72,9 @@ Back to the [roadmap overview](../ROADMAP.md).
       container written by the core (miniz) with manifest, versioned document, migration hook,
       optional thumbnail; opens the provisional M0.5 files as empty documents. Thumbnails are
       rendered by the apps with M1.9; the optional geometry cache follows when models need it
-- [ ] Autosave and crash recovery
+- [x] Autosave and crash recovery ([#17](https://github.com/DerPW/facetry/issues/17)): the
+      document architecture on Apple; on the web, OPFS (IndexedDB fallback) with recovery of
+      autosaves from closed tabs
 - [ ] Document units (mm, cm, m, in); internal unit is mm
 
 **Done when:** edits to benchmark models survive save → reload → undo → redo on every platform.
