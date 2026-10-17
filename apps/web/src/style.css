@@ -350,3 +350,45 @@ body {
   border-radius: 6px;
   padding: 0 4px;
 }
+
+.recovery {
+  font-size: 0.85rem;
+}
+
+.recovery h2 {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.recovery p {
+  margin: 0 0 6px;
+}
+
+.recovery ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recovery li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.recovery .name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.recovery button {
+  font: inherit;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
