@@ -69,6 +69,18 @@ FACETRY_RENDER_API facetry_render_status facetry_renderer_set_mesh(facetry_rende
 FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer, float width,
                                                       float height, float pixel_ratio);
 
+typedef enum facetry_visual_style {
+    FACETRY_STYLE_SHADED = 0,       /* faces; hovered/selected edges and vertices still show */
+    FACETRY_STYLE_SHADED_EDGES = 1, /* faces, edges and vertices (the default) */
+    FACETRY_STYLE_SHADED_HIDDEN_EDGES = 2, /* and the edges behind faces, dashed */
+    FACETRY_STYLE_WIREFRAME = 3            /* edges and vertices only */
+} facetry_visual_style;
+
+/* How the model is drawn; `opacity` is the faces' opacity (1 opaque). In wireframe and with
+ * transparent faces, picking reaches hidden edges and vertices too. */
+FACETRY_RENDER_API void facetry_renderer_set_style(facetry_renderer* renderer, uint32_t style,
+                                                   float opacity);
+
 /* The ground grid on the XY plane, shown by default. Its spacing follows the zoom level in
  * document units; `unit_millimeters` is the size of one (1 for mm, 25.4 for inches). */
 FACETRY_RENDER_API void facetry_renderer_set_grid(facetry_renderer* renderer, int visible,

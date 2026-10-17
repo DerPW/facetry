@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 6
+#define FACETRY_API_VERSION_MINOR 7
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 

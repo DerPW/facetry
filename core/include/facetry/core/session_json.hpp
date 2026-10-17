@@ -26,6 +26,7 @@ namespace facetry::core {
 //   {"op": "setRollback", "index": 2}        (null: no rollback marker)
 //   {"op": "renameBody", "id": "f2", "name": "Plate"}   ("" restores the default name)
 //   {"op": "setBodyVisible", "id": "f2", "visible": false}
+//   {"op": "setBodyOpacity", "id": "f2", "opacity": 0.5}     (1 opaque … 0 invisible)
 //   {"op": "setOriginVisible", "id": "xy", "visible": true}
 //   {"op": "setUnits", "units": "in"}       ("mm", "cm", "m" or "in"; converts every length)
 //
@@ -50,7 +51,7 @@ void applyEdits(Document& document, std::string_view json);
 //    "features": [{"id": "f5", "name": "Fillet 1", "type": "fillet", "suppressed": false,
 //                  "status": "ok", "messages": [], "brokenReferences": [],
 //                  "dependents": [], "definition": {…}}],
-//    "bodies": [{"id": "f2", "name": "Body 1", "visible": true}],
+//    "bodies": [{"id": "f2", "name": "Body 1", "visible": true, "opacity": 1}],
 //    "origin": [{"id": "xy", "name": "XY plane", "kind": "plane", "visible": false}, …],
 //    "regeneration": {"cancelled": false, "executed": 1}}
 //

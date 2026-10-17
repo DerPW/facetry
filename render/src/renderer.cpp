@@ -32,6 +32,11 @@ constexpr std::array<float, 4> kHoverColor = {0.20F, 0.55F, 1.00F, 1.0F};
 constexpr std::array<float, 4> kSelectColor = {0.00F, 0.40F, 0.95F, 1.0F};
 constexpr std::array<float, 4> kFaceHoverTint = {0.30F, 0.60F, 1.00F, 0.30F};
 constexpr std::array<float, 4> kFaceSelectTint = {0.05F, 0.42F, 0.98F, 0.50F};
+constexpr std::array<float, 4> kHiddenEdgeColor = {0.13F, 0.15F, 0.18F, 0.45F};
+// Dashes of hidden edges, in points.
+constexpr float kDashPeriod = 7.0F;
+// Below this the faces count as transparent.
+constexpr float kOpaque = 0.999F;
 constexpr std::array<float, 4> kGridMinor = {0.0F, 0.0F, 0.0F, 0.07F};
 constexpr std::array<float, 4> kGridMajor = {0.0F, 0.0F, 0.0F, 0.16F};
 constexpr std::array<float, 4> kGridXAxis = {0.85F, 0.20F, 0.20F, 0.55F};
@@ -77,6 +82,10 @@ struct Renderer::Gpu {
     sg_shader pointShader{};
     sg_shader gridShader{};
     sg_pipeline meshPipeline{};
+    // Transparent faces: back faces first, then front faces, without writing depth.
+    sg_pipeline meshBackPipeline{};
+    sg_pipeline meshFrontPipeline{};
+    sg_pipeline hiddenEdgePipeline{};
     sg_pipeline gridPipeline{};
     sg_pipeline edgePipeline{};
     sg_pipeline pointPipeline{};
@@ -158,6 +167,19 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.face_winding = SG_FACEWINDING_CCW;
         desc.label = "faces";
         g.meshPipeline = sg_make_pipeline(&desc);
+
+        desc.depth.write_enabled = false;
+        desc.colors[0].blend.enabled = true;
+        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.cull_mode = SG_CULLMODE_FRONT;
+        desc.label = "transparent back faces";
+        g.meshBackPipeline = sg_make_pipeline(&desc);
+        desc.cull_mode = SG_CULLMODE_BACK;
+        desc.label = "transparent front faces";
+        g.meshFrontPipeline = sg_make_pipeline(&desc);
     }
     {
         sg_pipeline_desc desc{};
@@ -176,6 +198,15 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.cull_mode = SG_CULLMODE_NONE;
         desc.label = "edges";
         g.edgePipeline = sg_make_pipeline(&desc);
+
+        // Edges behind the faces, for "shaded with hidden edges".
+        desc.depth.compare = SG_COMPAREFUNC_GREATER;
+        desc.depth.write_enabled = false;
+        desc.colors[0].blend.enabled = true;
+        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.label = "hidden edges";
+        g.hiddenEdgePipeline = sg_make_pipeline(&desc);
     }
     {
         sg_pipeline_desc desc{};
@@ -225,7 +256,10 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
     if (sg_query_pipeline_state(g.meshPipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.edgePipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.pointPipeline) != SG_RESOURCESTATE_VALID ||
-        sg_query_pipeline_state(g.gridPipeline) != SG_RESOURCESTATE_VALID) {
+        sg_query_pipeline_state(g.gridPipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.meshBackPipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.meshFrontPipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.hiddenEdgePipeline) != SG_RESOURCESTATE_VALID) {
         throw std::runtime_error("Creating the viewport shaders failed");
     }
 }
@@ -366,6 +400,15 @@ void Renderer::orbit(float dx, float dy) {
     camera_.orbit(dx, dy, orbitPivot_);
 }
 
+void Renderer::setStyle(VisualStyle style, float opacity) {
+    style_ = style;
+    opacity_ = std::clamp(opacity, 0.0F, 1.0F);
+}
+
+bool Renderer::picksThroughFaces() const {
+    return style_ == VisualStyle::Wireframe || opacity_ < kOpaque;
+}
+
 void Renderer::fitSelection() {
     Bounds bounds = pick_.elementBounds(highlight_.selectKind, highlight_.selectId);
     if (bounds.isEmpty()) {
@@ -416,7 +459,10 @@ void Renderer::draw(const FrameTarget& target) {
     const float viewport[4] = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
     const Highlight& h = highlight_;
 
-    if (g.indexCount > 0) {
+    const bool drawFaces = style_ != VisualStyle::Wireframe && opacity_ > 0.001F;
+    const bool transparent = opacity_ < kOpaque;
+
+    const auto faces = [&](sg_pipeline pipeline) {
         mesh_vs_params_t vs{};
         copyMatrix(vs.view_proj, viewProjection);
         mesh_fs_params_t fs{};
@@ -426,6 +472,7 @@ void Renderer::draw(const FrameTarget& target) {
         fs.key_light[1] = light.y;
         fs.key_light[2] = light.z;
         copy4(fs.base_color, kBaseColor);
+        fs.base_color[3] = opacity_;
         copy4(fs.hover_color, kFaceHoverTint);
         copy4(fs.select_color, kFaceSelectTint);
         fs.ids[0] = idFor(h.hoverKind, PickKind::Face, h.hoverId);
@@ -436,11 +483,45 @@ void Renderer::draw(const FrameTarget& target) {
         bindings.vertex_buffers[1] = g.normals;
         bindings.vertex_buffers[2] = g.faceIds;
         bindings.index_buffer = g.triangles;
-        sg_apply_pipeline(g.meshPipeline);
+        sg_apply_pipeline(pipeline);
         sg_apply_bindings(&bindings);
         sg_apply_uniforms(UB_mesh_vs_params, SG_RANGE(vs));
         sg_apply_uniforms(UB_mesh_fs_params, SG_RANGE(fs));
         sg_draw(0, static_cast<int>(g.indexCount), 1);
+    };
+
+    // `hidden`: the edges behind the faces, faint and dashed. `onlyHighlighted`: just the
+    // hovered and selected edges (the shaded style).
+    const auto edges = [&](bool hidden, bool onlyHighlighted) {
+        edge_vs_params_t vs{};
+        copyMatrix(vs.view_proj, viewProjection);
+        std::memcpy(vs.viewport, viewport, sizeof(viewport));
+        vs.viewport[2] = kEdgeHalfWidth * pixelRatio_;
+        vs.viewport[3] = kEdgeHalfWidthHighlighted * pixelRatio_;
+        vs.ids[0] = idFor(h.hoverKind, PickKind::Edge, h.hoverId);
+        vs.ids[1] = idFor(h.selectKind, PickKind::Edge, h.selectId);
+        edge_fs_params_t fs{};
+        copy4(fs.color, hidden ? kHiddenEdgeColor : kEdgeColor);
+        copy4(fs.hover_color, kHoverColor);
+        copy4(fs.select_color, kSelectColor);
+        fs.ids[0] = vs.ids[0];
+        fs.ids[1] = vs.ids[1];
+        fs.ids[2] = hidden ? kDashPeriod * pixelRatio_ : 0.0F;
+        fs.ids[3] = onlyHighlighted ? 1.0F : 0.0F;
+
+        sg_bindings bindings{};
+        bindings.vertex_buffers[0] = g.edgeQuad;
+        bindings.vertex_buffers[1] = g.segments;
+        bindings.index_buffer = g.quadIndices;
+        sg_apply_pipeline(hidden ? g.hiddenEdgePipeline : g.edgePipeline);
+        sg_apply_bindings(&bindings);
+        sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
+        sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
+        sg_draw(0, 6, static_cast<int>(g.segmentCount));
+    };
+
+    if (g.indexCount > 0 && drawFaces && !transparent) {
+        faces(g.meshPipeline);
     }
 
     if (gridVisible_) {
@@ -481,29 +562,17 @@ void Renderer::draw(const FrameTarget& target) {
         sg_draw(0, 6, 1);
     }
 
-    if (g.segmentCount > 0) {
-        edge_vs_params_t vs{};
-        copyMatrix(vs.view_proj, viewProjection);
-        std::memcpy(vs.viewport, viewport, sizeof(viewport));
-        vs.viewport[2] = kEdgeHalfWidth * pixelRatio_;
-        vs.viewport[3] = kEdgeHalfWidthHighlighted * pixelRatio_;
-        vs.ids[0] = idFor(h.hoverKind, PickKind::Edge, h.hoverId);
-        vs.ids[1] = idFor(h.selectKind, PickKind::Edge, h.selectId);
-        edge_fs_params_t fs{};
-        copy4(fs.color, kEdgeColor);
-        copy4(fs.hover_color, kHoverColor);
-        copy4(fs.select_color, kSelectColor);
-        std::memcpy(fs.ids, vs.ids, sizeof(fs.ids));
+    // Transparent faces after the grid, so the grid shows through them.
+    if (g.indexCount > 0 && drawFaces && transparent) {
+        faces(g.meshBackPipeline);
+        faces(g.meshFrontPipeline);
+    }
 
-        sg_bindings bindings{};
-        bindings.vertex_buffers[0] = g.edgeQuad;
-        bindings.vertex_buffers[1] = g.segments;
-        bindings.index_buffer = g.quadIndices;
-        sg_apply_pipeline(g.edgePipeline);
-        sg_apply_bindings(&bindings);
-        sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
-        sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
-        sg_draw(0, 6, static_cast<int>(g.segmentCount));
+    if (g.segmentCount > 0) {
+        if (style_ == VisualStyle::ShadedHiddenEdges && drawFaces && !transparent) {
+            edges(/*hidden=*/true, /*onlyHighlighted=*/false);
+        }
+        edges(/*hidden=*/false, /*onlyHighlighted=*/style_ == VisualStyle::Shaded);
     }
 
     if (g.vertexCount > 0) {
@@ -518,7 +587,9 @@ void Renderer::draw(const FrameTarget& target) {
         copy4(fs.color, kVertexColor);
         copy4(fs.hover_color, kHoverColor);
         copy4(fs.select_color, kSelectColor);
-        std::memcpy(fs.ids, vs.ids, sizeof(fs.ids));
+        fs.ids[0] = vs.ids[0];
+        fs.ids[1] = vs.ids[1];
+        fs.ids[2] = style_ == VisualStyle::Shaded ? 1.0F : 0.0F;
 
         sg_bindings bindings{};
         bindings.vertex_buffers[0] = g.pointQuad;

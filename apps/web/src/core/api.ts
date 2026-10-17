@@ -127,7 +127,8 @@ export interface SessionState {
     definition: FeatureJson & { id: string };
   }[];
   /** Bodies of the last regeneration; a body's ID is the ID of the feature that created it. */
-  bodies: { id: string; name: string; visible: boolean }[];
+  /** `opacity`: 1 opaque, down to 0. */
+  bodies: { id: string; name: string; visible: boolean; opacity: number }[];
   /** The fixed origin: base planes, axes and the origin point. */
   origin: { id: string; name: string; kind: "plane" | "axis" | "point"; visible: boolean }[];
   regeneration: { cancelled: boolean; executed: number };
@@ -174,6 +175,7 @@ export type Edit =
   | { op: "suppressFeature"; id: string; suppressed: boolean }
   | { op: "setRollback"; index: number | null }
   | { op: "renameBody"; id: string; name: string }
+  | { op: "setBodyOpacity"; id: string; opacity: number }
   | { op: "setBodyVisible"; id: string; visible: boolean }
   | { op: "setOriginVisible"; id: string; visible: boolean }
   /** Converts every length, so the geometry stays the same. */

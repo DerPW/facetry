@@ -214,6 +214,12 @@ bool Document::bodyVisible(std::string_view body) const {
     return setting == root.bodies.end() || setting->visible;
 }
 
+double Document::bodyOpacity(std::string_view body) const {
+    const auto setting = std::find_if(root.bodies.begin(), root.bodies.end(),
+                                      [&](const BodySettings& s) { return s.id == body; });
+    return setting == root.bodies.end() ? 1.0 : setting->opacity;
+}
+
 void validate(const Document& document) {
     std::set<std::string> names;
     for (const Parameter& parameter : document.parameters) {
@@ -256,6 +262,9 @@ void validate(const Document& document) {
     for (const BodySettings& body : document.root.bodies) {
         if (body.id.empty() || !bodies.insert(body.id).second) {
             invalid("Body settings must have unique, non-empty IDs (\"" + body.id + "\")");
+        }
+        if (!(body.opacity >= 0.0 && body.opacity <= 1.0)) {
+            invalid("The opacity of body " + body.id + " must be between 0 and 1");
         }
     }
     for (const std::string& item : document.root.visibleOrigin) {

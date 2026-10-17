@@ -145,6 +145,15 @@ void facetry_renderer_set_viewport(facetry_renderer* renderer, float width, floa
     run(renderer, [&](Renderer& r) { r.setViewport(width, height, pixel_ratio); });
 }
 
+void facetry_renderer_set_style(facetry_renderer* renderer, uint32_t style, float opacity) {
+    run(renderer, [&](Renderer& r) {
+        if (style > 3) {
+            throw std::invalid_argument("Unknown visual style");
+        }
+        r.setStyle(static_cast<facetry::render::VisualStyle>(style), opacity);
+    });
+}
+
 void facetry_renderer_set_grid(facetry_renderer* renderer, int visible, float unit_millimeters) {
     run(renderer, [&](Renderer& r) { r.setGrid(visible != 0, unit_millimeters); });
 }
@@ -233,7 +242,7 @@ facetry_render_status facetry_renderer_pick(facetry_renderer* renderer, float x,
         if (out == nullptr) {
             throw std::invalid_argument("out must not be null");
         }
-        const auto result = r.pickIndex().pick(r.camera(), x, y, radius);
+        const auto result = r.pickIndex().pick(r.camera(), x, y, radius, r.picksThroughFaces());
         out->kind = static_cast<uint32_t>(result.kind);
         out->id = result.id;
         out->point[0] = result.point.x;

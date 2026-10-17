@@ -10,6 +10,7 @@ struct ContentView: View {
     @AppStorage("navigationPreset") private var navigationPreset = NavigationPreset.facetry
     @AppStorage("oneFingerPans") private var oneFingerPans = false
     @AppStorage("grid") private var grid = true
+    @AppStorage("visualStyle") private var style = VisualStyle.shadedEdges
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -53,6 +54,11 @@ struct ContentView: View {
                 viewport.oneFingerPans = pans
             }
             .onChange(of: grid, initial: true) { _, shown in viewport.grid = shown }
+            .onChange(of: style, initial: true) { _, style in viewport.style = style }
+            // The shown body's opacity comes from the document.
+            .onChange(of: model?.state?.bodies.first(where: \.visible)?.opacity, initial: true) {
+                _, opacity in viewport.opacity = opacity ?? 1
+            }
             // The grid's spacing follows the document's units.
             .onChange(of: model?.state?.units, initial: true) { _, units in
                 viewport.gridUnitMillimeters = (units ?? .millimeter).millimeters
@@ -110,6 +116,11 @@ struct ContentView: View {
                 viewport.orthographic.toggle()
             }
             .keyboardShortcut("o", modifiers: [])
+            Picker("Style", selection: $style) {
+                ForEach(VisualStyle.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
             Toggle("Grid", isOn: $grid)
                 .toggleStyle(.button)
                 .keyboardShortcut("g", modifiers: [])

@@ -166,7 +166,8 @@ bool PickIndex::isVisible(const Camera& camera, Vec3 point) const {
     return !hit || hit->distance >= distanceToPoint - tolerance;
 }
 
-PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusPoints) const {
+PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusPoints,
+                           bool throughFaces) const {
     const float radius2 = radiusPoints * radiusPoints;
 
     // Vertices first: they are the smallest targets.
@@ -178,7 +179,7 @@ PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusP
             continue;
         }
         const float d2 = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
-        if (d2 <= best && isVisible(camera, vertexPoints_[i])) {
+        if (d2 <= best && (throughFaces || isVisible(camera, vertexPoints_[i]))) {
             best = d2;
             vertexPick = {PickKind::Vertex, vertexIds_[i], vertexPoints_[i], std::sqrt(d2)};
         }
@@ -212,7 +213,7 @@ PickResult PickIndex::pick(const Camera& camera, float x, float y, float radiusP
         // Screen-space interpolation is close enough for picking; perspective correction is
         // not needed at the scale of a pick radius.
         const Vec3 point = lerp(segment.a, segment.b, s);
-        if (isVisible(camera, point)) {
+        if (throughFaces || isVisible(camera, point)) {
             best = d2;
             edgePick = {PickKind::Edge, segment.edgeId, point, std::sqrt(d2)};
         }

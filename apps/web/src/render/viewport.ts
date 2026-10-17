@@ -12,6 +12,15 @@ export interface Pick {
   id: number;
 }
 
+/** How the model is drawn (facetry_visual_style). */
+export const VisualStyle = {
+  Shaded: 0,
+  ShadedEdges: 1,
+  ShadedHiddenEdges: 2,
+  Wireframe: 3,
+} as const;
+export type VisualStyle = (typeof VisualStyle)[keyof typeof VisualStyle];
+
 /** Faces of the ViewCube, in the order of ViewCubeCell.face (facetry_cube_face). */
 export const CUBE_FACES = ["Right", "Left", "Back", "Front", "Top", "Bottom"] as const;
 
@@ -216,6 +225,14 @@ export class Viewport {
   /** Clears the selection (Esc). */
   clearSelection(): void {
     this.#setSelection({ kind: PickKind.None, id: 0 });
+  }
+
+  /**
+   * Visual style, and the shown body's opacity (1 opaque). In wireframe and with transparent
+   * faces, picking reaches hidden edges and vertices too.
+   */
+  setStyle(style: VisualStyle, opacity: number): void {
+    this.#m._facetry_renderer_set_style(this.#renderer, style, opacity);
   }
 
   /** The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches). */

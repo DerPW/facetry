@@ -19,6 +19,9 @@ final class ViewportModel {
     var navigation = NavigationPreset.facetry
     /// One finger pans and two fingers orbit, instead of the other way round.
     var oneFingerPans = false
+    /// Visual style (a device setting) and the shown body's opacity (from the document).
+    var style = VisualStyle.shadedEdges
+    var opacity = 1.0
     /// The ground grid, and the size of one document unit in millimeters for its spacing.
     var grid = true
     var gridUnitMillimeters = 1.0
@@ -80,6 +83,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownOrthographic = false
     private var shownSelection = Pick.none
     private var shownGrid: (visible: Bool, unit: Double)?
+    private var shownStyle: (style: VisualStyle, opacity: Double)?
     private var lastFrameTime: CFTimeInterval = 0
     private var frameTimes: [Double] = []
 
@@ -131,6 +135,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         if model.selection != shownSelection {
             renderer.setSelection(model.selection)
             shownSelection = model.selection
+        }
+        if shownStyle?.style != model.style || shownStyle?.opacity != model.opacity {
+            renderer.setStyle(model.style, opacity: model.opacity)
+            shownStyle = (model.style, model.opacity)
         }
         if shownGrid?.visible != model.grid || shownGrid?.unit != model.gridUnitMillimeters {
             renderer.setGrid(visible: model.grid, unitMillimeters: model.gridUnitMillimeters)

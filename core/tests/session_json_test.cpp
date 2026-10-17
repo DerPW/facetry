@@ -127,7 +127,8 @@ TEST_CASE("the session summary reflects document and regeneration") {
     session.regenerate();
     state = json::parse(sessionStateJson(session));
     CHECK(state["needsRegeneration"] == false);
-    CHECK(state["bodies"] == json::array({{{"id", "f2"}, {"name", "Body 1"}, {"visible", true}}}));
+    CHECK(state["bodies"] ==
+          json::array({{{"id", "f2"}, {"name", "Body 1"}, {"visible", true}, {"opacity", 1.0}}}));
     json fillet = state["features"][2];
     CHECK(fillet["definition"]["radius"] == "radius");
     CHECK(fillet["definition"]["id"] == kFillet);
@@ -158,7 +159,8 @@ TEST_CASE("bodies can be renamed and hidden, origin items shown") {
                            {"op": "setOriginVisible", "id": "xy", "visible": true}])");
     session.regenerate();
     json state = json::parse(sessionStateJson(session));
-    CHECK(state["bodies"] == json::array({{{"id", "f2"}, {"name", "Block"}, {"visible", false}}}));
+    CHECK(state["bodies"] ==
+          json::array({{{"id", "f2"}, {"name", "Block"}, {"visible", false}, {"opacity", 1.0}}}));
     CHECK(state["origin"].size() == 7);
     CHECK(state["origin"][0] ==
           json({{"id", "xy"}, {"name", "XY plane"}, {"kind", "plane"}, {"visible", true}}));
@@ -233,6 +235,22 @@ TEST_CASE("units are changed as one step and shown in the summary") {
     REQUIRE(session.undo());
     CHECK(session.document().units == LengthUnit::Millimeter);
     CHECK(session.document().findParameter("width")->value == kWidth);
+}
+
+TEST_CASE("bodies get an opacity, stored only when they are not opaque") {
+    Session session = cornerFilletSession();
+    session.regenerate();
+    CHECK(json::parse(sessionStateJson(session))["bodies"][0]["opacity"] == 1.0);
+    applyJson(session, R"({"op": "setBodyOpacity", "id": "f2", "opacity": 0.4})");
+    CHECK(session.undoName() == "Change body opacity");
+    CHECK(json::parse(sessionStateJson(session))["bodies"][0]["opacity"] == 0.4);
+    CHECK(json::parse(toJson(session.document()))["root"]["bodies"][0]["opacity"] == 0.4);
+    CHECK(parseDocument(toJson(session.document())) == session.document());
+    CHECK_THROWS_AS(applyJson(session, R"({"op": "setBodyOpacity", "id": "f2", "opacity": 2})"),
+                    Error);
+    // Back to opaque: the settings entry goes away, as if it had never been changed.
+    applyJson(session, R"({"op": "setBodyOpacity", "id": "f2", "opacity": 1})");
+    CHECK(session.document().root.bodies.empty());
 }
 
 TEST_CASE("edit names") {

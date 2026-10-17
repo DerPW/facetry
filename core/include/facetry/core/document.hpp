@@ -133,6 +133,7 @@ struct BodySettings {
     std::string id;
     std::string name;  // empty: the default name ("Body 1", …)
     bool visible = true;
+    double opacity = 1.0;  // 1 opaque, down to 0 (invisible but still selectable)
 
     friend bool operator==(const BodySettings&, const BodySettings&) = default;
 };
@@ -193,6 +194,7 @@ struct Document {
     // A body's name: its setting, or "Body N" in the order the bodies are created.
     [[nodiscard]] std::string bodyName(std::string_view body) const;
     [[nodiscard]] bool bodyVisible(std::string_view body) const;
+    [[nodiscard]] double bodyOpacity(std::string_view body) const;
 
     friend bool operator==(const Document&, const Document&) = default;
 };

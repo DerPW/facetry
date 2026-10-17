@@ -56,8 +56,10 @@ class PickIndex {
     [[nodiscard]] Bounds elementBounds(PickKind kind, std::uint32_t id) const;
 
     // Picks the element under (x, y). Vertices win over edges, edges over faces, as long as they
-    // are within `radiusPoints` of the pointer and not hidden behind a face.
-    [[nodiscard]] PickResult pick(const Camera& camera, float x, float y, float radiusPoints) const;
+    // are within `radiusPoints` of the pointer and not hidden behind a face. With `throughFaces`
+    // (wireframe, transparent bodies) hidden vertices and edges count too.
+    [[nodiscard]] PickResult pick(const Camera& camera, float x, float y, float radiusPoints,
+                                  bool throughFaces = false) const;
 
     // Point under the pointer for orbiting and zooming: the hit point on the model, or the point
     // on the camera's target plane if nothing is hit.

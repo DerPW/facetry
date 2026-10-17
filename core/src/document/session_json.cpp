@@ -153,7 +153,7 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
         }
         return;
     }
-    if (op == "renameBody" || op == "setBodyVisible") {
+    if (op == "renameBody" || op == "setBodyVisible" || op == "setBodyOpacity") {
         const std::string id = reader.at("id").string();
         const auto bodies = document.bodyFeatures();
         if (std::none_of(bodies.begin(), bodies.end(),
@@ -164,16 +164,22 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
         auto it = std::find_if(settings.begin(), settings.end(),
                                [&](const BodySettings& body) { return body.id == id; });
         if (it == settings.end()) {
-            settings.push_back({.id = id, .name = "", .visible = true});
+            settings.push_back({.id = id, .name = "", .visible = true, .opacity = 1.0});
             it = std::prev(settings.end());
         }
         if (op == "renameBody") {
             it->name = reader.at("name").string();
-        } else {
+        } else if (op == "setBodyVisible") {
             it->visible = reader.at("visible").boolean();
+        } else {
+            const double opacity = reader.at("opacity").number();
+            if (!(opacity >= 0.0 && opacity <= 1.0)) {
+                invalidEdit(path + ".opacity must be between 0 and 1");
+            }
+            it->opacity = opacity;
         }
         // Back to the defaults: drop the entry, so the document stays as it was.
-        if (it->name.empty() && it->visible) {
+        if (it->name.empty() && it->visible && it->opacity == 1.0) {
             settings.erase(it);
         }
         return;
@@ -301,6 +307,8 @@ std::string stepName(const Json& edit) {
         return "Rename body";
     if (op == "setBodyVisible")
         return flag("visible") ? "Show body" : "Hide body";
+    if (op == "setBodyOpacity")
+        return "Change body opacity";
     if (op == "setOriginVisible")
         return flag("visible") ? "Show origin item" : "Hide origin item";
     if (op == "setUnits")
@@ -381,7 +389,8 @@ std::string sessionStateJson(const Session& session) {
         if (regeneration.model.bodies.contains(feature->id)) {
             bodies.push_back({{"id", feature->id},
                               {"name", document.bodyName(feature->id)},
-                              {"visible", document.bodyVisible(feature->id)}});
+                              {"visible", document.bodyVisible(feature->id)},
+                              {"opacity", document.bodyOpacity(feature->id)}});
         }
     }
     Json origin = Json::array();

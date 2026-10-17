@@ -10,6 +10,9 @@ interface Props {
 }
 
 /** The browser: the document as a tree of origin, bodies and sketches (Fusion's browser). */
+
+/** Opacities offered for a body; other values from a file show as they are. */
+const OPACITIES = [1, 0.75, 0.5, 0.25];
 export function BrowserPanel({ state, onEdit, onSelectFeature }: Props) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const sketches = state.features.filter((f) => f.type === "sketch");
@@ -92,6 +95,28 @@ export function BrowserPanel({ state, onEdit, onSelectFeature }: Props) {
               >
                 Isolate
               </button>
+              <select
+                className="small"
+                aria-label={`Opacity of ${body.name}`}
+                title="Opacity"
+                value={body.opacity}
+                onChange={(event) =>
+                  onEdit({
+                    op: "setBodyOpacity",
+                    id: body.id,
+                    opacity: Number(event.currentTarget.value),
+                  })
+                }
+              >
+                {OPACITIES.includes(body.opacity) ? null : (
+                  <option value={body.opacity}>{Math.round(body.opacity * 100)} %</option>
+                )}
+                {OPACITIES.map((opacity) => (
+                  <option key={opacity} value={opacity}>
+                    {opacity * 100} %
+                  </option>
+                ))}
+              </select>
             </li>
           ))}
           {state.bodies.length === 0 && <li className="muted">No bodies</li>}

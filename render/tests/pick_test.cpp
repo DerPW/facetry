@@ -73,6 +73,11 @@ TEST_CASE("hidden edges are not picked") {
     const auto top = index.pick(camera, visibleEdge.x, visibleEdge.y, 3);
     CHECK(top.kind == PickKind::Edge);
     CHECK(top.id == 4);
+
+    // In wireframe or through transparent faces the hidden edge can be picked.
+    const auto throughFaces = index.pick(camera, hiddenEdge.x, hiddenEdge.y, 3, true);
+    CHECK(throughFaces.kind == PickKind::Edge);
+    CHECK(throughFaces.id == 2);
 }
 
 TEST_CASE("anchor falls back to the target plane") {

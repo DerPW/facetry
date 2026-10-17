@@ -26,6 +26,7 @@ import {
   NAMED_VIEWS,
   NavigationPreset,
   PickKind,
+  VisualStyle,
   type FrameStats,
   type NavigationSettings,
   type Pick,
@@ -102,6 +103,17 @@ function loadNavigation(): NavigationSettings {
 const hasTouch = navigator.maxTouchPoints > 0;
 
 const gridKey = "facetry.grid";
+const styleKey = "facetry.style";
+
+function loadStyle(): VisualStyle {
+  try {
+    const saved = Number(localStorage.getItem(styleKey));
+    if (Object.values(VisualStyle).includes(saved as VisualStyle)) return saved as VisualStyle;
+  } catch {
+    // The default below.
+  }
+  return VisualStyle.ShadedEdges;
+}
 
 function loadGrid(): boolean {
   try {
@@ -155,6 +167,7 @@ export function App() {
   const [recovery, setRecovery] = useState<AutosaveEntry[]>([]);
   const [navigation, setNavigation] = useState(loadNavigation);
   const [grid, setGrid] = useState(loadGrid);
+  const [style, setStyle] = useState(loadStyle);
   const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
@@ -413,6 +426,17 @@ export function App() {
     viewport?.setOrthographic(orthographic);
   }, [viewport, orthographic]);
 
+  // The shown body's opacity comes from the document; the style is a device setting.
+  const opacity = model?.bodies.find((body) => body.visible)?.opacity ?? 1;
+  useEffect(() => {
+    viewport?.setStyle(style, opacity);
+    try {
+      localStorage.setItem(styleKey, String(style));
+    } catch {
+      // Not stored; the setting lasts until the page is closed.
+    }
+  }, [viewport, style, opacity]);
+
   // The grid's spacing follows the document's units.
   const units = model?.units ?? "mm";
   useEffect(() => {
@@ -473,7 +497,6 @@ export function App() {
   return (
     <>
       <ViewportCanvas onReady={setViewport} onError={onError} />
-      {viewport && <ViewCube viewport={viewport} />}
       <div
         id="app"
         data-core-ready={ready === undefined ? undefined : String(ready)}
@@ -512,89 +535,102 @@ export function App() {
             <BrowserPanel state={model} onEdit={edit} onSelectFeature={setSelectedFeature} />
           )}
         </div>
-        <div className="panel controls">
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".facetry,.json"
-            hidden
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              if (file) void openFile(file);
-            }}
-          />
-          <button type="button" disabled={!model} onClick={() => fileInput.current?.click()}>
-            Open…
-          </button>
-          <button type="button" disabled={!model} onClick={() => void saveFile()}>
-            Save
-          </button>
-          <button
-            type="button"
-            disabled={!model?.canUndo}
-            title={model?.undoName ? `Undo ${model.undoName} (⌘Z / Ctrl+Z)` : "Undo"}
-            onClick={() => void change(({ core, handle }) => core.call("undo", handle))}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            disabled={!model?.canRedo}
-            title={model?.redoName ? `Redo ${model.redoName} (⇧⌘Z / Ctrl+Y)` : "Redo"}
-            onClick={() => void change(({ core, handle }) => core.call("redo", handle))}
-          >
-            Redo
-          </button>
-          <button type="button" title="Fit (F)" onClick={() => viewport?.fit()}>
-            Fit
-          </button>
-          <button
-            type="button"
-            title="Toggle projection (O)"
-            onClick={() => setOrthographic((v) => !v)}
-          >
-            {orthographic ? "Perspective" : "Orthographic"}
-          </button>
-          <button
-            type="button"
-            aria-pressed={grid}
-            title="Show or hide the ground grid (G)"
-            onClick={() => setGrid((shown) => !shown)}
-          >
-            Grid
-          </button>
-          <select
-            aria-label="Mouse and trackpad navigation"
-            title="Mouse and trackpad navigation (docs/INPUT.md)"
-            value={navigation.preset}
-            onChange={(event) =>
-              setNavigation({
-                ...navigation,
-                preset: Number(event.currentTarget.value) as NavigationPreset,
-              })
-            }
-          >
-            <option value={NavigationPreset.Facetry}>Facetry navigation</option>
-            <option value={NavigationPreset.Fusion}>Fusion navigation</option>
-            <option value={NavigationPreset.Trackpad}>Trackpad navigation</option>
-          </select>
-          {hasTouch && (
+        <div className="top-right">
+          <div className="panel controls">
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".facetry,.json"
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) void openFile(file);
+              }}
+            />
+            <button type="button" disabled={!model} onClick={() => fileInput.current?.click()}>
+              Open…
+            </button>
+            <button type="button" disabled={!model} onClick={() => void saveFile()}>
+              Save
+            </button>
+            <button
+              type="button"
+              disabled={!model?.canUndo}
+              title={model?.undoName ? `Undo ${model.undoName} (⌘Z / Ctrl+Z)` : "Undo"}
+              onClick={() => void change(({ core, handle }) => core.call("undo", handle))}
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              disabled={!model?.canRedo}
+              title={model?.redoName ? `Redo ${model.redoName} (⇧⌘Z / Ctrl+Y)` : "Redo"}
+              onClick={() => void change(({ core, handle }) => core.call("redo", handle))}
+            >
+              Redo
+            </button>
+            <button type="button" title="Fit (F)" onClick={() => viewport?.fit()}>
+              Fit
+            </button>
+            <button
+              type="button"
+              title="Toggle projection (O)"
+              onClick={() => setOrthographic((v) => !v)}
+            >
+              {orthographic ? "Perspective" : "Orthographic"}
+            </button>
             <select
-              aria-label="One-finger drag"
-              value={navigation.oneFinger}
+              aria-label="Visual style"
+              value={style}
+              onChange={(event) => setStyle(Number(event.currentTarget.value) as VisualStyle)}
+            >
+              <option value={VisualStyle.Shaded}>Shaded</option>
+              <option value={VisualStyle.ShadedEdges}>Shaded with edges</option>
+              <option value={VisualStyle.ShadedHiddenEdges}>Hidden edges</option>
+              <option value={VisualStyle.Wireframe}>Wireframe</option>
+            </select>
+            <button
+              type="button"
+              aria-pressed={grid}
+              title="Show or hide the ground grid (G)"
+              onClick={() => setGrid((shown) => !shown)}
+            >
+              Grid
+            </button>
+            <select
+              aria-label="Mouse and trackpad navigation"
+              title="Mouse and trackpad navigation (docs/INPUT.md)"
+              value={navigation.preset}
               onChange={(event) =>
                 setNavigation({
                   ...navigation,
-                  oneFinger: event.currentTarget.value === "pan" ? "pan" : "orbit",
+                  preset: Number(event.currentTarget.value) as NavigationPreset,
                 })
               }
             >
-              <option value="orbit">One finger orbits</option>
-              <option value="pan">One finger pans</option>
+              <option value={NavigationPreset.Facetry}>Facetry navigation</option>
+              <option value={NavigationPreset.Fusion}>Fusion navigation</option>
+              <option value={NavigationPreset.Trackpad}>Trackpad navigation</option>
             </select>
-          )}
-          <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
+            {hasTouch && (
+              <select
+                aria-label="One-finger drag"
+                value={navigation.oneFinger}
+                onChange={(event) =>
+                  setNavigation({
+                    ...navigation,
+                    oneFinger: event.currentTarget.value === "pan" ? "pan" : "orbit",
+                  })
+                }
+              >
+                <option value="orbit">One finger orbits</option>
+                <option value="pan">One finger pans</option>
+              </select>
+            )}
+            <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
+          </div>
+          {viewport && <ViewCube viewport={viewport} />}
         </div>
         {model && (
           <Timeline
