@@ -3,8 +3,11 @@
 #include "facetry/core/error.hpp"
 #include "facetry/core/regeneration.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <map>
 #include <numbers>
+#include <set>
 #include <tuple>
 
 namespace facetry::core {
@@ -118,6 +121,161 @@ ProfileSegment circleSegment(double cu, double cv, double radius) {
     return {.name = {}, .kind = ProfileSegment::Kind::Circle, .cx = cu, .cy = cv, .radius = radius};
 }
 
+// The sketch's curves in millimeters, for snapping. Arcs are circles with a sweep.
+struct SnapLine {
+    std::string id;
+    double u0 = 0.0;
+    double v0 = 0.0;
+    double u1 = 0.0;
+    double v1 = 0.0;
+};
+
+struct SnapCircle {
+    std::string id;
+    double cu = 0.0;
+    double cv = 0.0;
+    double radius = 0.0;
+    bool arc = false;
+    double start = 0.0;  // arcs: counter-clockwise from `start` by `sweep`
+    double sweep = 0.0;
+
+    [[nodiscard]] bool covers(double angle) const {
+        return !arc || ccwAngle(start, angle) <= sweep + 1e-9;
+    }
+};
+
+struct SnapGeometry {
+    std::vector<PlacedPoint> points;
+    std::set<std::string> centers;
+    std::vector<SnapLine> lines;
+    std::vector<SnapCircle> circles;
+};
+
+SnapGeometry snapGeometry(const Document& document, const Sketch& sketch) {
+    SnapGeometry geometry;
+    geometry.points = pointsOf(document, sketch);
+    std::map<std::string, std::pair<double, double>> at;
+    for (const PlacedPoint& point : geometry.points) {
+        at[point.id] = {point.u, point.v};
+    }
+    for (const SketchLine& line : sketch.lines) {
+        if (at.contains(line.start) && at.contains(line.end)) {
+            const auto [u0, v0] = at[line.start];
+            const auto [u1, v1] = at[line.end];
+            geometry.lines.push_back({line.id, u0, v0, u1, v1});
+        }
+    }
+    for (const SketchArc& arc : sketch.arcs) {
+        if (at.contains(arc.center) && at.contains(arc.start) && at.contains(arc.end)) {
+            const auto [cu, cv] = at[arc.center];
+            const auto [su, sv] = at[arc.start];
+            const auto [eu, ev] = at[arc.end];
+            const double start = std::atan2(sv - cv, su - cu);
+            geometry.circles.push_back({arc.id, cu, cv, distance(cu, cv, su, sv), true, start,
+                                        ccwAngle(start, std::atan2(ev - cv, eu - cu))});
+            geometry.centers.insert(arc.center);
+        }
+    }
+    for (const SketchCircle& circle : sketch.circles) {
+        if (!at.contains(circle.center)) {
+            continue;
+        }
+        try {
+            const auto [cu, cv] = at[circle.center];
+            geometry.circles.push_back(
+                {circle.id, cu, cv, lengthInMillimeters(circle.radius, document)});
+            geometry.centers.insert(circle.center);
+        } catch (const Error&) {
+        }
+    }
+    return geometry;
+}
+
+// The nearest point of a segment.
+std::pair<double, double> nearestOn(const SnapLine& line, double u, double v) {
+    const double du = line.u1 - line.u0;
+    const double dv = line.v1 - line.v0;
+    const double length = du * du + dv * dv;
+    const double t = length > 0.0
+                         ? std::clamp(((u - line.u0) * du + (v - line.v0) * dv) / length, 0.0, 1.0)
+                         : 0.0;
+    return {line.u0 + t * du, line.v0 + t * dv};
+}
+
+// The nearest point of a circle or arc, if the arc reaches round to it.
+std::optional<std::pair<double, double>> nearestOn(const SnapCircle& circle, double u, double v) {
+    const double angle = std::atan2(v - circle.cv, u - circle.cu);
+    if (distance(u, v, circle.cu, circle.cv) < kEpsilon || !circle.covers(angle)) {
+        return std::nullopt;
+    }
+    return std::pair{circle.cu + circle.radius * std::cos(angle),
+                     circle.cv + circle.radius * std::sin(angle)};
+}
+
+// Where a line meets a circle or another line, within both.
+std::vector<std::pair<double, double>> intersections(const SnapLine& a, const SnapLine& b) {
+    const double du = a.u1 - a.u0;
+    const double dv = a.v1 - a.v0;
+    const double eu = b.u1 - b.u0;
+    const double ev = b.v1 - b.v0;
+    const double cross = du * ev - dv * eu;
+    if (std::abs(cross) < kEpsilon) {
+        return {};
+    }
+    const double t = ((b.u0 - a.u0) * ev - (b.v0 - a.v0) * eu) / cross;
+    const double s = ((b.u0 - a.u0) * dv - (b.v0 - a.v0) * du) / cross;
+    if (t < -1e-9 || t > 1 + 1e-9 || s < -1e-9 || s > 1 + 1e-9) {
+        return {};
+    }
+    return {{a.u0 + t * du, a.v0 + t * dv}};
+}
+
+std::vector<std::pair<double, double>> intersections(const SnapLine& line,
+                                                     const SnapCircle& circle) {
+    const double du = line.u1 - line.u0;
+    const double dv = line.v1 - line.v0;
+    const double fu = line.u0 - circle.cu;
+    const double fv = line.v0 - circle.cv;
+    const double a = du * du + dv * dv;
+    const double b = 2 * (fu * du + fv * dv);
+    const double c = fu * fu + fv * fv - circle.radius * circle.radius;
+    const double discriminant = b * b - 4 * a * c;
+    if (a < kEpsilon || discriminant < 0) {
+        return {};
+    }
+    std::vector<std::pair<double, double>> result;
+    for (const double sign : {-1.0, 1.0}) {
+        const double t = (-b + sign * std::sqrt(discriminant)) / (2 * a);
+        const double u = line.u0 + t * du;
+        const double v = line.v0 + t * dv;
+        if (t >= -1e-9 && t <= 1 + 1e-9 &&
+            circle.covers(std::atan2(v - circle.cv, u - circle.cu))) {
+            result.emplace_back(u, v);
+        }
+    }
+    return result;
+}
+
+std::vector<std::pair<double, double>> intersections(const SnapCircle& a, const SnapCircle& b) {
+    const double d = distance(a.cu, a.cv, b.cu, b.cv);
+    if (d < kEpsilon || d > a.radius + b.radius || d < std::abs(a.radius - b.radius)) {
+        return {};
+    }
+    const double along = (a.radius * a.radius - b.radius * b.radius + d * d) / (2 * d);
+    const double across = std::sqrt(std::max(0.0, a.radius * a.radius - along * along));
+    const double mu = a.cu + along * (b.cu - a.cu) / d;
+    const double mv = a.cv + along * (b.cv - a.cv) / d;
+    std::vector<std::pair<double, double>> result;
+    for (const double sign : {-1.0, 1.0}) {
+        const double u = mu + sign * across * (b.cv - a.cv) / d;
+        const double v = mv - sign * across * (b.cu - a.cu) / d;
+        if (a.covers(std::atan2(v - a.cv, u - a.cu)) && b.covers(std::atan2(v - b.cv, u - b.cu))) {
+            result.emplace_back(u, v);
+        }
+    }
+    return result;
+}
+
 // Adds entities to a sketch, with IDs from the document and values in its units.
 class Builder {
   public:
@@ -135,6 +293,35 @@ class Builder {
         std::string created = document_.newId("p");
         sketch_.points.push_back({.id = created, .x = u / scale_, .y = v / scale_});
         return created;
+    }
+
+    // The point a spot snapped to, or a new one with the constraints of its snap.
+    std::string point(const SketchTool::Spot& spot) {
+        if (!spot.point.empty()) {
+            return spot.point;
+        }
+        std::string created = point(spot.u, spot.v);
+        if (spot.kind == "midpoint" && !spot.curves.empty()) {
+            constrain("midpoint", {created, spot.curves.front()});
+        } else {
+            for (const std::string& curve : spot.curves) {
+                constrain("coincident", {created, curve});  // on a curve, or on two
+            }
+        }
+        return created;
+    }
+
+    // The constraints the line tool inferred for `line`.
+    void infer(const std::string& line, const std::vector<SketchTool::Inference>& inferences) {
+        for (const SketchTool::Inference& inference : inferences) {
+            if (inference.other.empty()) {
+                constrain(inference.type, {line});
+            } else if (inference.type == "tangent") {
+                constrain("tangent", {inference.other, line});
+            } else {
+                constrain(inference.type, {line, inference.other});
+            }
+        }
     }
 
     std::string line(const std::string& start, const std::string& end) {
@@ -168,24 +355,27 @@ class Builder {
             {.id = document_.newId("k"), .type = std::move(type), .entities = std::move(entities)});
     }
 
-    // A closed polygon through `corners`, counter-clockwise; returns its lines in order.
-    std::vector<std::string> polygon(std::vector<std::tuple<double, double, std::string>> corners) {
+    // A closed polygon through `corners`, counter-clockwise; returns its lines in order, each with
+    // the corners it runs between.
+    std::vector<std::tuple<std::string, SketchTool::Spot, SketchTool::Spot>> polygon(
+        std::vector<SketchTool::Spot> corners) {
         double area = 0.0;
         for (std::size_t i = 0; i < corners.size(); ++i) {
-            const auto& [u0, v0, id0] = corners[i];
-            const auto& [u1, v1, id1] = corners[(i + 1) % corners.size()];
-            area += u0 * v1 - u1 * v0;
+            const SketchTool::Spot& a = corners[i];
+            const SketchTool::Spot& b = corners[(i + 1) % corners.size()];
+            area += a.u * b.v - b.u * a.v;
         }
         if (area < 0.0) {
             std::reverse(corners.begin() + 1, corners.end());
         }
         std::vector<std::string> points;
-        for (const auto& [u, v, id] : corners) {
-            points.push_back(point(u, v, id));
+        for (const SketchTool::Spot& corner : corners) {
+            points.push_back(point(corner));
         }
-        std::vector<std::string> lines;
+        std::vector<std::tuple<std::string, SketchTool::Spot, SketchTool::Spot>> lines;
         for (std::size_t i = 0; i < points.size(); ++i) {
-            lines.push_back(line(points[i], points[(i + 1) % points.size()]));
+            const std::size_t next = (i + 1) % points.size();
+            lines.emplace_back(line(points[i], points[next]), corners[i], corners[next]);
         }
         return lines;
     }
@@ -198,11 +388,17 @@ class Builder {
 };
 
 // The four corners of a rectangle with its sides along the axes, from opposite corners.
-std::vector<std::tuple<double, double, std::string>> axisRectangle(double u0, double v0,
-                                                                   const std::string& id0,
-                                                                   double u1, double v1,
-                                                                   const std::string& id1) {
-    return {{u0, v0, id0}, {u1, v0, {}}, {u1, v1, id1}, {u0, v1, {}}};
+std::vector<SketchTool::Spot> axisRectangle(const SketchTool::Spot& a, const SketchTool::Spot& c) {
+    return {a, {.u = c.u, .v = a.v}, c, {.u = a.u, .v = c.v}};
+}
+
+// The corners of a rectangle with one side from a to b and the given width.
+std::vector<SketchTool::Spot> sideRectangle(const SketchTool::Spot& a, const SketchTool::Spot& b,
+                                            double nu, double nv, double width) {
+    return {a,
+            b,
+            {.u = b.u + nu * width, .v = b.v + nv * width},
+            {.u = a.u + nu * width, .v = a.v + nv * width}};
 }
 
 }  // namespace
@@ -212,20 +408,209 @@ SketchTool::SketchTool(SketchToolKind kind, std::string sketch, bool constructio
 
 SketchTool::Spot SketchTool::snap(const Session& session, double u, double v, double radius) const {
     const Document& document = session.document();
-    Spot spot{.u = u, .v = v, .point = {}};
-    double best = radius;
-    for (const PlacedPoint& point : pointsOf(document, sketchOf(document, sketch_))) {
-        const double d = distance(u, v, point.u, point.v);
-        if (d <= best) {
-            best = d;
-            spot = {.u = point.u, .v = point.v, .point = point.id};
+    const SnapGeometry geometry = snapGeometry(document, sketchOf(document, sketch_));
+
+    // Geometry first, by rank: points, then special points, then anywhere on a curve; the
+    // nearest within the radius wins within a rank.
+    Spot best{.u = u, .v = v};
+    int bestRank = 3;
+    double bestDistance = radius;
+    const auto consider = [&](int rank, double su, double sv, std::string kind,
+                              std::vector<std::string> curves, std::string point = {}) {
+        const double d = distance(u, v, su, sv);
+        if (d > radius || rank > bestRank || (rank == bestRank && d >= bestDistance)) {
+            return;
         }
+        bestRank = rank;
+        bestDistance = d;
+        best = {.u = su,
+                .v = sv,
+                .point = std::move(point),
+                .kind = std::move(kind),
+                .curves = std::move(curves)};
+    };
+    for (const PlacedPoint& point : geometry.points) {
+        consider(0, point.u, point.v, geometry.centers.contains(point.id) ? "center" : "point", {},
+                 point.id);
+    }
+    for (const SnapLine& line : geometry.lines) {
+        consider(1, (line.u0 + line.u1) / 2, (line.v0 + line.v1) / 2, "midpoint", {line.id});
+    }
+    for (const SnapCircle& circle : geometry.circles) {
+        for (int k = 0; k < 4; ++k) {
+            const double angle = k * std::numbers::pi / 2;
+            if (circle.covers(angle)) {
+                consider(1, circle.cu + circle.radius * std::cos(angle),
+                         circle.cv + circle.radius * std::sin(angle), "quadrant", {circle.id});
+            }
+        }
+    }
+    consider(1, 0.0, 0.0, "origin", {});
+    // Curves that pass near the pointer: where it lies on them, and where they meet.
+    std::vector<const SnapLine*> nearLines;
+    std::vector<const SnapCircle*> nearCircles;
+    for (const SnapLine& line : geometry.lines) {
+        const auto [qu, qv] = nearestOn(line, u, v);
+        if (distance(u, v, qu, qv) <= radius) {
+            nearLines.push_back(&line);
+            consider(2, qu, qv, "onCurve", {line.id});
+        }
+    }
+    for (const SnapCircle& circle : geometry.circles) {
+        if (const auto q = nearestOn(circle, u, v);
+            q && distance(u, v, q->first, q->second) <= radius) {
+            nearCircles.push_back(&circle);
+            consider(2, q->first, q->second, "onCurve", {circle.id});
+        }
+    }
+    const auto meet = [&](const auto& points, const std::string& a, const std::string& b) {
+        for (const auto& [mu, mv] : points) {
+            consider(1, mu, mv, "intersection", {a, b});
+        }
+    };
+    for (std::size_t i = 0; i < nearLines.size(); ++i) {
+        for (std::size_t j = i + 1; j < nearLines.size(); ++j) {
+            meet(intersections(*nearLines[i], *nearLines[j]), nearLines[i]->id, nearLines[j]->id);
+        }
+        for (const SnapCircle* circle : nearCircles) {
+            meet(intersections(*nearLines[i], *circle), nearLines[i]->id, circle->id);
+        }
+    }
+    for (std::size_t i = 0; i < nearCircles.size(); ++i) {
+        for (std::size_t j = i + 1; j < nearCircles.size(); ++j) {
+            meet(intersections(*nearCircles[i], *nearCircles[j]), nearCircles[i]->id,
+                 nearCircles[j]->id);
+        }
+    }
+    if (bestRank < 3) {
+        return best;
+    }
+
+    // A free position. The line tool infers a direction from where the line starts:
+    // horizontal or vertical first, then tangent or perpendicular to the curve it leaves, then
+    // parallel or perpendicular to lines nearby.
+    Spot spot{.u = u, .v = v};
+    std::optional<std::pair<double, double>> ray;  // the inferred direction, from the start
+    if (kind_ == SketchToolKind::Line && !fixed_.empty()) {
+        const Spot& from = fixed_.back();
+        struct Direction {
+            Vector d;
+            std::string type;
+            std::string other;
+            int rank;
+        };
+        std::vector<Direction> directions{{{1.0, 0.0}, "horizontal", {}, 0},
+                                          {{0.0, 1.0}, "vertical", {}, 0}};
+        std::optional<Tangent> leaving;
+        if (tangent_ && !lastCurve_.empty()) {
+            leaving = Tangent{*tangent_, lastCurve_, lastCurveArc_};
+        } else if (fixed_.size() == 1) {
+            leaving = tangentAt(session, from);  // starting at the end of an existing curve
+        }
+        if (leaving) {
+            const Vector d = leaving->direction;
+            if (leaving->arc) {
+                directions.push_back({d, "tangent", leaving->curve, 1});
+            } else {
+                directions.push_back({{-d.second, d.first}, "perpendicular", leaving->curve, 1});
+            }
+        }
+        for (const SnapLine& line : geometry.lines) {
+            if ((leaving && line.id == leaving->curve) ||
+                distance(u, v, nearestOn(line, u, v).first, nearestOn(line, u, v).second) >
+                    4 * radius) {
+                continue;
+            }
+            const Vector d = normalized(line.u1 - line.u0, line.v1 - line.v0);
+            directions.push_back({d, "parallel", line.id, 2});
+            directions.push_back({{-d.second, d.first}, "perpendicular", line.id, 2});
+        }
+        const Direction* chosen = nullptr;
+        double chosenAway = 0.0;
+        for (const Direction& direction : directions) {
+            const double wu = u - from.u;
+            const double wv = v - from.v;
+            const double along = wu * direction.d.first + wv * direction.d.second;
+            const double away = std::abs(wu * direction.d.second - wv * direction.d.first);
+            const bool forward = direction.type != "tangent" || along > 0.0;
+            if (away > radius || !forward || std::abs(along) < radius) {
+                continue;
+            }
+            if (chosen == nullptr || direction.rank < chosen->rank ||
+                (direction.rank == chosen->rank && away < chosenAway)) {
+                chosen = &direction;
+                chosenAway = away;
+            }
+        }
+        if (chosen != nullptr) {
+            const double along = (u - from.u) * chosen->d.first + (v - from.v) * chosen->d.second;
+            spot.u = from.u + along * chosen->d.first;
+            spot.v = from.v + along * chosen->d.second;
+            spot.inferences.push_back({chosen->type, chosen->other});
+            spot.guides.push_back({{from.u, from.v}, {spot.u, spot.v}});
+            ray = chosen->d;
+        }
+    }
+
+    // Alignment with existing points: guides through them, along the axes.
+    const PlacedPoint* across = nullptr;  // the same u: a vertical guide
+    const PlacedPoint* level = nullptr;   // the same v: a horizontal guide
+    for (const PlacedPoint& point : geometry.points) {
+        if (!fixed_.empty() && point.id == fixed_.back().point && kind_ == SketchToolKind::Line) {
+            continue;  // that is horizontal or vertical inference
+        }
+        if (std::abs(point.u - spot.u) <= radius &&
+            (across == nullptr || std::abs(point.u - spot.u) < std::abs(across->u - spot.u))) {
+            across = &point;
+        }
+        if (std::abs(point.v - spot.v) <= radius &&
+            (level == nullptr || std::abs(point.v - spot.v) < std::abs(level->v - spot.v))) {
+            level = &point;
+        }
+    }
+    const auto align = [&](const PlacedPoint& point, bool vertical) {
+        double au = spot.u;
+        double av = spot.v;
+        if (ray) {
+            // Slide along the inferred direction to the guide.
+            const Spot& from = fixed_.back();
+            const double step = vertical ? ray->first : ray->second;
+            if (std::abs(step) < kEpsilon) {
+                return;
+            }
+            const double t = ((vertical ? point.u - from.u : point.v - from.v)) / step;
+            au = from.u + t * ray->first;
+            av = from.v + t * ray->second;
+            if (distance(au, av, spot.u, spot.v) > radius) {
+                return;
+            }
+        } else if (vertical) {
+            au = point.u;
+        } else {
+            av = point.v;
+        }
+        spot.u = au;
+        spot.v = av;
+        spot.guides.push_back({{point.u, point.v}, {spot.u, spot.v}});
+    };
+    if (across != nullptr) {
+        align(*across, true);
+    }
+    if (level != nullptr && (!ray || across == nullptr)) {
+        align(*level, false);
+    }
+
+    // The grid, when nothing else applies.
+    if (grid_ > 0.0 && spot.inferences.empty() && spot.guides.empty()) {
+        spot.u = std::round(spot.u / grid_) * grid_;
+        spot.v = std::round(spot.v / grid_) * grid_;
+        spot.kind = "grid";
     }
     return spot;
 }
 
-std::optional<std::pair<double, double>> SketchTool::tangentAt(const Session& session,
-                                                               const Spot& end) const {
+std::optional<SketchTool::Tangent> SketchTool::tangentAt(const Session& session,
+                                                         const Spot& end) const {
     if (end.point.empty()) {
         return std::nullopt;
     }
@@ -247,7 +632,7 @@ std::optional<std::pair<double, double>> SketchTool::tangentAt(const Session& se
         }
         const auto other = at(line->start == end.point ? line->end : line->start);
         if (other) {
-            return normalized(end.u - other->u, end.v - other->v);
+            return Tangent{normalized(end.u - other->u, end.v - other->v), line->id, false};
         }
     }
     for (auto arc = sketch.arcs.rbegin(); arc != sketch.arcs.rend(); ++arc) {
@@ -257,7 +642,8 @@ std::optional<std::pair<double, double>> SketchTool::tangentAt(const Session& se
         }
         // Counter-clockwise from start to end: leaving the end goes on counter-clockwise,
         // leaving the start goes back the other way.
-        return arcDirectionAt(center->u, center->v, end.u, end.v, arc->end == end.point);
+        return Tangent{arcDirectionAt(center->u, center->v, end.u, end.v, arc->end == end.point),
+                       arc->id, true};
     }
     return std::nullopt;
 }
@@ -309,16 +695,22 @@ bool SketchTool::pointer(Session& session, PointerEvent event, double u, double 
         }
         const auto [cu, cv, ccw] = *arc;
         std::string end;
+        std::string arcId;
         session.edit(
             [&](Document& document) {
                 Sketch& sketch = std::get<Sketch>(document.findFeature(sketch_)->data);
                 Builder build(document, sketch, construction_);
                 const std::string center = build.point(cu, cv);
-                end = build.point(spot.u, spot.v, spot.point);
-                build.arc(center, build.point(from.u, from.v, from.point), end, ccw);
+                end = build.point(spot);
+                arcId = build.arc(center, build.point(from), end, ccw);
+                if (!lastCurve_.empty()) {
+                    build.constrain("tangent", {lastCurve_, arcId});
+                }
             },
             "Draw");
         tangent_ = arcDirectionAt(cu, cv, spot.u, spot.v, ccw);
+        lastCurve_ = arcId;
+        lastCurveArc_ = true;
         fixed_ = {Spot{.u = spot.u, .v = spot.v, .point = end}};
         if (end == chainStart_) {
             cancel();
@@ -356,7 +748,7 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
             if (!spot.point.empty()) {
                 return false;  // there is a point already
             }
-            edit([&](Builder& build) { build.point(spot.u, spot.v); });
+            edit([&](Builder& build) { build.point(spot); });
             return true;
         }
         case SketchToolKind::Line: {
@@ -364,6 +756,7 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
                 fixed_ = {spot};
                 tangent_.reset();
                 chainStart_.clear();
+                lastCurve_.clear();
                 return false;
             }
             const Spot from = fixed_.back();
@@ -372,15 +765,19 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
             }
             std::string start;
             std::string end;
+            std::string line;
             edit([&](Builder& build) {
-                start = build.point(from.u, from.v, from.point);
-                end = build.point(spot.u, spot.v, spot.point);
-                build.line(start, end);
+                start = build.point(from);
+                end = build.point(spot);
+                line = build.line(start, end);
+                build.infer(line, spot.inferences);
             });
             if (chainStart_.empty()) {
                 chainStart_ = start;
             }
             tangent_ = normalized(spot.u - from.u, spot.v - from.v);
+            lastCurve_ = line;
+            lastCurveArc_ = false;
             fixed_ = {Spot{.u = spot.u, .v = spot.v, .point = end}};
             if (end == chainStart_) {
                 cancel();  // the polyline closed
@@ -390,8 +787,10 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
         case SketchToolKind::ArcTangent: {
             if (fixed_.empty()) {
                 // It starts at the end of a line or arc.
-                tangent_ = tangentAt(session, spot);
-                if (tangent_) {
+                const auto leaving = tangentAt(session, spot);
+                if (leaving) {
+                    tangent_ = leaving->direction;
+                    lastCurve_ = leaving->curve;
                     fixed_ = {spot};
                 }
                 return false;
@@ -403,8 +802,9 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
             }
             const auto [cu, cv, ccw] = *arc;
             edit([&](Builder& build) {
-                build.arc(build.point(cu, cv), from.point, build.point(spot.u, spot.v, spot.point),
-                          ccw);
+                const std::string arc =
+                    build.arc(build.point(cu, cv), from.point, build.point(spot), ccw);
+                build.constrain("tangent", {lastCurve_, arc});
             });
             cancel();
             return true;
@@ -449,13 +849,15 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
             if (du <= kEpsilon || dv <= kEpsilon) {
                 return false;
             }
-            const auto corners = centered
-                                     ? axisRectangle(a.u - du, a.v - dv, {}, a.u + du, a.v + dv, {})
-                                     : axisRectangle(a.u, a.v, a.point, c.u, c.v, c.point);
+            const auto corners = centered ? axisRectangle({.u = a.u - du, .v = a.v - dv},
+                                                          {.u = a.u + du, .v = a.v + dv})
+                                          : axisRectangle(a, c);
             edit([&](Builder& build) {
                 const auto lines = build.polygon(corners);
-                for (std::size_t i = 0; i < lines.size(); ++i) {
-                    build.constrain(i % 2 == 0 ? "horizontal" : "vertical", {lines[i]});
+                // The polygon may run the other way round: a side is horizontal if its line is.
+                for (const auto& [line, from, to] : lines) {
+                    build.constrain(std::abs(from.v - to.v) <= kEpsilon ? "horizontal" : "vertical",
+                                    {line});
                 }
             });
             drawn = true;
@@ -470,20 +872,17 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
                 return false;
             }
             edit([&](Builder& build) {
-                const auto lines = build.polygon({{a.u, a.v, a.point},
-                                                  {b.u, b.v, b.point},
-                                                  {b.u + nu * width, b.v + nv * width, {}},
-                                                  {a.u + nu * width, a.v + nv * width, {}}});
-                build.constrain("perpendicular", {lines[0], lines[1]});
-                build.constrain("parallel", {lines[0], lines[2]});
-                build.constrain("parallel", {lines[1], lines[3]});
+                const auto lines = build.polygon(sideRectangle(a, b, nu, nv, width));
+                build.constrain("perpendicular", {std::get<0>(lines[0]), std::get<0>(lines[1])});
+                build.constrain("parallel", {std::get<0>(lines[0]), std::get<0>(lines[2])});
+                build.constrain("parallel", {std::get<0>(lines[1]), std::get<0>(lines[3])});
             });
             drawn = true;
             break;
         }
         case SketchToolKind::CircleCenter: {
             const double radius = distance(a.u, a.v, c.u, c.v);
-            edit([&](Builder& build) { build.circle(build.point(a.u, a.v, a.point), radius); });
+            edit([&](Builder& build) { build.circle(build.point(a), radius); });
             drawn = true;
             break;
         }
@@ -515,8 +914,7 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
             const bool ccw = ccwAngle(start, std::atan2(c.v - cv, c.u - cu)) <
                              ccwAngle(start, std::atan2(b.v - cv, b.u - cu));
             edit([&](Builder& build) {
-                build.arc(build.point(cu, cv), build.point(a.u, a.v, a.point),
-                          build.point(b.u, b.v, b.point), ccw);
+                build.arc(build.point(cu, cv), build.point(a), build.point(b), ccw);
             });
             drawn = true;
             break;
@@ -535,8 +933,8 @@ bool SketchTool::click(Session& session, const Spot& spot, double snapRadius) {
                                  ? sweep_ > 0.0
                                  : (b.u - a.u) * (ev - a.v) - (b.v - a.v) * (eu - a.u) > 0.0;
             edit([&](Builder& build) {
-                build.arc(build.point(a.u, a.v, a.point), build.point(b.u, b.v, b.point),
-                          build.point(eu, ev, onCircle ? c.point : std::string{}), ccw);
+                build.arc(build.point(a), build.point(b),
+                          onCircle ? build.point(c) : build.point(eu, ev), ccw);
             });
             drawn = true;
             break;
@@ -554,6 +952,8 @@ bool SketchTool::cancel() {
     pressed_.reset();
     tangent_.reset();
     chainStart_.clear();
+    lastCurve_.clear();
+    lastCurveArc_ = false;
     sweep_ = 0.0;
     return busy;
 }
@@ -568,11 +968,11 @@ Mesh SketchTool::preview(const Session& session, double deflection) const {
     const Spot& p = *pointer_;
     std::vector<Spot> spots = placed(lastRadius_);
     std::vector<ProfileSegment> curves;
-    const auto rectangle = [&](const std::vector<std::tuple<double, double, std::string>>& c) {
+    const auto rectangle = [&](const std::vector<Spot>& c) {
         for (std::size_t i = 0; i < c.size(); ++i) {
-            const auto& [u0, v0, id0] = c[i];
-            const auto& [u1, v1, id1] = c[(i + 1) % c.size()];
-            curves.push_back(lineSegment(u0, v0, u1, v1));
+            const Spot& from = c[i];
+            const Spot& to = c[(i + 1) % c.size()];
+            curves.push_back(lineSegment(from.u, from.v, to.u, to.v));
         }
     };
     const bool draggingArc =
@@ -598,12 +998,13 @@ Mesh SketchTool::preview(const Session& session, double deflection) const {
                 break;
             }
             case SketchToolKind::RectangleTwoPoint:
-                rectangle(axisRectangle(a.u, a.v, {}, p.u, p.v, {}));
+                rectangle(axisRectangle(a, p));
                 break;
             case SketchToolKind::RectangleCenter: {
                 const double du = std::abs(p.u - a.u);
                 const double dv = std::abs(p.v - a.v);
-                rectangle(axisRectangle(a.u - du, a.v - dv, {}, a.u + du, a.v + dv, {}));
+                rectangle(
+                    axisRectangle({.u = a.u - du, .v = a.v - dv}, {.u = a.u + du, .v = a.v + dv}));
                 break;
             }
             case SketchToolKind::RectangleThreePoint: {
@@ -616,10 +1017,7 @@ Mesh SketchTool::preview(const Session& session, double deflection) const {
                 const double nu = -(b.v - a.v) / length;
                 const double nv = (b.u - a.u) / length;
                 const double width = (p.u - a.u) * nu + (p.v - a.v) * nv;
-                rectangle({{a.u, a.v, {}},
-                           {b.u, b.v, {}},
-                           {b.u + nu * width, b.v + nv * width, {}},
-                           {a.u + nu * width, a.v + nv * width, {}}});
+                rectangle(sideRectangle(a, b, nu, nv, width));
                 break;
             }
             case SketchToolKind::CircleCenter:
@@ -677,7 +1075,32 @@ Mesh SketchTool::preview(const Session& session, double deflection) const {
         points.push_back(frame.at(spot.u, spot.v));
     }
     points.push_back(frame.at(p.u, p.v));
-    return curvesMesh(frame, curves, points, deflection);
+    Mesh mesh = curvesMesh(frame, curves, points, deflection);
+    // The guides, as edges of their own.
+    std::vector<ProfileSegment> guides;
+    for (const auto& [from, to] : p.guides) {
+        guides.push_back(lineSegment(from.first, from.second, to.first, to.second));
+    }
+    const Mesh guideMesh = curvesMesh(frame, guides, {}, deflection);
+    const auto offset = static_cast<std::uint32_t>(mesh.edgePoints.size() / 3);
+    mesh.edgePoints.insert(mesh.edgePoints.end(), guideMesh.edgePoints.begin(),
+                           guideMesh.edgePoints.end());
+    for (std::size_t i = 0; i < guideMesh.edgeIds.size(); ++i) {
+        mesh.edgeOffsets.push_back(offset + guideMesh.edgeOffsets[i + 1]);
+        mesh.edgeIds.push_back(kPreviewGuideId + static_cast<std::uint32_t>(i));
+    }
+    return mesh;
+}
+
+SnapFeedback SketchTool::feedback() const {
+    SnapFeedback result;
+    if (pointer_) {
+        result.snap = pointer_->kind;
+        for (const Inference& inference : pointer_->inferences) {
+            result.inferences.push_back(inference.type);
+        }
+    }
+    return result;
 }
 
 }  // namespace facetry::core

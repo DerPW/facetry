@@ -84,13 +84,19 @@ actor DocumentEngine {
         try core.createSketchTool(sketch: sketch, kind: kind, construction: construction)
     }
 
-    /// A pointer event for the tool: whether the document changed, and the tool's preview.
+    /// A pointer event for the tool, with the grid spacing to snap to (0: none): whether the
+    /// document changed, the tool's preview and its snap feedback.
     func toolEvent(
-        _ tool: ToolHandle, _ event: ToolEvent, u: Double, v: Double, snapRadius: Double
-    ) throws -> (changed: Bool, preview: MeshData) {
+        _ tool: ToolHandle, _ event: ToolEvent, u: Double, v: Double, snapRadius: Double,
+        grid: Double
+    ) throws -> (changed: Bool, preview: MeshData, feedback: SnapFeedback) {
+        try core.setSketchToolGrid(tool, spacing: grid)
         let changed = try core.sketchToolPointer(
             session, tool: tool, event: event, u: u, v: v, snapRadius: snapRadius)
-        return (changed, try core.sketchToolPreview(session, tool: tool))
+        return (
+            changed, try core.sketchToolPreview(session, tool: tool),
+            try core.sketchToolFeedback(tool)
+        )
     }
 
     func cancelTool(_ tool: ToolHandle) throws -> Bool {
@@ -317,9 +323,30 @@ final class DocumentModel {
         sketching = nil
         viewport.sketch = nil
         viewport.drawing = nil
+        viewport.glyphs = []
+        viewport.pointerLabel = ""
         await run { try await $0.endTransaction(commit: keep) }
         if keep { registerUndo(after: stepsBeforeSketch) }
     }
+
+    /// Names for what the pointer snapped to and what the tool infers.
+    private static let snapNames = [
+        "point": "Point", "center": "Center", "midpoint": "Midpoint", "quadrant": "Quadrant",
+        "intersection": "Intersection", "origin": "Origin", "onCurve": "On curve", "grid": "Grid",
+        "horizontal": "Horizontal", "vertical": "Vertical", "parallel": "Parallel",
+        "perpendicular": "Perpendicular", "tangent": "Tangent",
+    ]
+
+    private static func describe(_ feedback: SnapFeedback) -> String {
+        ([feedback.snap] + feedback.inferences).compactMap { snapNames[$0] }.joined(
+            separator: " · ")
+    }
+
+    /// Constraint glyphs on the sketch (docs/adr/0015-sketch-tools.md).
+    private static let glyphTexts = [
+        "horizontal": "H", "vertical": "V", "parallel": "∥", "perpendicular": "⊥", "tangent": "T",
+        "equal": "=", "coincident": "⊙", "midpoint": "△", "concentric": "◎", "fix": "F",
+    ]
 
     /// Draws the sketch being edited; `turning` turns the view to face it.
     private func showSketch(turning: Bool) {
@@ -327,7 +354,14 @@ final class DocumentModel {
             let mesh = sketchMeshes[sketching]
         else {
             viewport.sketch = nil
+            viewport.glyphs = []
             return
+        }
+        viewport.glyphs = (feature.glyphs ?? []).compactMap { glyph in
+            guard glyph.at.count == 3 else { return nil }
+            return GlyphLabel(
+                text: Self.glyphTexts[glyph.type] ?? "?",
+                at: SIMD3(Float(glyph.at[0]), Float(glyph.at[1]), Float(glyph.at[2])))
         }
         let construction = feature.sketchCurves.enumerated().compactMap { index, curve in
             curve.construction ? UInt32(index + 1) : nil
@@ -349,12 +383,14 @@ final class DocumentModel {
     var construction = false {
         didSet { if construction != oldValue { configureTool() } }
     }
+    /// Free points snap to the grid.
+    var gridSnap = false
 
     /// Everything a tool does goes through one queue, so its creation, pointer events and
     /// release reach the engine in order. Moves that pile up collapse into the latest.
     private enum ToolCommand {
         case configure(SketchToolKind?, construction: Bool)
-        case pointer(ToolEvent, u: Double, v: Double, snapRadius: Double)
+        case pointer(ToolEvent, u: Double, v: Double, snapRadius: Double, grid: Double)
         case cancel
     }
     private var toolCommands: [ToolCommand] = []
@@ -378,8 +414,10 @@ final class DocumentModel {
         let vector = { (v: [Double]) in SIMD3(Float(v[0]), Float(v[1]), Float(v[2])) }
         let plane = SketchPlane(
             origin: vector(frame.origin), xAxis: vector(frame.xAxis), yAxis: vector(frame.yAxis))
-        viewport.drawing = DrawingInput(plane: plane) { [weak self] event, u, v, snapRadius in
-            self?.queueTool(.pointer(event, u: u, v: v, snapRadius: snapRadius))
+        viewport.drawing = DrawingInput(plane: plane) { [weak self] event, u, v, snapRadius, grid in
+            guard let self else { return }
+            queueTool(
+                .pointer(event, u: u, v: v, snapRadius: snapRadius, grid: gridSnap ? grid : 0))
         }
     }
 
@@ -411,8 +449,8 @@ final class DocumentModel {
     }
 
     private func queueTool(_ command: ToolCommand) {
-        if case .pointer(.move, _, _, _) = command,
-            case .pointer(.move, _, _, _)? = toolCommands.last
+        if case .pointer(.move, _, _, _, _) = command,
+            case .pointer(.move, _, _, _, _)? = toolCommands.last
         {
             toolCommands[toolCommands.count - 1] = command
         } else {
@@ -436,15 +474,17 @@ final class DocumentModel {
                         try? await engine.releaseTool(old)
                     }
                     viewport.sketchPreview = nil
+                    viewport.pointerLabel = ""
                     if let kind, let sketching {
                         toolHandle = try await engine.makeTool(
                             sketch: sketching, kind: kind, construction: construction)
                     }
-                case .pointer(let event, let u, let v, let snapRadius):
+                case .pointer(let event, let u, let v, let snapRadius, let grid):
                     guard let toolHandle else { continue }
                     let result = try await engine.toolEvent(
-                        toolHandle, event, u: u, v: v, snapRadius: snapRadius)
+                        toolHandle, event, u: u, v: v, snapRadius: snapRadius, grid: grid)
                     viewport.sketchPreview = result.preview
+                    viewport.pointerLabel = Self.describe(result.feedback)
                     if result.changed { await run { _ in } }
                 case .cancel:
                     viewport.sketchPreview = nil

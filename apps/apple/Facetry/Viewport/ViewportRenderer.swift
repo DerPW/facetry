@@ -193,6 +193,18 @@ final class ViewportRenderer {
         return (Double(out[0]), Double(out[1]), Double(out[2]))
     }
 
+    /// Where `point` (millimeters) shows on screen, in points; nil behind the camera.
+    func project(_ point: SIMD3<Float>) -> CGPoint? {
+        var out: [Float] = [0, 0]
+        guard
+            facetry_renderer_project(handle, point.x, point.y, point.z, &out) == FACETRY_RENDER_OK
+        else { return nil }
+        return CGPoint(x: Double(out[0]), y: Double(out[1]))
+    }
+
+    /// The distance between the grid's minor lines in millimeters, for grid snapping.
+    var gridSpacing: Double { Double(facetry_renderer_grid_spacing(handle)) }
+
     /// Clicks and hovering pick only the regions (while choosing profiles).
     func pickRegionsOnly() {
         facetry_renderer_set_pick_filter(handle, FACETRY_PICK_REGIONS.rawValue)

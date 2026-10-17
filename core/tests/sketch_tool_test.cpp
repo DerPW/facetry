@@ -7,6 +7,7 @@
 #include "corner_fillet.hpp"
 
 #include <doctest.h>
+#include <nlohmann/json.hpp>
 
 #include <cmath>
 #include <numbers>
@@ -152,6 +153,20 @@ TEST_CASE("rectangles: two corners, center and corner, three points") {
     CHECK(extrudedArea(tilted) == doctest::Approx(25));
     CHECK(constraintTypes(tilted) ==
           std::vector<std::string>{"perpendicular", "parallel", "parallel"});
+
+    // Drawn from the top left, the rectangle turns round to run counter-clockwise; its sides
+    // still get the right constraints.
+    Session reversed = emptySketch();
+    SketchTool downward(SketchToolKind::RectangleTwoPoint, "f1", false);
+    clicks(downward, reversed, {{0, 2}, {4, 0}});
+    const Sketch& sides = sketchOf(reversed);
+    for (std::size_t i = 0; i < sides.lines.size(); ++i) {
+        const auto [u0, v0] = at(reversed, sides.lines[i].start);
+        const auto [u1, v1] = at(reversed, sides.lines[i].end);
+        CHECK(sides.constraints[i].type == (v0 == v1 ? "horizontal" : "vertical"));
+        static_cast<void>(u0);
+        static_cast<void>(u1);
+    }
 
     // A drag from corner to corner works too; a flat rectangle draws nothing.
     Session dragged = emptySketch();
@@ -307,4 +322,160 @@ TEST_CASE("curves are made construction curves and back") {
                                  "construction": true})");
     }),
                     Error);
+}
+
+namespace {
+
+// The constraints of the sketch as "type: entities".
+std::vector<std::string> constraintsOf(const Session& session) {
+    std::vector<std::string> result;
+    for (const SketchConstraint& constraint : sketchOf(session).constraints) {
+        std::string text = constraint.type + ":";
+        for (const std::string& entity : constraint.entities) {
+            text += " " + entity;
+        }
+        result.push_back(text);
+    }
+    return result;
+}
+
+const SketchPoint& lastPoint(const Session& session) {
+    return sketchOf(session).points.back();
+}
+
+}  // namespace
+
+TEST_CASE("points snap to midpoints, quadrants, intersections, curves and the origin") {
+    Session session = emptySketch();
+    SketchTool line(SketchToolKind::Line, "f1", false);
+    clicks(line, session, {{0, 0}, {10, 0}});
+    line.cancel();
+    clicks(line, session, {{0, 10}, {10, 20}});  // tilted, so no inference
+    line.cancel();
+    SketchTool circle(SketchToolKind::CircleCenter, "f1", false);
+    clicks(circle, session, {{30, 0}, {33, 0}});
+    const std::string base = sketchOf(session).lines[0].id;
+    const std::string ring = sketchOf(session).circles[0].id;
+
+    SketchTool point(SketchToolKind::Point, "f1", false);
+    const auto place = [&](double u, double v, const char* snap) {
+        point.pointer(session, PointerEvent::Move, u, v, kSnap);
+        CHECK(point.feedback().snap == snap);
+        CHECK(click(point, session, u, v));
+        return std::pair{lastPoint(session).x.number, lastPoint(session).y.number};
+    };
+    CHECK(place(5.2, 0.3, "midpoint") == std::pair{5.0, 0.0});
+    CHECK(constraintsOf(session).back() == "midpoint: " + lastPoint(session).id + " " + base);
+    CHECK(place(30.1, 3.2, "quadrant") == std::pair{30.0, 3.0});
+    CHECK(constraintsOf(session).back() == "coincident: " + lastPoint(session).id + " " + ring);
+    const auto [ou, ov] = place(7.0, 0.3, "onCurve");
+    CHECK(ou == doctest::Approx(7));
+    CHECK(ov == doctest::Approx(0));
+    // On the line's start there is a point already: the tool shows it and adds nothing.
+    point.pointer(session, PointerEvent::Move, 0.2, -0.3, kSnap);
+    CHECK(point.feedback().snap == "point");
+    CHECK_FALSE(click(point, session, 0.2, -0.3));
+}
+
+TEST_CASE("crossing curves snap to where they meet") {
+    Session session = emptySketch();
+    SketchTool line(SketchToolKind::Line, "f1", false);
+    // y = x + 1 and y = 9 - x / 2 meet at (16/3, 19/3), away from both midpoints.
+    clicks(line, session, {{0, 1}, {10, 11}});
+    line.cancel();
+    clicks(line, session, {{0, 9}, {12, 3}});
+    line.cancel();
+    SketchTool point(SketchToolKind::Point, "f1", false);
+    click(point, session, 5.4, 6.4);
+    CHECK(lastPoint(session).x.number == doctest::Approx(16.0 / 3));
+    CHECK(lastPoint(session).y.number == doctest::Approx(19.0 / 3));
+    const auto constraints = constraintsOf(session);
+    REQUIRE(constraints.size() >= 2);
+    CHECK(constraints[constraints.size() - 2].starts_with("coincident: " + lastPoint(session).id));
+    CHECK(constraints.back().starts_with("coincident: " + lastPoint(session).id));
+
+    // An empty sketch snaps to its origin.
+    Session empty = emptySketch();
+    SketchTool origin(SketchToolKind::Point, "f1", false);
+    origin.pointer(empty, PointerEvent::Move, 0.2, 0.1, kSnap);
+    CHECK(origin.feedback().snap == "origin");
+}
+
+TEST_CASE("lines infer horizontal, vertical, perpendicular and tangent directions") {
+    Session session = emptySketch();
+    SketchTool line(SketchToolKind::Line, "f1", false);
+    click(line, session, 0, 0);
+    line.pointer(session, PointerEvent::Move, 10, 0.3, kSnap);
+    CHECK(line.feedback().inferences == std::vector<std::string>{"horizontal"});
+    const Mesh preview = line.preview(session, 0.01);
+    CHECK(preview.edgeIds.back() >= kPreviewGuideId);  // the inference line
+    click(line, session, 10, 0.3);
+    CHECK(lastPoint(session).y.number == doctest::Approx(0));
+    const std::string first = sketchOf(session).lines[0].id;
+    CHECK(constraintsOf(session).back() == "horizontal: " + first);
+    click(line, session, 10.2, 8);
+    CHECK(lastPoint(session).x.number == doctest::Approx(10));
+    CHECK(constraintsOf(session).back() == "vertical: " + sketchOf(session).lines[1].id);
+    line.cancel();
+
+    // Perpendicular to the segment before: (0, 20) to (10, 25), then a quarter turn left.
+    clicks(line, session, {{0, 20}, {10, 25}});
+    click(line, session, 5.2, 35.1);
+    CHECK(lastPoint(session).x.number == doctest::Approx(5).epsilon(1e-6));
+    CHECK(lastPoint(session).y.number == doctest::Approx(35).epsilon(1e-6));
+    const auto lines = [&] { return sketchOf(session).lines; };  // edits replace the document
+    CHECK(constraintsOf(session).back() ==
+          "perpendicular: " + lines().back().id + " " + lines()[lines().size() - 2].id);
+    line.cancel();
+
+    // Tangent to an arc: a line from (0, 50) to (10, 50), a tangent arc dragged back to
+    // (13, 56), then on along the arc's direction there, (-0.6, 0.8).
+    clicks(line, session, {{0, 50}, {10, 50}});
+    drag(line, session, 10, 50, 13, 56);
+    const std::string arc = sketchOf(session).arcs.back().id;
+    CHECK(constraintsOf(session).back() == "tangent: " + lines().back().id + " " + arc);
+    click(line, session, 10.1, 60.05);
+    CHECK(lastPoint(session).x.number == doctest::Approx(10).epsilon(1e-6));
+    CHECK(lastPoint(session).y.number == doctest::Approx(60).epsilon(1e-6));
+    CHECK(constraintsOf(session).back() == "tangent: " + arc + " " + lines().back().id);
+}
+
+TEST_CASE("free points align with others and can snap to a grid") {
+    Session session = emptySketch();
+    SketchTool point(SketchToolKind::Point, "f1", false);
+    click(point, session, 5, 5);
+    point.pointer(session, PointerEvent::Move, 5.3, 9, kSnap);
+    CHECK(point.preview(session, 0.01).edgeIds == std::vector<std::uint32_t>{kPreviewGuideId});
+    click(point, session, 5.3, 9);
+    CHECK(lastPoint(session).x.number == doctest::Approx(5));  // straight above the first
+    CHECK(lastPoint(session).y.number == doctest::Approx(9));
+
+    point.setGrid(2);
+    point.pointer(session, PointerEvent::Move, 13.3, 14.6, kSnap);
+    CHECK(point.feedback().snap == "grid");
+    click(point, session, 13.3, 14.6);
+    CHECK(lastPoint(session).x.number == doctest::Approx(14));
+    CHECK(lastPoint(session).y.number == doctest::Approx(14));
+}
+
+TEST_CASE("constraints show as glyphs on the sketch") {
+    Session session = emptySketch();
+    SketchTool rectangle(SketchToolKind::RectangleTwoPoint, "f1", false);
+    clicks(rectangle, session, {{0, 0}, {4, 2}});
+    SketchTool point(SketchToolKind::Point, "f1", false);
+    click(point, session, 2.1, 0.2);  // the midpoint of the bottom side
+    const Regeneration& regeneration = session.regenerate();
+    const auto glyphs = constraintGlyphs(sketchOf(session), *regeneration.model.sketches.at("f1"));
+    REQUIRE(glyphs.size() == 5);
+    CHECK(glyphs[0].type == "horizontal");
+    CHECK(glyphs[0].at.x == doctest::Approx(2));  // halfway along the bottom side
+    CHECK(glyphs[0].at.y == doctest::Approx(0));
+    CHECK(glyphs[1].type == "vertical");
+    CHECK(glyphs[1].at.x == doctest::Approx(4));
+    CHECK(glyphs[4].type == "midpoint");
+    CHECK(glyphs[4].at.x == doctest::Approx(2));  // at the point
+
+    const auto state = nlohmann::json::parse(sessionStateJson(session));
+    CHECK(state["features"][0]["glyphs"].size() == 5);
+    CHECK(state["features"][0]["glyphs"][4]["type"] == "midpoint");
 }

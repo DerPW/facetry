@@ -275,6 +275,11 @@ TEST_CASE("sketch tools draw through the C API") {
     REQUIRE(facetry_mesh_release(c.ctx, preview) == FACETRY_OK);
     pointer(FACETRY_POINTER_UP, 6, 3);
     CHECK(changed == 1);
+    pointer(FACETRY_POINTER_MOVE, 5.05, 3);
+    const char* feedback = nullptr;
+    REQUIRE(facetry_sketch_tool_feedback(c.ctx, tool, &feedback) == FACETRY_OK);
+    CHECK(json::parse(feedback)["snap"] == "center");  // the circle's center just drawn
+    REQUIRE(facetry_sketch_tool_set_grid(c.ctx, tool, 2.0) == FACETRY_OK);
     int busy = -1;
     REQUIRE(facetry_sketch_tool_cancel(c.ctx, tool, &busy) == FACETRY_OK);
     CHECK(busy == 0);

@@ -5,6 +5,7 @@ import type {
   LogLevel,
   MeshData,
   ModelSnapshot,
+  SnapFeedback,
   TessellationOptions,
   ToolEvent,
 } from "./api";
@@ -38,7 +39,8 @@ export type CoreMethods = Pick<
   | "cancelSketchTool"
   | "releaseSketchTool"
 > & {
-  /** A pointer event for a sketch tool: whether the document changed, and the tool's preview. */
+  /** A pointer event for a sketch tool, with the grid spacing to snap to (0: none): whether the
+   * document changed, the tool's preview and its snap feedback. */
   sketchToolEvent(
     session: number,
     tool: number,
@@ -46,7 +48,8 @@ export type CoreMethods = Pick<
     u: number,
     v: number,
     snapRadius: number,
-  ): { changed: boolean; preview: MeshData };
+    grid: number,
+  ): { changed: boolean; preview: MeshData; feedback: SnapFeedback };
   /**
    * Regenerates in steps (see regenerate.ts) and tessellates every body. Resolves with null when
    * a newer regeneration of the session, or releasing it, took over.

@@ -410,6 +410,7 @@ std::string sessionStateJson(const Session& session) {
         if (std::holds_alternative<Sketch>(feature.data)) {
             Json regions = Json::array();
             Json frame = nullptr;
+            Json glyphs = Json::array();
             if (const auto sketch = regeneration.model.sketches.find(feature.id);
                 sketch != regeneration.model.sketches.end()) {
                 for (const SketchRegion& region : sketch->second->regions) {
@@ -421,9 +422,16 @@ std::string sessionStateJson(const Session& session) {
                          {"xAxis", vector(f.xAxis)},
                          {"yAxis", vector(f.yAxis)},
                          {"normal", vector(f.normal())}};
+                for (const ConstraintGlyph& glyph :
+                     constraintGlyphs(std::get<Sketch>(feature.data), *sketch->second)) {
+                    glyphs.push_back({{"type", glyph.type},
+                                      {"constraint", glyph.constraint},
+                                      {"at", vector(glyph.at)}});
+                }
             }
             entry["regions"] = std::move(regions);
             entry["frame"] = std::move(frame);
+            entry["glyphs"] = std::move(glyphs);
         }
         entry["definition"] = json::featureToJson(feature);
         features.push_back(std::move(entry));

@@ -104,6 +104,15 @@ export const SketchTool = {
 } as const;
 export type SketchTool = (typeof SketchTool)[keyof typeof SketchTool];
 
+/** What a sketch tool's pointer snapped to and what the next click infers. */
+export interface SnapFeedback {
+  /** "point", "center", "midpoint", "quadrant", "intersection", "origin", "onCurve", "grid" or
+   * "" (free). */
+  snap: string;
+  /** "horizontal", "vertical", "parallel", "perpendicular", "tangent". */
+  inferences: string[];
+}
+
 /** A pointer event for a sketch tool (facetry_pointer_event). */
 export const ToolEvent = { Down: 0, Move: 1, Up: 2 } as const;
 export type ToolEvent = (typeof ToolEvent)[keyof typeof ToolEvent];
@@ -148,6 +157,8 @@ export interface SessionState {
     regions?: string[];
     /** Sketches: where they lie in space (millimeters), or null before they regenerated. */
     frame?: SketchFrame | null;
+    /** Sketches: where their constraints show, in millimeters. */
+    glyphs?: { type: string; constraint: string; at: [number, number, number] }[];
     /** The feature in the document's JSON form, to change and send back with `replaceFeature`. */
     definition: FeatureJson & { id: string };
   }[];
@@ -406,6 +417,16 @@ export class FacetryCore {
       this.#m._facetry_sketch_tool_preview(this.#context, session, tool, deflection, this.#scratch),
     );
     return this.#takeMesh(this.#u32(this.#scratch));
+  }
+
+  sketchToolFeedback(tool: number): SnapFeedback {
+    this.#check(this.#m._facetry_sketch_tool_feedback(this.#context, tool, this.#scratch));
+    return JSON.parse(this.#outputString()) as SnapFeedback;
+  }
+
+  /** Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off. */
+  setSketchToolGrid(tool: number, spacing: number): void {
+    this.#check(this.#m._facetry_sketch_tool_set_grid(this.#context, tool, spacing));
   }
 
   releaseSketchTool(tool: number): void {

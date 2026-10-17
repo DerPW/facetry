@@ -78,6 +78,9 @@ class Renderer {
     // Picking reaches hidden edges and vertices when faces do not hide them.
     [[nodiscard]] bool picksThroughFaces() const;
 
+    // The distance between the grid's minor lines in millimeters at the current zoom.
+    [[nodiscard]] float gridSpacing() const;
+
     // The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches).
     void setGrid(bool visible, float unitMillimeters) {
         gridVisible_ = visible;

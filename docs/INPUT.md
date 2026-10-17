@@ -52,9 +52,13 @@ draws instead of selecting or orbiting:
 | Pan and zoom | two fingers (a second finger before the first moved turns it into navigation) | — | the other buttons and the wheel, as in the preset | as in the preset |
 | End the shape, then leave the tool | choose Select | choose Select | `Esc`, `Esc` | `Esc`, `Esc` |
 
-Points snap to existing sketch points within the pick radius. A polyline ends when it closes on
-its first point. Without a tool (Select), clicks select sketch curves and points before the
-model, for example to toggle them to construction curves.
+Within the pick radius, points snap to existing sketch points, then to midpoints, quadrants,
+intersections and the origin, then onto curves; lines also follow horizontal, vertical,
+perpendicular, parallel and tangent directions, and free points line up with others. A label
+next to the pointer says what it snapped to; dashed guides show alignments; **Grid snap** rounds
+free points to the grid (docs/adr/0016-sketch-snapping.md). A polyline ends when it closes on its
+first point. Without a tool (Select), clicks select sketch curves and points before the model,
+for example to toggle them to construction curves.
 
 ### Navigation presets
 

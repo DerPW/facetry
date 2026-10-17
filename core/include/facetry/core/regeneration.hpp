@@ -50,6 +50,17 @@ struct SketchGeometry {
 [[nodiscard]] Mesh curvesMesh(const SketchFrame& frame, std::span<const ProfileSegment> curves,
                               std::span<const Vec3> points, double deflection);
 
+// Where a sketch's constraints show as glyphs (#50): one per constraint, or one on each of the
+// two curves for parallel, perpendicular and equal; in space, in millimeters. Constraints on
+// entities that are gone are left out.
+struct ConstraintGlyph {
+    std::string type;  // the constraint type
+    std::string constraint;
+    Vec3 at;
+};
+[[nodiscard]] std::vector<ConstraintGlyph> constraintGlyphs(const Sketch& sketch,
+                                                            const SketchGeometry& geometry);
+
 // A length value in millimeters: a literal or a parameter, in the document's units. Throws
 // Error(InvalidArgument) for a parameter that does not exist.
 [[nodiscard]] double lengthInMillimeters(const Value& value, const Document& document);
