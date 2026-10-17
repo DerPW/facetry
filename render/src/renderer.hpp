@@ -18,6 +18,14 @@ struct Highlight {
     std::uint32_t selectId = 0;
 };
 
+// How bodies are drawn (facetry_visual_style).
+enum class VisualStyle : std::uint8_t {
+    Shaded = 0,             // faces only; hovered and selected edges and vertices still show
+    ShadedEdges = 1,        // faces, edges and vertices
+    ShadedHiddenEdges = 2,  // and the edges behind faces, dashed
+    Wireframe = 3,          // edges and vertices only
+};
+
 struct FrameTarget {
     const void* metalDrawable = nullptr;
     const void* metalDepthStencilTexture = nullptr;
@@ -54,6 +62,11 @@ class Renderer {
     void orbit(float dx, float dy);
     // Frames the selected element, or the whole model if nothing is selected.
     void fitSelection();
+    // Visual style, and the opacity of the faces (1 opaque).
+    void setStyle(VisualStyle style, float opacity);
+    // Picking reaches hidden edges and vertices when faces do not hide them.
+    [[nodiscard]] bool picksThroughFaces() const;
+
     // The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches).
     void setGrid(bool visible, float unitMillimeters) {
         gridVisible_ = visible;
@@ -81,6 +94,8 @@ class Renderer {
     FrameStats stats_;
     float pixelRatio_ = 1.0F;
     std::chrono::steady_clock::time_point lastDraw_;
+    VisualStyle style_ = VisualStyle::ShadedEdges;
+    float opacity_ = 1.0F;
     bool gridVisible_ = true;
     float gridUnit_ = 1.0F;
     int sampleCount_ = 1;

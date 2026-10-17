@@ -96,8 +96,8 @@ Back to the [roadmap overview](../ROADMAP.md).
 - [x] Named views (top, front, right, iso, …), fit selection
       ([#33](https://github.com/DerPW/facetry/issues/33)); Home is the iso view, `F` keeps the
       view direction
-- [ ] Visual styles: shaded, shaded with edges, shaded with hidden edges, wireframe;
-      transparency per body
+- [x] Visual styles: shaded, shaded with edges, shaded with hidden edges, wireframe;
+      transparency per body ([#35](https://github.com/DerPW/facetry/issues/35))
 - [x] Ground grid with adaptive spacing ([#34](https://github.com/DerPW/facetry/issues/34)):
       1, 2 or 5 × 10ⁿ document units, major lines on powers of ten, red and green axes
 - [ ] Selection:

@@ -153,6 +153,8 @@ struct SessionState: Decodable, Sendable, Equatable {
         let id: String
         let name: String
         let visible: Bool
+        /// 1 opaque, down to 0.
+        let opacity: Double
     }
 
     struct OriginItem: Decodable, Sendable, Equatable, Identifiable {
@@ -251,11 +253,13 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case renameBody(id: String, name: String)
     case setBodyVisible(id: String, visible: Bool)
     case setOriginVisible(id: String, visible: Bool)
+    /// 1 opaque, down to 0.
+    case setBodyOpacity(id: String, opacity: Double)
     /// Converts every length, so the geometry stays the same.
     case setUnits(LengthUnit)
 
     private enum Key: String, CodingKey {
-        case op, name, value, id, suppressed, index, feature, visible, units
+        case op, name, value, id, suppressed, index, feature, visible, units, opacity
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -297,6 +301,10 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
             try c.encode(op, forKey: .op)
             try c.encode(id, forKey: .id)
             try c.encode(visible, forKey: .visible)
+        case .setBodyOpacity(let id, let opacity):
+            try c.encode(op, forKey: .op)
+            try c.encode(id, forKey: .id)
+            try c.encode(opacity, forKey: .opacity)
         case .setUnits(let units):
             try c.encode(op, forKey: .op)
             try c.encode(units, forKey: .units)
@@ -316,6 +324,7 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .renameBody: "renameBody"
         case .setBodyVisible: "setBodyVisible"
         case .setOriginVisible: "setOriginVisible"
+        case .setBodyOpacity: "setBodyOpacity"
         case .setUnits: "setUnits"
         }
     }

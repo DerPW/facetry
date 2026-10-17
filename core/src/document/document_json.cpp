@@ -197,7 +197,12 @@ std::string toJson(const Document& document) {
     if (!document.root.bodies.empty()) {
         Json bodies = Json::array();
         for (const BodySettings& body : document.root.bodies) {
-            bodies.push_back({{"id", body.id}, {"name", body.name}, {"visible", body.visible}});
+            Json entry = {{"id", body.id}, {"name", body.name}, {"visible", body.visible}};
+            // Optional, so that older documents and apps read the same settings.
+            if (body.opacity != 1.0) {
+                entry["opacity"] = body.opacity;
+            }
+            bodies.push_back(std::move(entry));
         }
         component["bodies"] = std::move(bodies);
     }
@@ -254,9 +259,11 @@ Document parseDocument(std::string_view text) {
     }
     if (component.has("bodies")) {
         for (const Reader& body : component.at("bodies").items()) {
-            document.root.bodies.push_back({.id = body.at("id").string(),
-                                            .name = body.at("name").string(),
-                                            .visible = body.at("visible").boolean()});
+            document.root.bodies.push_back(
+                {.id = body.at("id").string(),
+                 .name = body.at("name").string(),
+                 .visible = body.at("visible").boolean(),
+                 .opacity = body.has("opacity") ? body.at("opacity").number() : 1.0});
         }
     }
     if (component.has("visibleOrigin")) {

@@ -22,7 +22,7 @@ struct SessionTests {
         try core.regenerate(session)
         let state = try core.state(of: session)
         #expect(state.features.map(\.status) == ["ok", "ok", "ok"])
-        #expect(state.bodies == [.init(id: "f2", name: "Body 1", visible: true)])
+        #expect(state.bodies == [.init(id: "f2", name: "Body 1", visible: true, opacity: 1)])
         #expect(state.origin.map(\.id) == ["xy", "xz", "yz", "x", "y", "z", "o"])
         #expect(state.parameters.first == .init(name: "width", value: 10))
 

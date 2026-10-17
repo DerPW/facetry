@@ -76,7 +76,9 @@ describe("FacetryCore (WebAssembly)", () => {
       const session = core.openSession(example);
       const snapshot = core.regenerateModel(session);
       expect(snapshot.state.features.map((f) => f.status)).toEqual(["ok", "ok", "ok"]);
-      expect(snapshot.state.bodies).toEqual([{ id: "f2", name: "Body 1", visible: true }]);
+      expect(snapshot.state.bodies).toEqual([
+        { id: "f2", name: "Body 1", visible: true, opacity: 1 },
+      ]);
       const mesh = snapshot.meshes.f2;
       expect(mesh?.triangles.length).toBeGreaterThan(0);
 

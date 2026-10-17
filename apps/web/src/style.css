@@ -277,10 +277,23 @@ body {
   font-size: 0.85rem;
 }
 
-.controls {
+/* Controls and the ViewCube, top right; the controls wrap before they reach the sidebar. */
+.top-right {
+  position: absolute;
   top: 12px;
   right: 12px;
+  left: 316px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.controls {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   align-items: center;
 }
@@ -415,10 +428,8 @@ body {
 }
 
 .viewcube {
-  position: absolute;
-  top: 64px;
-  right: 12px;
   display: flex;
+  pointer-events: auto;
   flex-direction: column;
   align-items: center;
   gap: 4px;

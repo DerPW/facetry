@@ -72,7 +72,8 @@ TEST_CASE("a session opens, regenerates and reports the example document") {
     const json after = state(c.ctx, session);
     CHECK(after["needsRegeneration"] == false);
     CHECK(after["regeneration"]["executed"] == 3);
-    CHECK(after["bodies"] == json::array({{{"id", "f2"}, {"name", "Body 1"}, {"visible", true}}}));
+    CHECK(after["bodies"] ==
+          json::array({{{"id", "f2"}, {"name", "Body 1"}, {"visible", true}, {"opacity", 1.0}}}));
     REQUIRE(after["features"].size() == 3);
     for (const json& feature : after["features"]) {
         CHECK(feature["status"] == "ok");

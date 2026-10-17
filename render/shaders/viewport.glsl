@@ -52,7 +52,7 @@ void main() {
     } else if (ids.x > 0.5 && abs(v_face_id - ids.x) < 0.5) {
         color = mix(color, hover_color.rgb, hover_color.a);
     }
-    frag_color = vec4(color, 1.0);
+    frag_color = vec4(color, base_color.a);  // a: the body's opacity
 }
 @end
 
@@ -73,6 +73,7 @@ in vec3 p1;
 in float edge_id;
 
 flat out float v_edge_id;
+out float v_along;  // pixels along the segment on the screen, for dashes
 
 void main() {
     vec4 c0 = view_proj * vec4(p0, 1.0);
@@ -93,6 +94,7 @@ void main() {
     c.xy += offset / half_size * c.w;
     gl_Position = c;
     v_edge_id = edge_id;
+    v_along = at_end ? len : 0.0;
 }
 @end
 
@@ -101,17 +103,27 @@ layout(binding=1) uniform edge_fs_params {
     vec4 color;
     vec4 hover_color;
     vec4 select_color;
-    vec4 ids;  // x: hovered edge, y: selected edge
+    vec4 ids;  // x: hovered edge, y: selected edge, z: dash period in pixels (0 solid),
+               // w: 1 to draw only the hovered and selected edges
 };
 
 flat in float v_edge_id;
+in float v_along;
 out vec4 frag_color;
 
 void main() {
+    bool selected = ids.y > 0.5 && abs(v_edge_id - ids.y) < 0.5;
+    bool hovered = ids.x > 0.5 && abs(v_edge_id - ids.x) < 0.5;
+    if (ids.w > 0.5 && !selected && !hovered) {
+        discard;
+    }
+    if (ids.z > 0.0 && mod(v_along, ids.z) > ids.z * 0.55) {
+        discard;
+    }
     vec4 c = color;
-    if (ids.y > 0.5 && abs(v_edge_id - ids.y) < 0.5) {
+    if (selected) {
         c = select_color;
-    } else if (ids.x > 0.5 && abs(v_edge_id - ids.x) < 0.5) {
+    } else if (hovered) {
         c = hover_color;
     }
     frag_color = c;
@@ -153,7 +165,7 @@ layout(binding=1) uniform point_fs_params {
     vec4 color;
     vec4 hover_color;
     vec4 select_color;
-    vec4 ids;  // x: hovered vertex, y: selected vertex
+    vec4 ids;  // x: hovered vertex, y: selected vertex, z: 1 to draw only those two
 };
 
 in vec2 v_corner;
@@ -164,10 +176,15 @@ void main() {
     if (dot(v_corner, v_corner) > 1.0) {
         discard;
     }
+    bool selected = ids.y > 0.5 && abs(v_vertex_id - ids.y) < 0.5;
+    bool hovered = ids.x > 0.5 && abs(v_vertex_id - ids.x) < 0.5;
+    if (ids.z > 0.5 && !selected && !hovered) {
+        discard;
+    }
     vec4 c = color;
-    if (ids.y > 0.5 && abs(v_vertex_id - ids.y) < 0.5) {
+    if (selected) {
         c = select_color;
-    } else if (ids.x > 0.5 && abs(v_vertex_id - ids.x) < 0.5) {
+    } else if (hovered) {
         c = hover_color;
     }
     frag_color = c;

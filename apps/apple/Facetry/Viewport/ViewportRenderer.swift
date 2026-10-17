@@ -27,6 +27,25 @@ struct Pick: Equatable, Sendable {
     static let none = Pick()
 }
 
+/// How the model is drawn (facetry_visual_style).
+enum VisualStyle: Int, CaseIterable, Identifiable, Sendable {
+    case shaded = 0
+    case shadedEdges = 1
+    case shadedHiddenEdges = 2
+    case wireframe = 3
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .shaded: "Shaded"
+        case .shadedEdges: "Shaded with edges"
+        case .shadedHiddenEdges: "Hidden edges"
+        case .wireframe: "Wireframe"
+        }
+    }
+}
+
 /// One cell of the ViewCube (facetry_viewcube_cell): each visible face is split into a center,
 /// four edges and four corners.
 struct ViewCubeCell: Equatable, Sendable {
@@ -113,6 +132,12 @@ final class ViewportRenderer {
 
     func setViewport(width: Double, height: Double, pixelRatio: Double) {
         facetry_renderer_set_viewport(handle, Float(width), Float(height), Float(pixelRatio))
+    }
+
+    /// Visual style, and the shown body's opacity (1 opaque). In wireframe and with transparent
+    /// faces, picking reaches hidden edges and vertices too.
+    func setStyle(_ style: VisualStyle, opacity: Double) {
+        facetry_renderer_set_style(handle, UInt32(style.rawValue), Float(opacity))
     }
 
     /// The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches).

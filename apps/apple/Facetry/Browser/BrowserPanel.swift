@@ -66,6 +66,17 @@ struct BrowserPanel: View {
                             renaming = body.id
                         }
                         Button("Isolate") { isolate(body) }
+                        Menu("Opacity") {
+                            ForEach([1.0, 0.75, 0.5, 0.25], id: \.self) { opacity in
+                                Button("\(Int(opacity * 100)) %") {
+                                    Task {
+                                        await model.edit([
+                                            .setBodyOpacity(id: body.id, opacity: opacity)
+                                        ])
+                                    }
+                                }
+                            }
+                        }
                     }
             }
             Spacer()
