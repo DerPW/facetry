@@ -445,3 +445,8 @@ body {
   padding: 2px 6px;
   cursor: pointer;
 }
+
+.controls button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}

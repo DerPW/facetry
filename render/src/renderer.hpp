@@ -54,6 +54,11 @@ class Renderer {
     void orbit(float dx, float dy);
     // Frames the selected element, or the whole model if nothing is selected.
     void fitSelection();
+    // The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches).
+    void setGrid(bool visible, float unitMillimeters) {
+        gridVisible_ = visible;
+        gridUnit_ = unitMillimeters;
+    }
 
     Highlight& highlight() {
         return highlight_;
@@ -76,6 +81,8 @@ class Renderer {
     FrameStats stats_;
     float pixelRatio_ = 1.0F;
     std::chrono::steady_clock::time_point lastDraw_;
+    bool gridVisible_ = true;
+    float gridUnit_ = 1.0F;
     int sampleCount_ = 1;
     bool zeroToOneDepth_ = false;
 };

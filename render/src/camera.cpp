@@ -225,13 +225,19 @@ void Camera::nearFar(float& near, float& far) const {
     const float radius = std::max(scene_.radius(), 1e-3F);
     const Vec3 center = scene_.isEmpty() ? target_ : scene_.center();
     const float distance = dot(center - eye_, forward());
+    const float extraFar = dot(target_ - eye_, forward()) + extraDepth_;
     if (projection_ == Projection::Orthographic) {
         near = distance - radius * 1.5F;
-        far = distance + radius * 1.5F;
+        far = std::max(distance + radius * 1.5F, extraFar);
+        near = std::min(near, dot(target_ - eye_, forward()) - extraDepth_);
         return;
     }
-    far = std::max(distance + radius * 1.5F, radius * 1e-2F);
+    far = std::max({distance + radius * 1.5F, radius * 1e-2F, extraFar});
     near = std::max(distance - radius * 1.5F, far * 1e-4F);
+    if (extraDepth_ > 0.0F) {
+        // The ground grid runs under the camera: nothing on it is nearer than the eye's height.
+        near = std::min(near, std::max(std::abs(eye_.z) * 0.5F, far * 1e-5F));
+    }
 }
 
 Mat4 Camera::viewMatrix() const {

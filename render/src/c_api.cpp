@@ -145,6 +145,10 @@ void facetry_renderer_set_viewport(facetry_renderer* renderer, float width, floa
     run(renderer, [&](Renderer& r) { r.setViewport(width, height, pixel_ratio); });
 }
 
+void facetry_renderer_set_grid(facetry_renderer* renderer, int visible, float unit_millimeters) {
+    run(renderer, [&](Renderer& r) { r.setGrid(visible != 0, unit_millimeters); });
+}
+
 void facetry_camera_fit(facetry_renderer* renderer) {
     run(renderer, [](Renderer& r) { r.camera().fit(); });
 }

@@ -88,6 +88,15 @@ enum LengthUnit: String, Codable, Sendable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var symbol: String { rawValue }
+
+    var millimeters: Double {
+        switch self {
+        case .millimeter: 1
+        case .centimeter: 10
+        case .meter: 1000
+        case .inch: 25.4
+        }
+    }
 }
 
 struct SessionState: Decodable, Sendable, Equatable {

@@ -175,3 +175,69 @@ void main() {
 @end
 
 @program point point_vs point_fs
+
+// ---- Ground grid: lines on the XY plane, anti-aliased with screen-space derivatives -----------
+
+@vs grid_vs
+layout(binding=0) uniform grid_vs_params {
+    mat4 view_proj;
+    vec4 area;  // xy: center on the XY plane, z: half the side of the drawn square
+};
+
+in vec2 corner;  // -1..1
+out vec2 v_world;
+
+void main() {
+    v_world = area.xy + corner * area.z;
+    gl_Position = view_proj * vec4(v_world, 0.0, 1.0);
+}
+@end
+
+@fs grid_fs
+layout(binding=1) uniform grid_fs_params {
+    vec4 spacing;  // x: minor, y: major, z: minor opacity, w: half the side of the square
+    vec4 area;     // xy: center
+    vec4 eye;      // xyz: camera position; w: 1 for orthographic
+    vec4 forward;  // xyz: view direction
+    vec4 minor_color;
+    vec4 major_color;
+    vec4 x_axis_color;
+    vec4 y_axis_color;
+};
+
+in vec2 v_world;
+out vec4 frag_color;
+
+// 1 on a line through multiples of `step`, falling off over one pixel.
+float grid_line(vec2 coord) {
+    vec2 width = max(fwidth(coord), vec2(1e-6));
+    vec2 distance = abs(fract(coord - 0.5) - 0.5) / width;
+    return 1.0 - min(min(distance.x, distance.y), 1.0);
+}
+
+vec4 stronger(vec4 a, vec4 b) {
+    return b.a > a.a ? b : a;
+}
+
+void main() {
+    vec4 c = vec4(minor_color.rgb, minor_color.a * spacing.z * grid_line(v_world / spacing.x));
+    c = stronger(c, vec4(major_color.rgb, major_color.a * grid_line(v_world / spacing.y)));
+    // The X axis (y = 0) red and the Y axis (x = 0) green, a little wider than the lines.
+    vec2 width = max(fwidth(v_world) * 1.5, vec2(1e-6));
+    float on_x = 1.0 - min(abs(v_world.y) / width.y, 1.0);
+    float on_y = 1.0 - min(abs(v_world.x) / width.x, 1.0);
+    c = stronger(c, vec4(x_axis_color.rgb, x_axis_color.a * on_x));
+    c = stronger(c, vec4(y_axis_color.rgb, y_axis_color.a * on_y));
+    // Fade toward the edge of the square and where the plane is seen edge-on.
+    float fade = 1.0 - smoothstep(0.35, 1.0, length(v_world - area.xy) / spacing.w);
+    vec3 to_eye = eye.w > 0.5 ? -forward.xyz : normalize(eye.xyz - vec3(v_world, 0.0));
+    fade *= smoothstep(0.0, 0.25, abs(to_eye.z));
+    c.a *= fade;
+    if (c.a < 0.004) {
+        discard;
+    }
+    frag_color = c;
+}
+@end
+
+@program grid grid_vs grid_fs

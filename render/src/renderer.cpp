@@ -1,5 +1,7 @@
 #include "renderer.hpp"
 
+#include "facetry/render/grid.hpp"
+
 #include "sokol.hpp"
 
 #include <algorithm>
@@ -30,6 +32,10 @@ constexpr std::array<float, 4> kHoverColor = {0.20F, 0.55F, 1.00F, 1.0F};
 constexpr std::array<float, 4> kSelectColor = {0.00F, 0.40F, 0.95F, 1.0F};
 constexpr std::array<float, 4> kFaceHoverTint = {0.30F, 0.60F, 1.00F, 0.30F};
 constexpr std::array<float, 4> kFaceSelectTint = {0.05F, 0.42F, 0.98F, 0.50F};
+constexpr std::array<float, 4> kGridMinor = {0.0F, 0.0F, 0.0F, 0.07F};
+constexpr std::array<float, 4> kGridMajor = {0.0F, 0.0F, 0.0F, 0.16F};
+constexpr std::array<float, 4> kGridXAxis = {0.85F, 0.20F, 0.20F, 0.55F};
+constexpr std::array<float, 4> kGridYAxis = {0.20F, 0.65F, 0.25F, 0.55F};
 
 template <std::size_t N>
 void copy4(float (&target)[N], const std::array<float, 4>& source) {
@@ -69,7 +75,9 @@ struct Renderer::Gpu {
     sg_shader meshShader{};
     sg_shader edgeShader{};
     sg_shader pointShader{};
+    sg_shader gridShader{};
     sg_pipeline meshPipeline{};
+    sg_pipeline gridPipeline{};
     sg_pipeline edgePipeline{};
     sg_pipeline pointPipeline{};
 
@@ -126,6 +134,7 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
     g.meshShader = sg_make_shader(mesh_shader_desc(backend));
     g.edgeShader = sg_make_shader(edge_shader_desc(backend));
     g.pointShader = sg_make_shader(point_shader_desc(backend));
+    g.gridShader = sg_make_shader(grid_shader_desc(backend));
 
     {
         sg_pipeline_desc desc{};
@@ -186,6 +195,26 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         g.pointPipeline = sg_make_pipeline(&desc);
     }
 
+    {
+        // Transparent, tested against the faces but not hiding the edges drawn after it.
+        sg_pipeline_desc desc{};
+        desc.shader = g.gridShader;
+        desc.layout.buffers[0].stride = 8;
+        desc.layout.attrs[ATTR_grid_corner].buffer_index = 0;
+        desc.layout.attrs[ATTR_grid_corner].format = SG_VERTEXFORMAT_FLOAT2;
+        desc.index_type = SG_INDEXTYPE_UINT16;
+        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = false;
+        desc.cull_mode = SG_CULLMODE_NONE;
+        desc.colors[0].blend.enabled = true;
+        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.label = "grid";
+        g.gridPipeline = sg_make_pipeline(&desc);
+    }
+
     const std::vector<float> edgeQuad = {0, -1, 0, 1, 1, -1, 1, 1};
     const std::vector<float> pointQuad = {-1, -1, -1, 1, 1, -1, 1, 1};
     const std::vector<std::uint16_t> quadIndices = {0, 1, 2, 2, 1, 3};
@@ -195,7 +224,8 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
 
     if (sg_query_pipeline_state(g.meshPipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.edgePipeline) != SG_RESOURCESTATE_VALID ||
-        sg_query_pipeline_state(g.pointPipeline) != SG_RESOURCESTATE_VALID) {
+        sg_query_pipeline_state(g.pointPipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.gridPipeline) != SG_RESOURCESTATE_VALID) {
         throw std::runtime_error("Creating the viewport shaders failed");
     }
 }
@@ -379,6 +409,9 @@ void Renderer::draw(const FrameTarget& target) {
     pass.swapchain.gl.framebuffer = 0;
     sg_begin_pass(&pass);
 
+    // The grid reaches past the model, so the far plane has to include it.
+    const GridLayout grid = gridLayout(camera_, gridUnit_);
+    camera_.setExtraDepth(gridVisible_ ? grid.radius * 1.5F : 0.0F);
     const Mat4 viewProjection = camera_.viewProjection(zeroToOneDepth_);
     const float viewport[4] = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
     const Highlight& h = highlight_;
@@ -408,6 +441,44 @@ void Renderer::draw(const FrameTarget& target) {
         sg_apply_uniforms(UB_mesh_vs_params, SG_RANGE(vs));
         sg_apply_uniforms(UB_mesh_fs_params, SG_RANGE(fs));
         sg_draw(0, static_cast<int>(g.indexCount), 1);
+    }
+
+    if (gridVisible_) {
+        const Vec3 center = camera_.target();
+        grid_vs_params_t vs{};
+        copyMatrix(vs.view_proj, viewProjection);
+        vs.area[0] = center.x;
+        vs.area[1] = center.y;
+        vs.area[2] = grid.radius;
+        grid_fs_params_t fs{};
+        fs.spacing[0] = grid.minor;
+        fs.spacing[1] = grid.major;
+        fs.spacing[2] = grid.minorOpacity;
+        fs.spacing[3] = grid.radius;
+        fs.area[0] = center.x;
+        fs.area[1] = center.y;
+        const Vec3 eye = camera_.eye();
+        const Vec3 forward = camera_.forward();
+        fs.eye[0] = eye.x;
+        fs.eye[1] = eye.y;
+        fs.eye[2] = eye.z;
+        fs.eye[3] = camera_.projection() == Camera::Projection::Orthographic ? 1.0F : 0.0F;
+        fs.forward[0] = forward.x;
+        fs.forward[1] = forward.y;
+        fs.forward[2] = forward.z;
+        copy4(fs.minor_color, kGridMinor);
+        copy4(fs.major_color, kGridMajor);
+        copy4(fs.x_axis_color, kGridXAxis);
+        copy4(fs.y_axis_color, kGridYAxis);
+
+        sg_bindings bindings{};
+        bindings.vertex_buffers[0] = g.pointQuad;
+        bindings.index_buffer = g.quadIndices;
+        sg_apply_pipeline(g.gridPipeline);
+        sg_apply_bindings(&bindings);
+        sg_apply_uniforms(UB_grid_vs_params, SG_RANGE(vs));
+        sg_apply_uniforms(UB_grid_fs_params, SG_RANGE(fs));
+        sg_draw(0, 6, 1);
     }
 
     if (g.segmentCount > 0) {

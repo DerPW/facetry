@@ -70,6 +70,7 @@ Mac, iPad with a hardware keyboard, and the web app:
 | `Home` | Home view: the whole model from the front right, above |
 | Numpad `1`, `3`, `7` | Front, right and top view; with `Ctrl` back, left and bottom (as in Blender) |
 | `O` | Toggle orthographic / perspective |
+| `G` | Show or hide the ground grid |
 | `Esc` | Clear the selection |
 | `⌘Z` / `Ctrl+Z` | Undo the last step (its name is shown on the Undo button) |
 | `⇧⌘Z` / `Shift+Ctrl+Z` / `Ctrl+Y` | Redo |

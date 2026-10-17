@@ -9,6 +9,7 @@ struct ContentView: View {
     // Navigation settings belong to the device, not the document (docs/INPUT.md).
     @AppStorage("navigationPreset") private var navigationPreset = NavigationPreset.facetry
     @AppStorage("oneFingerPans") private var oneFingerPans = false
+    @AppStorage("grid") private var grid = true
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -50,6 +51,11 @@ struct ContentView: View {
             }
             .onChange(of: oneFingerPans, initial: true) { _, pans in
                 viewport.oneFingerPans = pans
+            }
+            .onChange(of: grid, initial: true) { _, shown in viewport.grid = shown }
+            // The grid's spacing follows the document's units.
+            .onChange(of: model?.state?.units, initial: true) { _, units in
+                viewport.gridUnitMillimeters = (units ?? .millimeter).millimeters
             }
             .onChange(of: viewport.selection) { _, pick in
                 Task { await model?.completeRepair(with: pick) }
@@ -104,6 +110,9 @@ struct ContentView: View {
                 viewport.orthographic.toggle()
             }
             .keyboardShortcut("o", modifiers: [])
+            Toggle("Grid", isOn: $grid)
+                .toggleStyle(.button)
+                .keyboardShortcut("g", modifiers: [])
             Menu("Navigation") {
                 Picker("Mouse and trackpad", selection: $navigationPreset) {
                     ForEach(NavigationPreset.allCases) { Text($0.title).tag($0) }

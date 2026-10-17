@@ -98,7 +98,8 @@ Back to the [roadmap overview](../ROADMAP.md).
       view direction
 - [ ] Visual styles: shaded, shaded with edges, shaded with hidden edges, wireframe;
       transparency per body
-- [ ] Ground grid with adaptive spacing
+- [x] Ground grid with adaptive spacing ([#34](https://github.com/DerPW/facetry/issues/34)):
+      1, 2 or 5 × 10ⁿ document units, major lines on powers of ten, red and green axes
 - [ ] Selection:
   - [x] faces, edges, vertices (M0.4)
   - [ ] bodies, sketch entities

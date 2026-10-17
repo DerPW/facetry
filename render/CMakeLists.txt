@@ -2,6 +2,7 @@
 # It does not depend on OpenCASCADE; it renders the mesh buffers the core produces.
 add_library(facetry-render STATIC
     src/camera.cpp
+    src/grid.cpp
     src/math.cpp
     src/navigation.cpp
     src/pick.cpp
@@ -37,6 +38,7 @@ if(FACETRY_BUILD_TESTS)
     add_executable(facetry-render-tests
         tests/main.cpp
         tests/camera_test.cpp
+        tests/grid_test.cpp
         tests/navigation_test.cpp
         tests/pick_test.cpp
         tests/viewcube_test.cpp)

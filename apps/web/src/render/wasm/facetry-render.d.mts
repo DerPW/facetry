@@ -21,6 +21,7 @@ export interface FacetryRenderModule {
     height: number,
     pixelRatio: number,
   ): void;
+  _facetry_renderer_set_grid(renderer: number, visible: number, unitMillimeters: number): void;
   _facetry_camera_fit(renderer: number): void;
   _facetry_camera_fit_selection(renderer: number): void;
   _facetry_camera_home(renderer: number, animate: number): void;
