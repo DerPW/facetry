@@ -128,3 +128,41 @@ TEST_CASE("a window around the model takes the visible faces") {
     CHECK(has(faces, {PickKind::Face, 3}));
     CHECK(has(faces, {PickKind::Face, 6}));
 }
+
+TEST_CASE("candidates list everything under the pointer, best first") {
+    const BoxScene scene;
+    // At the front top left corner: the vertex, then its edges, then the faces along the ray.
+    const auto corner = scene.camera.project({0.0F, 0.0F, 1.0F});
+    const auto all = scene.index.candidates(scene.camera, corner.x, corner.y, 8);
+    REQUIRE(all.size() >= 3);
+    CHECK(all[0].kind == PickKind::Vertex);
+    CHECK(all[1].kind == PickKind::Edge);
+    const auto first = scene.index.pick(scene.camera, corner.x, corner.y, 8);
+    CHECK(first.kind == all[0].kind);
+    CHECK(first.id == all[0].id);
+    // In the middle of the front face: the front face, then the back face behind it.
+    const auto middle = scene.camera.project({0.5F, 0.0F, 0.5F});
+    const auto faces = scene.index.candidates(scene.camera, middle.x, middle.y, 6);
+    REQUIRE(faces.size() == 2);
+    CHECK(faces[0].id == 3);  // -Y, the front
+    CHECK(faces[1].id == 4);  // +Y, hidden behind it
+}
+
+TEST_CASE("clicking the same spot again cycles through the candidates") {
+    ClickCycle cycle;
+    Selection selection;
+    const auto click = [&](float x, float y, std::size_t count) {
+        const std::size_t index = cycle.choose(x, y, count, selection.version());
+        selection.replace({PickKind::Face, static_cast<std::uint32_t>(index + 1)});
+        cycle.chose(x, y, index, selection.version());
+        return index;
+    };
+    CHECK(click(100, 100, 3) == 0);
+    CHECK(click(101, 99, 3) == 1);  // the same spot
+    CHECK(click(100, 100, 3) == 2);
+    CHECK(click(100, 100, 3) == 0);  // around again
+    CHECK(click(200, 100, 3) == 0);  // elsewhere: the first again
+    CHECK(click(200, 100, 3) == 1);
+    selection.toggle({PickKind::Edge, 7});  // the selection changed in between
+    CHECK(click(200, 100, 3) == 0);
+}

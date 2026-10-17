@@ -5,7 +5,9 @@
 
 #include "facetry/render/pick.hpp"
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace facetry::render {
@@ -33,6 +35,30 @@ class Selection {
   private:
     std::vector<Element> elements_;
     std::uint64_t version_ = 0;
+};
+
+// Clicking the same spot again picks the next of the candidates there (#38): the edge behind a
+// vertex, the face behind a face. Remembers the last click.
+class ClickCycle {
+  public:
+    // Which of `count` candidates a click at (x, y) means: the next one after a click at the
+    // same spot that left the selection as it was (`version`), the first one otherwise.
+    [[nodiscard]] std::size_t choose(float x, float y, std::size_t count,
+                                     std::uint64_t version) const;
+    // Remembers the click and the selection's version after it.
+    void chose(float x, float y, std::size_t index, std::uint64_t version);
+    void reset() {
+        last_.reset();
+    }
+
+  private:
+    struct Click {
+        float x;
+        float y;
+        std::size_t index;
+        std::uint64_t version;
+    };
+    std::optional<Click> last_;
 };
 
 }  // namespace facetry::render

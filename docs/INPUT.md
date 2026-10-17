@@ -20,7 +20,9 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Orbit with the ViewCube | drag it | drag it | drag it | drag it |
 | Select | tap | tap | click | click |
 | Add to or remove from the selection | tap with **Multi** on | tap with **Multi** on | Shift/Cmd/Ctrl + click | Shift/Cmd + click |
-| Box selection | long press, then drag; or drag with **Box** on | drag with **Box** on | left drag in the Fusion preset, or with **Box** on | the same as the mouse |
+| Select the next element under the pointer (overlapping, or a hidden face behind) | tap the same spot again | tap the same spot again | click the same spot again | click the same spot again |
+| Precision selector | long press on the model: a crosshair above the finger selects where it points on release | — | — | — |
+| Box selection | long press on empty space, then drag; or drag with **Box** on | drag with **Box** on | left drag in the Fusion preset, or with **Box** on | the same as the mouse |
 
 **Box selection:** dragged to the right, a *window* (solid blue) takes what lies entirely inside;
 dragged to the left, a *crossing box* (dashed green) also takes what it touches, like in Fusion.

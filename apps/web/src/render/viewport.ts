@@ -87,8 +87,13 @@ const CLICK_SLOP = 4;
 /** A two-finger tap lasts at most this long; two of them within the second limit fit the view. */
 const TAP_MILLISECONDS = 300;
 const DOUBLE_TAP_MILLISECONDS = 400;
-/** A finger held this long without moving starts a selection box (#37). */
+/**
+ * A finger held this long without moving starts the precision selector over geometry (#38) or a
+ * selection box over empty space (#37).
+ */
 const LONG_PRESS_MILLISECONDS = 450;
+/** The precision selector's crosshair sits this far above the finger, in CSS pixels. */
+const PRECISION_OFFSET = 60;
 /** Wheel events further apart than this start a new orbit around the point under the pointer. */
 const SCROLL_GAP_MILLISECONDS = 200;
 
@@ -104,7 +109,8 @@ export class Viewport {
   readonly #scratch: number;
   readonly #cells: number;
   readonly #pointers = new Map<number, { x: number; y: number; startX: number; startY: number }>();
-  #gesture: "none" | "orbit" | "pan" | "select" | "touch" | "box" = "none";
+  #gesture: "none" | "orbit" | "pan" | "select" | "touch" | "box" | "precise" = "none";
+  #crosshair: HTMLDivElement | null = null;
   // Drags draw selection boxes (the Box toggle, for the Pencil and fingers).
   #boxMode = false;
   #box: { x0: number; y0: number; x1: number; y1: number } | null = null;
@@ -368,6 +374,7 @@ export class Viewport {
   dispose(): void {
     this.#disposed = true;
     this.#boxElement?.remove();
+    this.#crosshair?.remove();
     this.#m._facetry_renderer_destroy(this.#renderer);
     this.#m._free(this.#scratch);
     this.#m._free(this.#cells);
@@ -404,6 +411,10 @@ export class Viewport {
     this.#boxElement.className = "selection-box";
     this.#boxElement.hidden = true;
     document.body.append(this.#boxElement);
+    this.#crosshair = document.createElement("div");
+    this.#crosshair.className = "precision-crosshair";
+    this.#crosshair.hidden = true;
+    document.body.append(this.#crosshair);
 
     const frame = (time: number) => {
       if (this.#disposed) return;
@@ -436,7 +447,13 @@ export class Viewport {
       // Holding one finger still starts a selection box.
       if (this.#pointers.size === 1) {
         this.#longPress = window.setTimeout(() => {
-          if (this.#pointers.size === 1 && !this.#touch.moved) {
+          if (this.#pointers.size !== 1 || this.#touch.moved) return;
+          // Over geometry: the precision selector, a crosshair above the finger. Over empty
+          // space: a selection box.
+          if (this.pick(x, y, PICK_RADIUS.touch ?? 18).kind !== PickKind.None) {
+            this.#gesture = "precise";
+            this.#updateCrosshair(x, y);
+          } else {
             this.#gesture = "box";
             this.#updateBox(x, y, x, y);
           }
@@ -496,6 +513,10 @@ export class Viewport {
       this.#touch.moved = true;
       if (this.#gesture === "touch") window.clearTimeout(this.#longPress);
     }
+    if (this.#gesture === "precise") {
+      this.#updateCrosshair(x, y);
+      return;
+    }
     // Boxes: the Box toggle, a long press, or the left button in the Fusion preset.
     if (this.#gesture === "box" || (this.#gesture === "select" && moved)) {
       this.#gesture = "box";
@@ -548,6 +569,20 @@ export class Viewport {
     const pointer = this.#pointers.get(e.pointerId);
     this.#pointers.delete(e.pointerId);
     window.clearTimeout(this.#longPress);
+    if (this.#gesture === "precise" && this.#pointers.size === 0) {
+      this.#gesture = "none";
+      this.#updateCrosshair(null);
+      if (pointer && !cancelled) {
+        // The crosshair's spot, with the small radius of a pen: it is precise.
+        this.#click(
+          pointer.x,
+          pointer.y - PRECISION_OFFSET,
+          PICK_RADIUS.pen ?? 8,
+          this.#multiSelect,
+        );
+      }
+      return;
+    }
     const box = this.#box;
     if (this.#gesture === "box" && this.#pointers.size === 0) {
       this.#gesture = "none";
@@ -573,7 +608,7 @@ export class Viewport {
       const radius = PICK_RADIUS[e.pointerType] ?? 6;
       // Shift, Cmd or Ctrl add to the selection or remove from it, like in Fusion.
       const toggle = this.#multiSelect || e.shiftKey || e.metaKey || e.ctrlKey;
-      this.#select(this.pick(pointer.startX, pointer.startY, radius), toggle);
+      this.#click(pointer.startX, pointer.startY, radius, toggle);
     }
     if (this.#gesture === "touch") this.#beginTouchOrbit();
   }
@@ -621,6 +656,37 @@ export class Viewport {
     this.#hover = pick;
     this.#m._facetry_renderer_set_hover(this.#renderer, pick.kind, pick.id);
     this.#canvas.style.cursor = pick.kind === PickKind.None ? "default" : "pointer";
+  }
+
+  // A click at (x, y): selects the first candidate there, or the next one when the same spot is
+  // clicked again (#38); `toggle` adds or removes it instead.
+  #click(x: number, y: number, radius: number, toggle: boolean): void {
+    const m = this.#m;
+    m._facetry_renderer_click(this.#renderer, x, y, radius, toggle ? 1 : 0, this.#scratch);
+    const words = m.HEAPU32;
+    const pick = {
+      kind: (words[this.#scratch >> 2] ?? 0) as PickKind,
+      id: words[(this.#scratch >> 2) + 1] ?? 0,
+    };
+    this.onSelectionChange(this.#readSelection(), pick);
+  }
+
+  // Shows the precision selector's crosshair above the finger at (x, y) and highlights what
+  // it is over, or hides it (null).
+  #updateCrosshair(x: number | null, y = 0): void {
+    const element = this.#crosshair;
+    if (x === null) {
+      if (element) element.hidden = true;
+      this.#setHover({ kind: PickKind.None, id: 0 });
+      return;
+    }
+    const target = { x, y: y - PRECISION_OFFSET };
+    this.#setHover(this.pick(target.x, target.y, PICK_RADIUS.pen ?? 8));
+    if (!element) return;
+    const rect = this.#canvas.getBoundingClientRect();
+    element.hidden = false;
+    element.style.left = `${rect.left + target.x}px`;
+    element.style.top = `${rect.top + target.y}px`;
   }
 
   // Shows the selection box between two points in the canvas, or hides it (null).

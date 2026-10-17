@@ -85,6 +85,10 @@ class Renderer {
     [[nodiscard]] PickResult pick(float x, float y, float radius) const {
         return pick_.pick(camera_, x, y, radius, picksThroughFaces(), filter_);
     }
+    // Selects what a click at (x, y) picks and returns it. Clicking the same spot again, with the
+    // selection unchanged since, picks the next candidate there. `toggle` adds or removes the
+    // first candidate instead.
+    PickResult click(float x, float y, float radius, bool toggle);
     // Selects what lies in the box dragged from (x0, y0) to (x1, y1): a window from left to
     // right, a crossing box from right to left. `add` keeps the current selection. Returns how
     // many elements the box took.
@@ -108,6 +112,7 @@ class Renderer {
     Selection selection_;
     std::uint64_t shownSelection_ = ~std::uint64_t{0};
     PickFilter filter_ = PickFilter::Everything;
+    ClickCycle clickCycle_;
     FrameStats stats_;
     float pixelRatio_ = 1.0F;
     std::chrono::steady_clock::time_point lastDraw_;

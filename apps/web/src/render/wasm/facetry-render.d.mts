@@ -52,6 +52,14 @@ export interface FacetryRenderModule {
   _facetry_renderer_set_hover(renderer: number, kind: number, id: number): void;
   _facetry_renderer_set_selection(renderer: number, kind: number, id: number): void;
   _facetry_renderer_select(renderer: number, kind: number, id: number, mode: number): void;
+  _facetry_renderer_click(
+    renderer: number,
+    x: number,
+    y: number,
+    radius: number,
+    mode: number,
+    out: number,
+  ): number;
   _facetry_renderer_selection(renderer: number, out: number, capacity: number): number;
   _facetry_renderer_box_select(
     renderer: number,

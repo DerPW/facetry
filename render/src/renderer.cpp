@@ -433,6 +433,21 @@ void Renderer::orbit(float dx, float dy) {
     camera_.orbit(dx, dy, orbitPivot_);
 }
 
+PickResult Renderer::click(float x, float y, float radius, bool toggle) {
+    const auto candidates = pick_.candidates(camera_, x, y, radius, picksThroughFaces(), filter_);
+    if (toggle) {
+        clickCycle_.reset();
+        const PickResult pick = candidates.empty() ? PickResult{} : candidates.front();
+        selection_.toggle({pick.kind, pick.id});
+        return pick;
+    }
+    const std::size_t index = clickCycle_.choose(x, y, candidates.size(), selection_.version());
+    const PickResult pick = candidates.empty() ? PickResult{} : candidates[index];
+    selection_.replace({pick.kind, pick.id});
+    clickCycle_.chose(x, y, index, selection_.version());
+    return pick;
+}
+
 std::size_t Renderer::boxSelect(float x0, float y0, float x1, float y1, bool add) {
     const BoxMode mode = x1 >= x0 ? BoxMode::Window : BoxMode::Crossing;
     const auto elements =

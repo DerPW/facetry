@@ -475,3 +475,36 @@ body {
   border: 1px dashed rgb(48 161 78);
   background: rgb(48 161 78 / 10%);
 }
+
+/* The precision selector (#38): a crosshair above the finger, which picks precisely. */
+.precision-crosshair {
+  position: fixed;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  pointer-events: none;
+  border: 2px solid rgb(10 132 255);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 80%);
+}
+
+.precision-crosshair::before,
+.precision-crosshair::after {
+  content: "";
+  position: absolute;
+  background: rgb(10 132 255);
+}
+
+.precision-crosshair::before {
+  left: 50%;
+  top: -8px;
+  bottom: -8px;
+  width: 1px;
+}
+
+.precision-crosshair::after {
+  top: 50%;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+}

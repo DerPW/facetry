@@ -215,6 +215,15 @@ typedef enum facetry_select_mode {
     FACETRY_SELECT_TOGGLE = 1   /* add, or remove if selected; FACETRY_PICK_NONE changes nothing */
 } facetry_select_mode;
 
+/* Selects what a click at (x, y) picks, the way the shells' clicks and taps do: the first
+ * candidate, or, when the same spot is clicked again and the selection is unchanged since, the
+ * next candidate there (the edge next to a vertex, the face behind a face). `mode`:
+ * FACETRY_SELECT_REPLACE, or FACETRY_SELECT_TOGGLE to add or remove the first candidate. Writes
+ * the picked element to `out` (may be NULL). */
+FACETRY_RENDER_API facetry_render_status facetry_renderer_click(facetry_renderer* renderer, float x,
+                                                                float y, float radius,
+                                                                uint32_t mode,
+                                                                facetry_pick_result* out);
 /* Changes the selection, which can hold any number of elements. */
 FACETRY_RENDER_API void facetry_renderer_select(facetry_renderer* renderer, uint32_t kind,
                                                 uint32_t id, uint32_t mode);
