@@ -6,7 +6,8 @@ import SwiftUI
 struct TimelineBar: View {
     let state: SessionState
     let model: DocumentModel
-    @State private var selected: String?
+    /// The feature whose details are open; the browser panel can open one too.
+    @Binding var selected: String?
     @State private var dragIndex: Int?
 
     private let chipWidth = 120.0

@@ -153,6 +153,40 @@ void applyEdit(Document& document, const Json& edit, const std::string& path) {
         }
         return;
     }
+    if (op == "renameBody" || op == "setBodyVisible") {
+        const std::string id = reader.at("id").string();
+        const auto bodies = document.bodyFeatures();
+        if (std::none_of(bodies.begin(), bodies.end(),
+                         [&](const Feature* feature) { return feature->id == id; })) {
+            invalidEdit("the body " + id + " does not exist");
+        }
+        auto& settings = document.root.bodies;
+        auto it = std::find_if(settings.begin(), settings.end(),
+                               [&](const BodySettings& body) { return body.id == id; });
+        if (it == settings.end()) {
+            settings.push_back({.id = id, .name = "", .visible = true});
+            it = std::prev(settings.end());
+        }
+        if (op == "renameBody") {
+            it->name = reader.at("name").string();
+        } else {
+            it->visible = reader.at("visible").boolean();
+        }
+        // Back to the defaults: drop the entry, so the document stays as it was.
+        if (it->name.empty() && it->visible) {
+            settings.erase(it);
+        }
+        return;
+    }
+    if (op == "setOriginVisible") {
+        const std::string id = reader.at("id").string();
+        auto& visible = document.root.visibleOrigin;
+        visible.erase(std::remove(visible.begin(), visible.end(), id), visible.end());
+        if (reader.at("visible").boolean()) {
+            visible.push_back(id);
+        }
+        return;
+    }
     if (op == "setRollback") {
         if (!edit.contains("index")) {
             invalidEdit(path + ": missing \"index\"");
@@ -288,8 +322,21 @@ std::string sessionStateJson(const Session& session) {
         features.push_back(std::move(entry));
     }
     Json bodies = Json::array();
-    for (const auto& [id, body] : regeneration.model.bodies) {
-        bodies.push_back(id);
+    for (const Feature* feature : document.bodyFeatures()) {
+        if (regeneration.model.bodies.contains(feature->id)) {
+            bodies.push_back({{"id", feature->id},
+                              {"name", document.bodyName(feature->id)},
+                              {"visible", document.bodyVisible(feature->id)}});
+        }
+    }
+    Json origin = Json::array();
+    for (const OriginItem& item : originItems()) {
+        const auto& visible = document.root.visibleOrigin;
+        origin.push_back(
+            {{"id", item.id},
+             {"name", item.name},
+             {"kind", item.kind},
+             {"visible", std::find(visible.begin(), visible.end(), item.id) != visible.end()}});
     }
     const Json state = {
         {"parameters", std::move(parameters)},
@@ -299,6 +346,7 @@ std::string sessionStateJson(const Session& session) {
         {"needsRegeneration", session.needsRegeneration()},
         {"features", std::move(features)},
         {"bodies", std::move(bodies)},
+        {"origin", std::move(origin)},
         {"regeneration",
          {{"cancelled", regeneration.cancelled}, {"executed", regeneration.executed}}},
     };

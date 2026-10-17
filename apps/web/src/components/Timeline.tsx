@@ -24,13 +24,16 @@ export interface Repair {
 interface Props {
   state: SessionState;
   onEdit: (edits: Edit | Edit[]) => void;
+  /** The feature whose details are open, e.g. picked in the browser panel. */
+  selected: string | null;
+  onSelect: (feature: string | null) => void;
   repair: Repair | null;
   onRepair: (repair: Repair | null) => void;
 }
 
 /** The timeline bar (Fusion-style): one chip per feature, the rollback marker, feature details. */
-export function Timeline({ state, onEdit, repair, onRepair }: Props) {
-  const [selected, setSelected] = useState<string | null>(null);
+export function Timeline({ state, onEdit, selected, onSelect, repair, onRepair }: Props) {
+  const setSelected = onSelect;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const row = useRef<HTMLOListElement>(null);
   const features = state.features;

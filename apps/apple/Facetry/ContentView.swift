@@ -4,6 +4,7 @@ struct ContentView: View {
     @Binding var document: FacetryDocument
     @State private var viewport = ViewportModel()
     @State private var model: DocumentModel?
+    @State private var selectedFeature: String?
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -17,6 +18,8 @@ struct ContentView: View {
                     header
                     if let model, let state = model.state {
                         ModelPanel(state: state, model: model)
+                        BrowserPanel(state: state, model: model) { selectedFeature = $0 }
+                            .panel()
                     }
                 }
             }
@@ -28,7 +31,7 @@ struct ContentView: View {
                             .font(.caption).panel()
                     }
                     if let model, let state = model.state {
-                        TimelineBar(state: state, model: model)
+                        TimelineBar(state: state, model: model, selected: $selectedFeature)
                     }
                 }
                 .padding(.bottom, 56)

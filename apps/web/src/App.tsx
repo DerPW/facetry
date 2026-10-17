@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // The M0.6 example document: what the app shows until a file is opened.
 import exampleDocument from "../../../tests/documents/corner-fillet.json?raw";
+import { BrowserPanel } from "./components/BrowserPanel";
 import { ModelPanel } from "./components/ModelPanel";
 import { Timeline, type Repair } from "./components/Timeline";
 import { ViewportCanvas } from "./components/ViewportCanvas";
@@ -21,6 +22,17 @@ import { PickKind, type FrameStats, type Pick, type Viewport } from "./render/vi
 declare const __APP_VERSION__: string;
 
 const NOTHING: Pick = { kind: PickKind.None, id: 0 };
+const EMPTY_MESH: MeshData = {
+  positions: new Float32Array(),
+  normals: new Float32Array(),
+  triangles: new Uint32Array(),
+  triangleFaceIds: new Uint32Array(),
+  edgePoints: new Float32Array(),
+  edgeOffsets: new Uint32Array([0]),
+  edgeIds: new Uint32Array(),
+  vertexPositions: new Float32Array(),
+  vertexIds: new Uint32Array(),
+};
 const kindName: Record<number, string> = {
   [PickKind.Face]: "Face",
   [PickKind.Edge]: "Edge",
@@ -76,6 +88,7 @@ export function App() {
   const [editError, setEditError] = useState<string | null>(null);
   const [fileName, setFileName] = useState("Untitled.facetry");
   const [repair, setRepair] = useState<Repair | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
@@ -86,13 +99,14 @@ export function App() {
 
   const show = useCallback(
     (snapshot: ModelSnapshot) => {
-      // One body for now; the browser panel (#15) shows several.
-      const body = snapshot.state.bodies[0];
-      const mesh = body === undefined ? undefined : snapshot.meshes[body];
-      if (viewport && mesh) {
+      // The first visible body. Showing several bodies at once comes with the first features
+      // that make more than one (M1.5).
+      const body = snapshot.state.bodies.find((b) => b.visible);
+      const mesh = body ? snapshot.meshes[body.id] : undefined;
+      if (viewport) {
         // Element IDs change with the geometry, so an old selection would point elsewhere.
         viewport.clearSelection();
-        viewport.setMesh(mesh);
+        viewport.setMesh(mesh ?? EMPTY_MESH);
       }
       setModel(snapshot.state);
       return mesh;
@@ -180,7 +194,7 @@ export function App() {
     (pick: Pick) => {
       setSelection(pick);
       const pending = repairRef.current;
-      const body = modelRef.current?.bodies[0];
+      const body = modelRef.current?.bodies.find((b) => b.visible)?.id;
       const feature = modelRef.current?.features.find((f) => f.id === pending?.feature);
       if (!pending || !body || !feature || pick.kind !== PickKind.Edge) return;
       repairRef.current = null;
@@ -294,6 +308,9 @@ export function App() {
               onSetParameter={(name, value) => edit({ op: "setParameter", name, value })}
             />
           )}
+          {model && (
+            <BrowserPanel state={model} onEdit={edit} onSelectFeature={setSelectedFeature} />
+          )}
         </div>
         <div className="panel controls">
           <input
@@ -339,7 +356,16 @@ export function App() {
           </button>
           <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
         </div>
-        {model && <Timeline state={model} onEdit={edit} repair={repair} onRepair={setRepair} />}
+        {model && (
+          <Timeline
+            state={model}
+            onEdit={edit}
+            selected={selectedFeature}
+            onSelect={setSelectedFeature}
+            repair={repair}
+            onRepair={setRepair}
+          />
+        )}
         {repair && (
           <p className="panel hint">Select the edge that should replace the missing one.</p>
         )}

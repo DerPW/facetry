@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -125,12 +126,34 @@ struct Feature {
     friend bool operator==(const Feature&, const Feature&) = default;
 };
 
+// How a body is shown. A body's ID is the ID of the feature that created it; only bodies the user
+// renamed or hid have settings.
+struct BodySettings {
+    std::string id;
+    std::string name;  // empty: the default name ("Body 1", …)
+    bool visible = true;
+
+    friend bool operator==(const BodySettings&, const BodySettings&) = default;
+};
+
+// One of the fixed elements of a component's origin.
+struct OriginItem {
+    std::string_view id;    // "xy", "xz", "yz", "x", "y", "z", "o"
+    std::string_view name;  // "XY plane", …
+    std::string_view kind;  // "plane", "axis" or "point"
+};
+
+// The origin every component has: the three base planes, the three axes and the origin point.
+[[nodiscard]] std::span<const OriginItem> originItems() noexcept;
+
 // A component owns a timeline; the bodies and sketches it contains are results of that timeline.
 // Child components arrive with M2.6.
 struct Component {
     std::string id = "root";
     std::string name = "Root";
     std::vector<Feature> timeline;
+    std::vector<BodySettings> bodies;        // only bodies with non-default settings
+    std::vector<std::string> visibleOrigin;  // origin items shown (all are hidden by default)
 
     friend bool operator==(const Component&, const Component&) = default;
 };
@@ -151,6 +174,12 @@ struct Document {
     [[nodiscard]] Feature* findFeature(std::string_view id) noexcept;
     [[nodiscard]] const Feature* findFeature(std::string_view id) const noexcept;
     [[nodiscard]] const Parameter* findParameter(std::string_view name) const noexcept;
+
+    // The features that create bodies (extrudes), in timeline order.
+    [[nodiscard]] std::vector<const Feature*> bodyFeatures() const;
+    // A body's name: its setting, or "Body N" in the order the bodies are created.
+    [[nodiscard]] std::string bodyName(std::string_view body) const;
+    [[nodiscard]] bool bodyVisible(std::string_view body) const;
 
     friend bool operator==(const Document&, const Document&) = default;
 };

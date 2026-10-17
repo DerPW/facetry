@@ -7,8 +7,9 @@ import Observation
 /// What the UI needs after a regeneration.
 struct ModelSnapshot: Sendable {
     let state: SessionState
-    /// Display mesh of the first body (one body until the browser panel arrives, #15).
-    let mesh: MeshData?
+    /// Display mesh of the first visible body; empty if none is visible. Showing several bodies
+    /// at once comes with the first features that make more than one (M1.5).
+    let mesh: MeshData
 }
 
 /// Owns the core and one session. An actor, so that core calls never run on the main thread.
@@ -44,14 +45,14 @@ actor DocumentEngine {
         try core.saveFile(session)
     }
 
-    /// Regenerates and tessellates the first body.
+    /// Regenerates and tessellates the first visible body.
     func regenerate() throws -> ModelSnapshot {
         try core.regenerate(session)
         let state = try core.state(of: session)
-        guard let body = state.bodies.first else {
-            return ModelSnapshot(state: state, mesh: nil)
+        guard let body = state.bodies.first(where: \.visible) else {
+            return ModelSnapshot(state: state, mesh: .empty)
         }
-        let shape = try core.bodyShape(session, body: body)
+        let shape = try core.bodyShape(session, body: body.id)
         defer { try? core.release(shape) }
         let mesh = try core.tessellate(shape, linearDeflection: 0.01, angularDeflection: 0.2)
         return ModelSnapshot(state: state, mesh: mesh)
@@ -129,7 +130,8 @@ final class DocumentModel {
 
     /// Replaces the broken reference ``repair`` with the picked edge.
     func completeRepair(with pick: Pick) async {
-        guard let repair, pick.kind == .edge, let state, let body = state.bodies.first,
+        guard let repair, pick.kind == .edge, let state,
+            let body = state.bodies.first(where: \.visible)?.id,
             let feature = state.features.first(where: { $0.id == repair.feature }),
             case .array(let edges)? = feature.definition["edges"],
             edges.indices.contains(repair.index)
@@ -177,11 +179,9 @@ final class DocumentModel {
             let snapshot = try await engine.regenerate()
             state = snapshot.state
             ready = true
-            if let mesh = snapshot.mesh {
-                // Element IDs change with the geometry, so an old selection would point elsewhere.
-                viewport.selection = .none
-                viewport.mesh = mesh
-            }
+            // Element IDs change with the geometry, so an old selection would point elsewhere.
+            viewport.selection = .none
+            viewport.mesh = snapshot.mesh
         } catch {
             self.error = "Regeneration failed: \(error)"
         }

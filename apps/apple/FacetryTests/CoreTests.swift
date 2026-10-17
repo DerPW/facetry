@@ -37,6 +37,12 @@ struct CoreTests {
         try core.release(box)
     }
 
+    @Test func emptyMeshIsConsistent() {
+        let empty = MeshData.empty
+        #expect(empty.edgeOffsets.count == empty.edgeIDs.count + 1)
+        #expect(empty.triangleCount == 0)
+    }
+
     @Test func cutHoleHasExpectedVolume() throws {
         let core = try Core()
         let plate = try core.boolean(

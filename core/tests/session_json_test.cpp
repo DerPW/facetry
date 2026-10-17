@@ -127,7 +127,7 @@ TEST_CASE("the session summary reflects document and regeneration") {
     session.regenerate();
     state = json::parse(sessionStateJson(session));
     CHECK(state["needsRegeneration"] == false);
-    CHECK(state["bodies"] == json::array({"f2"}));
+    CHECK(state["bodies"] == json::array({{{"id", "f2"}, {"name", "Body 1"}, {"visible", true}}}));
     json fillet = state["features"][2];
     CHECK(fillet["definition"]["radius"] == "radius");
     CHECK(fillet["definition"]["id"] == kFillet);
@@ -148,4 +148,34 @@ TEST_CASE("the session summary reflects document and regeneration") {
     CHECK(names["faces"].size() == 7);
     CHECK(std::find(names["faces"].begin(), names["faces"].end(),
                     "f5:fillet[edge{f2:side[f1/l2]|f2:side[f1/l3]}]") != names["faces"].end());
+}
+
+TEST_CASE("bodies can be renamed and hidden, origin items shown") {
+    Session session = cornerFilletSession();
+    const std::string before = session.save();
+    applyJson(session, R"([{"op": "renameBody", "id": "f2", "name": "Block"},
+                           {"op": "setBodyVisible", "id": "f2", "visible": false},
+                           {"op": "setOriginVisible", "id": "xy", "visible": true}])");
+    session.regenerate();
+    json state = json::parse(sessionStateJson(session));
+    CHECK(state["bodies"] == json::array({{{"id", "f2"}, {"name", "Block"}, {"visible", false}}}));
+    CHECK(state["origin"].size() == 7);
+    CHECK(state["origin"][0] ==
+          json({{"id", "xy"}, {"name", "XY plane"}, {"kind", "plane"}, {"visible", true}}));
+    CHECK(state["origin"][6]["kind"] == "point");
+
+    // Settings survive saving and loading.
+    const Document reloaded = parseDocument(session.save());
+    CHECK(reloaded == session.document());
+    CHECK(reloaded.bodyName("f2") == "Block");
+
+    // Back to the defaults: the document is as before.
+    applyJson(session, R"([{"op": "renameBody", "id": "f2", "name": ""},
+                           {"op": "setBodyVisible", "id": "f2", "visible": true},
+                           {"op": "setOriginVisible", "id": "xy", "visible": false}])");
+    CHECK(session.save() == before);
+
+    CHECK_THROWS_AS(applyJson(session, R"({"op": "renameBody", "id": "f1", "name": "x"})"), Error);
+    CHECK_THROWS_AS(applyJson(session, R"({"op": "setOriginVisible", "id": "w", "visible": true})"),
+                    Error);
 }

@@ -59,6 +59,15 @@ void validateSketch(const Feature& feature, const Sketch& sketch) {
 
 }  // namespace
 
+std::span<const OriginItem> originItems() noexcept {
+    static constexpr OriginItem kItems[] = {
+        {"xy", "XY plane", "plane"}, {"xz", "XZ plane", "plane"}, {"yz", "YZ plane", "plane"},
+        {"x", "X axis", "axis"},     {"y", "Y axis", "axis"},     {"z", "Z axis", "axis"},
+        {"o", "Origin", "point"},
+    };
+    return kItems;
+}
+
 std::vector<Reference>* Feature::references() noexcept {
     if (auto* fillet = std::get_if<Fillet>(&data)) {
         return &fillet->edges;
@@ -110,6 +119,34 @@ const Parameter* Document::findParameter(std::string_view name) const noexcept {
     return it == parameters.end() ? nullptr : &*it;
 }
 
+std::vector<const Feature*> Document::bodyFeatures() const {
+    std::vector<const Feature*> result;
+    for (const Feature& feature : root.timeline) {
+        if (std::holds_alternative<Extrude>(feature.data)) {
+            result.push_back(&feature);
+        }
+    }
+    return result;
+}
+
+std::string Document::bodyName(std::string_view body) const {
+    const auto setting = std::find_if(root.bodies.begin(), root.bodies.end(),
+                                      [&](const BodySettings& s) { return s.id == body; });
+    if (setting != root.bodies.end() && !setting->name.empty()) {
+        return setting->name;
+    }
+    const auto features = bodyFeatures();
+    const auto it = std::find_if(features.begin(), features.end(),
+                                 [&](const Feature* feature) { return feature->id == body; });
+    return "Body " + std::to_string(it - features.begin() + 1);
+}
+
+bool Document::bodyVisible(std::string_view body) const {
+    const auto setting = std::find_if(root.bodies.begin(), root.bodies.end(),
+                                      [&](const BodySettings& s) { return s.id == body; });
+    return setting == root.bodies.end() || setting->visible;
+}
+
 void validate(const Document& document) {
     std::set<std::string> names;
     for (const Parameter& parameter : document.parameters) {
@@ -145,6 +182,20 @@ void validate(const Document& document) {
                     invalid("Fillet " + feature.id + " must reference edges by body and name");
                 }
             }
+        }
+    }
+
+    std::set<std::string> bodies;
+    for (const BodySettings& body : document.root.bodies) {
+        if (body.id.empty() || !bodies.insert(body.id).second) {
+            invalid("Body settings must have unique, non-empty IDs (\"" + body.id + "\")");
+        }
+    }
+    for (const std::string& item : document.root.visibleOrigin) {
+        const auto items = originItems();
+        if (std::none_of(items.begin(), items.end(),
+                         [&](const OriginItem& origin) { return origin.id == item; })) {
+            invalid("\"" + item + "\" is not an origin item");
         }
     }
 

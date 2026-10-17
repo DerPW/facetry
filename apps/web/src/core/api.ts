@@ -112,8 +112,10 @@ export interface SessionState {
     /** The feature in the document's JSON form, to change and send back with `replaceFeature`. */
     definition: FeatureJson & { id: string };
   }[];
-  /** Bodies of the last regeneration, by the ID of the feature that created them. */
-  bodies: string[];
+  /** Bodies of the last regeneration; a body's ID is the ID of the feature that created it. */
+  bodies: { id: string; name: string; visible: boolean }[];
+  /** The fixed origin: base planes, axes and the origin point. */
+  origin: { id: string; name: string; kind: "plane" | "axis" | "point"; visible: boolean }[];
   regeneration: { cancelled: boolean; executed: number };
 }
 
@@ -156,7 +158,10 @@ export type Edit =
   | { op: "deleteFeature"; id: string }
   | { op: "renameFeature"; id: string; name: string }
   | { op: "suppressFeature"; id: string; suppressed: boolean }
-  | { op: "setRollback"; index: number | null };
+  | { op: "setRollback"; index: number | null }
+  | { op: "renameBody"; id: string; name: string }
+  | { op: "setBodyVisible"; id: string; visible: boolean }
+  | { op: "setOriginVisible"; id: string; visible: boolean };
 
 /** The model after a regeneration: the session summary and a display mesh per body. */
 export interface ModelSnapshot {
@@ -441,10 +446,10 @@ export class FacetryCore {
     this.regenerate(session);
     const state = this.sessionState(session);
     const meshes: Record<string, MeshData> = {};
-    for (const body of state.bodies) {
-      const shape = this.bodyShape(session, body);
+    for (const { id } of state.bodies) {
+      const shape = this.bodyShape(session, id);
       try {
-        meshes[body] = this.tessellate(shape, options);
+        meshes[id] = this.tessellate(shape, options);
       } finally {
         this.release(shape);
       }
