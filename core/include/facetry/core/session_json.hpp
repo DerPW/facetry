@@ -30,6 +30,8 @@ namespace facetry::core {
 //   {"op": "setOriginVisible", "id": "xy", "visible": true}
 //   {"op": "setUnits", "units": "in"}       ("mm", "cm", "m" or "in"; converts every length)
 //   {"op": "setConstruction", "sketch": "f1", "entities": ["l2", "c5"], "construction": true}
+//   {"op": "deleteSketchEntities", "sketch": "f1", "entities": ["p3", "l7"]}
+//                                           (and what depends on them, see sketch_edit.hpp)
 //
 // Features use the document's JSON form. In "addFeature", "id", "name", "suppressed" and
 // "namingVersion" may be left out: the feature gets a fresh ID and a default name. Without an

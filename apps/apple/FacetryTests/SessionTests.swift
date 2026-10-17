@@ -178,6 +178,32 @@ struct SessionTests {
         #expect(try core.state(of: session).features[0].sketchCurves.last?.construction == false)
     }
 
+    @Test func sketchEditingToolsAndDelete() throws {
+        let core = try Core()
+        let session = try openExample(core)
+        try core.regenerate(session)
+        let tool = try core.createSketchTool(sketch: "f1", kind: .copy, construction: false)
+        try core.setSketchToolSelection(tool, entities: ["l1", "l2", "l3", "l4"])
+        let click = { (u: Double, v: Double) throws -> Bool in
+            _ = try core.sketchToolPointer(
+                session, tool: tool, event: .down, u: u, v: v, snapRadius: 0.1)
+            return try core.sketchToolPointer(
+                session, tool: tool, event: .up, u: u, v: v, snapRadius: 0.1)
+        }
+        #expect(try click(0, 0) == false)
+        #expect(try click(20, 0))
+        #expect(try core.sketchToolFeedback(tool).radius == 0)
+        try core.releaseSketchTool(tool)
+        let sketch = try core.state(of: session).features[0]
+        #expect(sketch.sketchCurves.count == 8)
+        #expect(Array(sketch.sketchPoints.prefix(4)) == ["p1", "p2", "p3", "p4"])
+
+        // Deleting a corner of the copy takes its two sides.
+        try core.apply(
+            session, [.deleteSketchEntities(sketch: "f1", entities: [sketch.sketchPoints[4]])])
+        #expect(try core.state(of: session).features[0].sketchCurves.count == 6)
+    }
+
     @Test func unitsChangeAndConvertEveryLength() throws {
         let core = try Core()
         let session = try openExample(core)

@@ -37,6 +37,7 @@ export type CoreMethods = Pick<
   | "releaseSession"
   | "createSketchTool"
   | "cancelSketchTool"
+  | "setSketchToolSelection"
   | "releaseSketchTool"
 > & {
   /** A pointer event for a sketch tool, with the grid spacing to snap to (0: none): whether the

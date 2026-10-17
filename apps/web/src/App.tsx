@@ -14,8 +14,10 @@ import {
   MILLIMETERS_PER,
   SketchTool,
   sketchCurves,
+  sketchPoints,
   type Edit,
   type FeatureJson,
+  type LengthUnit,
   type MeshData,
   type ModelSnapshot,
   type Reference,
@@ -109,6 +111,20 @@ const SKETCH_TOOLS: { tool: SketchTool; label: string; key?: string }[] = [
   { tool: SketchTool.ArcTangent, label: "Arc: tangent" },
   { tool: SketchTool.Point, label: "Point", key: "p" },
 ];
+
+/** The editing tools in the sketch palette, and their keys (docs/INPUT.md). */
+const SKETCH_EDIT_TOOLS: { tool: SketchTool; label: string; key?: string }[] = [
+  { tool: SketchTool.Trim, label: "Trim", key: "t" },
+  { tool: SketchTool.Extend, label: "Extend", key: "e" },
+  { tool: SketchTool.Fillet, label: "Fillet" },
+  { tool: SketchTool.Move, label: "Move", key: "m" },
+  { tool: SketchTool.Copy, label: "Copy" },
+];
+
+/** A length in millimeters, in the document's unit, for labels. */
+function formatLength(millimeters: number, units: LengthUnit): string {
+  return `${Number((millimeters / MILLIMETERS_PER[units]).toFixed(3))} ${units}`;
+}
 
 function describe(selection: Pick[]): string {
   const [only] = selection;
@@ -598,13 +614,46 @@ export function App() {
     });
   };
 
+  // The selected points and curves of the sketch being edited.
+  const selectedCurves = sketchFeature
+    ? selection
+        .filter((pick) => pick.kind === PickKind.SketchCurve)
+        .flatMap((pick) => sketchCurves(sketchFeature.definition)[pick.id - 1] ?? [])
+    : [];
+  const selectedEntities = sketchFeature
+    ? [
+        ...selectedCurves.map((curve) => curve.id),
+        ...selection
+          .filter((pick) => pick.kind === PickKind.SketchPoint)
+          .flatMap((pick) => sketchPoints(sketchFeature.definition)[pick.id - 1] ?? []),
+      ]
+    : [];
+  const selectedEntitiesRef = useRef(selectedEntities);
+  useEffect(() => {
+    selectedEntitiesRef.current = selectedEntities;
+  });
+
+  // Labels show lengths in the document's units.
+  const unitsRef = useRef<LengthUnit>("mm");
+  useEffect(() => {
+    unitsRef.current = model?.units ?? "mm";
+  });
+
   // The tool lives in the core worker while it is chosen; its pointer events go there in order,
   // also those that arrive before the worker has made it.
   const sketchId = sketchFeature?.id ?? null;
   useEffect(() => {
     const current = session.current;
     if (!current || !viewport || sketchId === null || tool === null) return;
-    const handle = current.core.call("createSketchTool", sketchId, tool, construction);
+    const moving = tool === SketchTool.Move || tool === SketchTool.Copy;
+    const entities = selectedEntitiesRef.current;
+    const handle = current.core
+      .call("createSketchTool", sketchId, tool, construction)
+      .then(async (created) => {
+        // Move and copy take the selection; without one, the first click picks.
+        if (moving) await current.core.call("setSketchToolSelection", created, entities);
+        return created;
+      });
     const queue = new ToolQueue(
       async (p) =>
         current.core.call(
@@ -619,10 +668,10 @@ export function App() {
         ),
       (result) => {
         viewport.setSketchPreview(result.preview);
-        const { snap, inferences } = result.feedback;
-        viewport.setPointerLabel(
-          [snap, ...inferences].flatMap((name) => SNAP_NAMES[name] ?? []).join(" · "),
-        );
+        const { snap, inferences, radius } = result.feedback;
+        const labels = [snap, ...inferences].flatMap((name) => SNAP_NAMES[name] ?? []);
+        if (radius > 0) labels.push(`R ${formatLength(radius, unitsRef.current)}`);
+        viewport.setPointerLabel(labels.join(" · "));
         if (result.changed) void change(async () => undefined);
       },
       (error) => setEditError(error instanceof Error ? error.message : String(error)),
@@ -679,11 +728,17 @@ export function App() {
   }, [viewport]);
 
   // The construction toggle changes the selected curves, or else what the tool draws next.
-  const selectedCurves = sketchFeature
-    ? selection
-        .filter((pick) => pick.kind === PickKind.SketchCurve)
-        .flatMap((pick) => sketchCurves(sketchFeature.definition)[pick.id - 1] ?? [])
-    : [];
+  // Delete removes the selected points and curves, and what depends on them.
+  const deleteSelected = () => {
+    if (!sketchFeature || selectedEntities.length === 0) return;
+    viewport?.clearSelection();
+    edit({ op: "deleteSketchEntities", sketch: sketchFeature.id, entities: selectedEntities });
+  };
+  const deleteSelectedRef = useRef(deleteSelected);
+  useEffect(() => {
+    deleteSelectedRef.current = deleteSelected;
+  });
+
   const toggleConstruction = () => {
     if (!sketchFeature || selectedCurves.length === 0) {
       setConstruction((on) => !on);
@@ -787,7 +842,9 @@ export function App() {
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (sketching) {
-        const chosen = SKETCH_TOOLS.find((entry) => entry.key === event.key);
+        const chosen = [...SKETCH_TOOLS, ...SKETCH_EDIT_TOOLS].find(
+          (entry) => entry.key === event.key,
+        );
         if (chosen) {
           setTool(chosen.tool);
           return;
@@ -798,6 +855,11 @@ export function App() {
         }
         if (event.key === "Escape" && tool !== null) {
           void cancelTool();
+          return;
+        }
+        if ((event.key === "Delete" || event.key === "Backspace") && tool === null) {
+          event.preventDefault();
+          deleteSelectedRef.current();
           return;
         }
       }
@@ -875,12 +937,27 @@ export function App() {
                   }}
                 >
                   <option value="">Select</option>
-                  {SKETCH_TOOLS.map(({ tool: kind, label, key }) => (
-                    <option key={kind} value={kind}>
-                      {key ? `${label} (${key.toUpperCase()})` : label}
-                    </option>
+                  {[
+                    ["Draw", SKETCH_TOOLS],
+                    ["Edit", SKETCH_EDIT_TOOLS],
+                  ].map(([group, tools]) => (
+                    <optgroup key={group as string} label={group as string}>
+                      {(tools as typeof SKETCH_TOOLS).map(({ tool: kind, label, key }) => (
+                        <option key={kind} value={kind}>
+                          {key ? `${label} (${key.toUpperCase()})` : label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  disabled={tool !== null || selectedEntities.length === 0}
+                  title="Delete the selected points and curves (Delete)"
+                  onClick={deleteSelected}
+                >
+                  Delete
+                </button>
                 <button
                   type="button"
                   aria-pressed={construction}

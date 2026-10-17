@@ -88,7 +88,7 @@ export interface MeshData {
 export const ElementKind = { Face: 0, Edge: 1, Vertex: 2 } as const;
 export type ElementKind = (typeof ElementKind)[keyof typeof ElementKind];
 
-/** Sketch drawing tools (facetry_sketch_tool_kind). */
+/** Sketch drawing and editing tools (facetry_sketch_tool_kind). */
 export const SketchTool = {
   Line: 0,
   RectangleTwoPoint: 1,
@@ -101,6 +101,11 @@ export const SketchTool = {
   ArcCenter: 8,
   ArcTangent: 9,
   Point: 10,
+  Trim: 11,
+  Extend: 12,
+  Fillet: 13,
+  Move: 14,
+  Copy: 15,
 } as const;
 export type SketchTool = (typeof SketchTool)[keyof typeof SketchTool];
 
@@ -111,6 +116,8 @@ export interface SnapFeedback {
   snap: string;
   /** "horizontal", "vertical", "parallel", "perpendicular", "tangent". */
   inferences: string[];
+  /** The fillet tool's radius at the pointer in millimeters; 0 for other tools. */
+  radius: number;
 }
 
 /** A pointer event for a sketch tool (facetry_pointer_event). */
@@ -180,6 +187,11 @@ export interface SketchFrame {
 
 /** A sketch's curves in the order of its display mesh (edge ID i + 1 is curve i): its lines, then
  * arcs, then circles, as in its definition. */
+/** The IDs of a sketch's points; index i belongs to vertex ID i + 1 of its display mesh. */
+export function sketchPoints(definition: FeatureJson): string[] {
+  return ((definition.points as { id: string }[] | undefined) ?? []).map(({ id }) => id);
+}
+
 export function sketchCurves(definition: FeatureJson): { id: string; construction: boolean }[] {
   const curves = ["lines", "arcs", "circles"].flatMap(
     (key) => (definition[key] as { id: string; construction?: boolean }[] | undefined) ?? [],
@@ -234,7 +246,9 @@ export type Edit =
   /** Converts every length, so the geometry stays the same. */
   | { op: "setUnits"; units: LengthUnit }
   /** Makes curves of a sketch construction curves, or normal ones again. */
-  | { op: "setConstruction"; sketch: string; entities: string[]; construction: boolean };
+  | { op: "setConstruction"; sketch: string; entities: string[]; construction: boolean }
+  /** Deletes points and curves of a sketch, and what depends on them. */
+  | { op: "deleteSketchEntities"; sketch: string; entities: string[] };
 
 /** The model after a regeneration: the session summary and a display mesh per body. */
 export interface ModelSnapshot {
@@ -427,6 +441,14 @@ export class FacetryCore {
   /** Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off. */
   setSketchToolGrid(tool: number, spacing: number): void {
     this.#check(this.#m._facetry_sketch_tool_set_grid(this.#context, tool, spacing));
+  }
+
+  /** The move and copy tools' points and curves; with none, the first click takes the one under
+   * the pointer. */
+  setSketchToolSelection(tool: number, entities: string[]): void {
+    this.#withString(JSON.stringify(entities), (text) =>
+      this.#check(this.#m._facetry_sketch_tool_set_selection(this.#context, tool, text)),
+    );
   }
 
   releaseSketchTool(tool: number): void {

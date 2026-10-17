@@ -136,7 +136,7 @@ and with a mouse on the first or second attempt.
   - [x] arc: 3-point, center-point, tangent
   - [x] point
   - [x] construction toggle for any entity
-- [ ] Editing tools: trim, extend, sketch fillet, delete, move/copy entities
+- [x] Editing tools: trim, extend, sketch fillet, delete, move/copy entities
 - [x] Snapping: endpoints, midpoints, centers, quadrants, intersections, on-curve, origin,
       optional grid snap ([#50](https://github.com/DerPW/facetry/issues/50),
       [ADR-0016](../adr/0016-sketch-snapping.md))

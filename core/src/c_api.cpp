@@ -16,6 +16,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -562,7 +563,7 @@ facetry_status facetry_sketch_tool_create(facetry_context* context, const char* 
                                           facetry_handle* out_tool) {
     return run(context, [&](facetry_context& ctx) {
         auto& out = requireOut(out_tool, "out_tool");
-        if (kind > FACETRY_TOOL_POINT) {
+        if (kind > FACETRY_TOOL_COPY) {
             throw Error(ErrorCode::InvalidArgument, "Unknown sketch tool");
         }
         out = ctx.add(std::make_unique<SketchTool>(
@@ -616,8 +617,11 @@ facetry_status facetry_sketch_tool_feedback(facetry_context* context, facetry_ha
         auto& out = requireOut(out_json, "out_json");
         const facetry::core::SnapFeedback feedback =
             ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")->feedback();
-        out = ctx.setOutput(
-            nlohmann::json{{"snap", feedback.snap}, {"inferences", feedback.inferences}}.dump());
+        out = ctx.setOutput(nlohmann::json{
+            {"snap", feedback.snap},
+            {"inferences", feedback.inferences},
+            {"radius",
+             feedback.radius}}.dump());
     });
 }
 
@@ -625,6 +629,21 @@ facetry_status facetry_sketch_tool_set_grid(facetry_context* context, facetry_ha
                                             double spacing) {
     return run(context, [&](facetry_context& ctx) {
         ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")->setGrid(spacing);
+    });
+}
+
+facetry_status facetry_sketch_tool_set_selection(facetry_context* context, facetry_handle tool,
+                                                 const char* entities_json) {
+    return run(context, [&](facetry_context& ctx) {
+        const auto entities =
+            nlohmann::json::parse(requireString(entities_json, "entities_json"), nullptr, false);
+        if (!entities.is_array() ||
+            !std::all_of(entities.begin(), entities.end(),
+                         [](const nlohmann::json& entity) { return entity.is_string(); })) {
+            throw Error(ErrorCode::InvalidArgument, "entities_json must be an array of IDs");
+        }
+        ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")
+            ->setSelection(entities.get<std::vector<std::string>>());
     });
 }
 

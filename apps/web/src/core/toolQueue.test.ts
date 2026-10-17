@@ -4,7 +4,7 @@ import { ToolEvent, type MeshData } from "./api";
 import { ToolQueue, type ToolPointer } from "./toolQueue";
 
 const preview = {} as MeshData;
-const feedback = { snap: "", inferences: [] };
+const feedback = { snap: "", inferences: [], radius: 0 };
 
 describe("ToolQueue", () => {
   it("sends events in order and collapses moves that pile up", async () => {

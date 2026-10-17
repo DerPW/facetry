@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 12
+#define FACETRY_API_VERSION_MINOR 13
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -303,7 +303,15 @@ typedef enum facetry_sketch_tool_kind {
     FACETRY_TOOL_ARC_CENTER = 8,  /* the center, the start, the end; the way round follows the
                                      pointer */
     FACETRY_TOOL_ARC_TANGENT = 9, /* from the end of a line or arc, tangent to it */
-    FACETRY_TOOL_POINT = 10
+    FACETRY_TOOL_POINT = 10,
+    /* Editing (#51) */
+    FACETRY_TOOL_TRIM = 11,   /* removes the piece of a curve under the pointer up to the curves
+                                 crossing it; dragging trims every curve it crosses */
+    FACETRY_TOOL_EXTEND = 12, /* runs the line clicked near one end on to the next curve */
+    FACETRY_TOOL_FILLET = 13, /* a corner of two lines, then how far from it the arc starts */
+    FACETRY_TOOL_MOVE = 14,   /* the selection, or what is under the first click, from a base
+                                 point to a target */
+    FACETRY_TOOL_COPY = 15    /* like move, keeping the originals */
 } facetry_sketch_tool_kind;
 
 typedef enum facetry_pointer_event {
@@ -339,13 +347,19 @@ FACETRY_API facetry_status facetry_sketch_tool_preview(facetry_context* context,
 FACETRY_API facetry_status facetry_sketch_tool_release(facetry_context* context,
                                                        facetry_handle tool);
 /* What the pointer snapped to and what the next click infers, as JSON:
- * {"snap": "midpoint", "inferences": ["horizontal"]}. "snap" is "point", "center", "midpoint",
- * "quadrant", "intersection", "origin", "onCurve", "grid" or "" (free). */
+ * {"snap": "midpoint", "inferences": ["horizontal"], "radius": 0}. "snap" is "point", "center",
+ * "midpoint", "quadrant", "intersection", "origin", "onCurve", "grid" or "" (free). "radius" is
+ * the fillet tool's radius at the pointer in millimeters, 0 for other tools. */
 FACETRY_API facetry_status facetry_sketch_tool_feedback(facetry_context* context,
                                                         facetry_handle tool, const char** out_json);
 /* Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off. */
 FACETRY_API facetry_status facetry_sketch_tool_set_grid(facetry_context* context,
                                                         facetry_handle tool, double spacing);
+/* The move and copy tools' selection: a JSON array of point and curve IDs, e.g. ["l2", "p7"].
+ * With an empty one, the first click takes the point or curve under the pointer. */
+FACETRY_API facetry_status facetry_sketch_tool_set_selection(facetry_context* context,
+                                                             facetry_handle tool,
+                                                             const char* entities_json);
 
 #ifdef __cplusplus
 }

@@ -9,8 +9,11 @@ import {
   ElementKind,
   FacetryCore,
   LogLevel,
+  SketchTool,
   Status,
+  ToolEvent,
   sketchCurves,
+  sketchPoints,
 } from "./api";
 
 const example = readFileSync(
@@ -218,6 +221,31 @@ describe("FacetryCore (WebAssembly)", () => {
       const state = core.sessionState(session);
       expect(state.regeneration.cancelled).toBe(true);
       expect(state.features.map((f) => f.status)).toEqual(["ok", "notRun", "notRun"]);
+      core.releaseSession(session);
+    });
+
+    it("edits sketches with the editing tools and deletes entities", () => {
+      const session = core.openSession(example);
+      core.regenerateModel(session);
+      const tool = core.createSketchTool("f1", SketchTool.Copy, false);
+      core.setSketchToolSelection(tool, ["l1", "l2", "l3", "l4"]);
+      const click = (u: number, v: number) => {
+        core.sketchToolPointer(session, tool, ToolEvent.Down, u, v, 0.1);
+        return core.sketchToolPointer(session, tool, ToolEvent.Up, u, v, 0.1);
+      };
+      expect(click(0, 0)).toBe(false);
+      expect(click(20, 0)).toBe(true);
+      expect(core.sketchToolFeedback(tool).radius).toBe(0);
+      core.releaseSketchTool(tool);
+      const sketch = () =>
+        core.regenerateModel(session).state.features[0]?.definition ?? { type: "sketch" };
+      expect(sketchCurves(sketch())).toHaveLength(8);
+      expect(sketchPoints(sketch()).slice(0, 4)).toEqual(["p1", "p2", "p3", "p4"]);
+      // Deleting a corner of the copy takes its two sides.
+      core.applyEdits(session, [
+        { op: "deleteSketchEntities", sketch: "f1", entities: [sketchPoints(sketch())[4] ?? ""] },
+      ]);
+      expect(sketchCurves(sketch())).toHaveLength(6);
       core.releaseSession(session);
     });
 

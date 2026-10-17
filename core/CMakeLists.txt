@@ -14,6 +14,8 @@ add_library(facetry-core STATIC
     src/document/regeneration.cpp
     src/document/session.cpp
     src/document/session_json.cpp
+    src/document/sketch_edit.cpp
+    src/document/sketch_edit_tool.cpp
     src/document/sketch_tool.cpp
     src/kernel/occt_common.cpp
     src/kernel/occt_mesh.cpp
