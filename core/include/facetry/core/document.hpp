@@ -16,8 +16,9 @@
 
 namespace facetry::core {
 
-// Version of the JSON written by toJson(). Older versions are migrated when they are read.
-inline constexpr int kDocumentFormatVersion = 1;
+// Version of the JSON written by toJson(). Older versions are migrated when they are read:
+// version 1 has no units and is in millimeters.
+inline constexpr int kDocumentFormatVersion = 2;
 
 // Version of the naming scheme (ADR-0006). Each feature records the version it was created with,
 // so a later change to the scheme can migrate old documents instead of silently renaming.
@@ -146,6 +147,17 @@ struct OriginItem {
 // The origin every component has: the three base planes, the three axes and the origin point.
 [[nodiscard]] std::span<const OriginItem> originItems() noexcept;
 
+// The unit of a document's lengths (#18). Values are stored, shown and entered in it; geometry
+// is built in millimeters. Parameters are lengths until they get units of their own (M1.4).
+enum class LengthUnit : std::uint8_t { Millimeter, Centimeter, Meter, Inch };
+
+// Millimeters per unit, e.g. 25.4 for inches.
+[[nodiscard]] double millimetersPer(LengthUnit unit) noexcept;
+// "mm", "cm", "m" or "in".
+[[nodiscard]] std::string_view unitSymbol(LengthUnit unit) noexcept;
+// The unit with this symbol, if there is one.
+[[nodiscard]] std::optional<LengthUnit> unitFromSymbol(std::string_view symbol) noexcept;
+
 // A component owns a timeline; the bodies and sketches it contains are results of that timeline.
 // Child components arrive with M2.6.
 struct Component {
@@ -166,6 +178,7 @@ struct Document {
     std::optional<std::size_t> rollback;
     // Counter behind newId().
     std::uint64_t nextId = 1;
+    LengthUnit units = LengthUnit::Millimeter;
 
     // A fresh ID such as "f12" or "l13". IDs are never reused, so a reference to a deleted
     // feature or sketch line cannot silently attach to a new one.
@@ -183,6 +196,9 @@ struct Document {
 
     friend bool operator==(const Document&, const Document&) = default;
 };
+
+// Changes the document's unit and converts every length into it, so the geometry stays the same.
+void convertUnits(Document& document, LengthUnit units);
 
 // Throws Error(InvalidArgument) if the document breaks a structural rule: duplicate IDs or
 // parameter names, sketch lines with unknown points, a rollback marker past the timeline.

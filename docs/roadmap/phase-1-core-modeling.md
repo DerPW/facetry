@@ -75,7 +75,8 @@ Back to the [roadmap overview](../ROADMAP.md).
 - [x] Autosave and crash recovery ([#17](https://github.com/DerPW/facetry/issues/17)): the
       document architecture on Apple; on the web, OPFS (IndexedDB fallback) with recovery of
       autosaves from closed tabs
-- [ ] Document units (mm, cm, m, in); internal unit is mm
+- [x] Document units (mm, cm, m, in); internal unit is mm
+      ([#18](https://github.com/DerPW/facetry/issues/18), [ADR-0012](../adr/0012-document-units.md))
 
 **Done when:** edits to benchmark models survive save → reload → undo → redo on every platform.
 

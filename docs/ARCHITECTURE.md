@@ -82,7 +82,7 @@ The M0.6 prototype implements this in the core:
 
 | Part | Where | Prototype scope |
 |---|---|---|
-| Document, components, features, parameters | `core/include/facetry/core/document.hpp` | Root component only; sketch (lines on XY), extrude (new body), fillet; parameters are numbers that features use by name |
+| Document, components, features, parameters | `core/include/facetry/core/document.hpp` | Root component only; sketch (lines on XY), extrude (new body), fillet; parameters are numbers that features use by name; lengths in the document's units ([ADR-0012](adr/0012-document-units.md)) |
 | Bodies | results in `regeneration.hpp` | A body's ID is the ID of the feature that created it |
 | JSON form | `document.hpp` (`toJson`, `parseDocument`) | Versioned (`formatVersion`, per-feature `namingVersion`); examples in `tests/documents/` |
 | Naming | `naming.hpp`, `core/src/kernel/occt_naming.cpp` | Faces from history and roles, edges and vertices by their faces |
@@ -97,8 +97,8 @@ reference to something deleted cannot attach to something new.
 
 `.facetry` (proposal, ADR-0008): a zip container with
 
-- `manifest.json`: format version, app version, units
-- `document.json`: the full document description (timeline, parameters, references)
+- `manifest.json`: format version, app version
+- `document.json`: the full document description (units, parameters, timeline, references)
 - `cache/`: optional geometry cache for fast opening; can always be rebuilt
 - `thumbnail.png`
 
@@ -186,3 +186,4 @@ Decisions are recorded as ADRs (Architecture Decision Records) in [`docs/adr/`](
 | [0009](adr/0009-minimum-os-and-browser-versions.md) | Minimum versions: iPadOS/macOS 26, a feature-based browser floor | Accepted | M0.7 |
 | 0010 | Script engine: embedded QuickJS (proposed) vs. platform JS engines | Open | M3.5 |
 | [0011](adr/0011-document-api-json-over-c.md) | Document API: sessions with JSON edits over the C API | Accepted | M1.1 |
+| [0012](adr/0012-document-units.md) | Document units: values in the document's unit, geometry in millimeters | Accepted | M1.1 |

@@ -15,20 +15,22 @@
 namespace facetry::core {
 namespace {
 
-double resolve(const Value& value, const Document& document) {
+// A length in millimeters, the kernel's unit.
+double length(const Value& value, const Document& document) {
+    const double scale = millimetersPer(document.units);
     if (value.parameter.empty()) {
-        return value.number;
+        return value.number * scale;
     }
     const Parameter* parameter = document.findParameter(value.parameter);
     if (parameter == nullptr) {
         throw Error(ErrorCode::InvalidArgument,
                     "The parameter \"" + value.parameter + "\" does not exist");
     }
-    return parameter->value;
+    return parameter->value * scale;
 }
 
 // What a feature's result depends on, besides the features before it: its definition with
-// parameter values filled in. Names and shadows do not change the result.
+// parameter values filled in, and the units. Names and shadows do not change the result.
 std::string cacheKey(Feature feature, const Document& document) {
     const auto fill = [&](Value& value) {
         if (const Parameter* parameter = document.findParameter(value.parameter)) {
@@ -49,13 +51,16 @@ std::string cacheKey(Feature feature, const Document& document) {
         }
     }
     feature.name.clear();
-    return json::featureToJson(feature).dump();
+    return std::string(unitSymbol(document.units)) + json::featureToJson(feature).dump();
 }
 
-std::string describe(const ElementGeometry& geometry) {
+// For messages, in the document's units.
+std::string describe(const ElementGeometry& geometry, LengthUnit units) {
+    const double scale = millimetersPer(units);
     std::ostringstream text;
-    text << std::setprecision(6) << geometry.type << " at (" << geometry.centroid.x << ", "
-         << geometry.centroid.y << ", " << geometry.centroid.z << ")";
+    text << std::setprecision(6) << geometry.type << " at (" << geometry.centroid.x / scale << ", "
+         << geometry.centroid.y / scale << ", " << geometry.centroid.z / scale << ") "
+         << unitSymbol(units);
     return text.str();
 }
 
@@ -67,7 +72,7 @@ std::vector<ProfileSegment> sketchProfile(const Feature& feature, const Sketch& 
     }
     std::map<std::string, std::pair<double, double>> points;
     for (const SketchPoint& point : sketch.points) {
-        points[point.id] = {resolve(point.x, document), resolve(point.y, document)};
+        points[point.id] = {length(point.x, document), length(point.y, document)};
     }
     std::map<std::string, std::vector<std::size_t>> linesAt;
     for (std::size_t i = 0; i < sketch.lines.size(); ++i) {
@@ -110,7 +115,7 @@ std::vector<ProfileSegment> sketchProfile(const Feature& feature, const Sketch& 
 
 // Finds a referenced element by name; if the name is gone, by its shadow (with a warning).
 std::optional<std::uint32_t> resolveReference(const NamedShape& body, const Reference& reference,
-                                              FeatureResult& result) {
+                                              LengthUnit units, FeatureResult& result) {
     if (const auto id = body.find(reference.kind, reference.name)) {
         return id;
     }
@@ -127,14 +132,14 @@ std::optional<std::uint32_t> resolveReference(const NamedShape& body, const Refe
         if (matches.size() == 1) {
             result.messages.push_back(
                 "The " + what + " \"" + reference.name + "\" no longer exists; using the " + what +
-                " at its last known place, a " + describe(reference.shadow->geometry) +
+                " at its last known place, a " + describe(reference.shadow->geometry, units) +
                 ". Select it again to confirm.");
             return matches.front();
         }
     }
     std::string message = "The " + what + " \"" + reference.name + "\" no longer exists";
     if (reference.shadow) {
-        message += "; it was a " + describe(reference.shadow->geometry);
+        message += "; it was a " + describe(reference.shadow->geometry, units);
     }
     result.messages.push_back(message + ".");
     return std::nullopt;
@@ -142,7 +147,7 @@ std::optional<std::uint32_t> resolveReference(const NamedShape& body, const Refe
 
 void executeFillet(const Feature& feature, const Fillet& fillet, const Document& document,
                    ModelState& model, FeatureResult& result) {
-    const double radius = resolve(fillet.radius, document);
+    const double radius = length(fillet.radius, document);
     if (fillet.edges.empty()) {
         throw Error(ErrorCode::InvalidArgument, "The fillet has no edges");
     }
@@ -155,7 +160,7 @@ void executeFillet(const Feature& feature, const Fillet& fillet, const Document&
         if (body == model.bodies.end()) {
             result.messages.push_back("The body " + edge.body + " does not exist.");
         } else {
-            id = resolveReference(*body->second, edge, result);
+            id = resolveReference(*body->second, edge, document.units, result);
         }
         if (!id) {
             result.brokenReferences.push_back(i);
@@ -200,7 +205,7 @@ FeatureResult execute(const Feature& feature, const Document& document, ModelSta
                             "The sketch " + extrude->profile + " has no profile to extrude");
             }
             after.bodies[feature.id] = std::make_shared<const NamedShape>(
-                extrudeProfile(*profile->second, resolve(extrude->distance, document), feature.id));
+                extrudeProfile(*profile->second, length(extrude->distance, document), feature.id));
         } else if (const auto* fillet = std::get_if<Fillet>(&feature.data)) {
             executeFillet(feature, *fillet, document, after, result);
         }

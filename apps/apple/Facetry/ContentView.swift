@@ -130,11 +130,27 @@ private struct ModelPanel: View {
     let state: SessionState
     let model: DocumentModel
 
+    /// Changing the units converts every length; the model keeps its size.
+    private var units: Binding<LengthUnit> {
+        Binding(
+            get: { state.units },
+            set: { units in Task { await model.edit([.setUnits(units)]) } })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Parameters").font(.caption.bold())
+            HStack {
+                Text("Parameters").font(.caption.bold())
+                Spacer()
+                Picker("Units", selection: units) {
+                    ForEach(LengthUnit.allCases) { Text($0.symbol).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .font(.caption)
+                .fixedSize()
+            }
             ForEach(state.parameters) { parameter in
-                ParameterRow(parameter: parameter) { value in
+                ParameterRow(parameter: parameter, units: state.units) { value in
                     Task { await model.setParameter(parameter.name, to: value) }
                 }
             }
@@ -146,6 +162,7 @@ private struct ModelPanel: View {
 
 private struct ParameterRow: View {
     let parameter: SessionState.Parameter
+    let units: LengthUnit
     let onCommit: (Double) -> Void
     @State private var value = 0.0
 
@@ -164,7 +181,8 @@ private struct ParameterRow: View {
                 .onSubmit {
                     if value != parameter.value { onCommit(value) }
                 }
-            Text("mm").font(.caption).foregroundStyle(.secondary)
+            Text(units.symbol).font(.caption).foregroundStyle(.secondary)
+                .frame(width: 22, alignment: .leading)
         }
         .onAppear { value = parameter.value }
         .onChange(of: parameter.value) { _, newValue in value = newValue }

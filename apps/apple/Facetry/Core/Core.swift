@@ -78,6 +78,18 @@ enum ElementKind: Sendable {
 
 /// Summary of a session (facetry_session_state; the JSON is described in
 /// core/include/facetry/core/session_json.hpp).
+/// The unit of a document's lengths. Parameters and feature values are in it; the core builds
+/// geometry in millimeters.
+enum LengthUnit: String, Codable, Sendable, CaseIterable, Identifiable {
+    case millimeter = "mm"
+    case centimeter = "cm"
+    case meter = "m"
+    case inch = "in"
+
+    var id: String { rawValue }
+    var symbol: String { rawValue }
+}
+
 struct SessionState: Decodable, Sendable, Equatable {
     struct Parameter: Decodable, Sendable, Equatable, Identifiable {
         let name: String
@@ -108,6 +120,7 @@ struct SessionState: Decodable, Sendable, Equatable {
         let executed: Int
     }
 
+    let units: LengthUnit
     let parameters: [Parameter]
     let rollback: Int?
     let canUndo: Bool
@@ -229,9 +242,11 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case renameBody(id: String, name: String)
     case setBodyVisible(id: String, visible: Bool)
     case setOriginVisible(id: String, visible: Bool)
+    /// Converts every length, so the geometry stays the same.
+    case setUnits(LengthUnit)
 
     private enum Key: String, CodingKey {
-        case op, name, value, id, suppressed, index, feature, visible
+        case op, name, value, id, suppressed, index, feature, visible, units
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -273,6 +288,9 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
             try c.encode(op, forKey: .op)
             try c.encode(id, forKey: .id)
             try c.encode(visible, forKey: .visible)
+        case .setUnits(let units):
+            try c.encode(op, forKey: .op)
+            try c.encode(units, forKey: .units)
         }
     }
 
@@ -289,6 +307,7 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .renameBody: "renameBody"
         case .setBodyVisible: "setBodyVisible"
         case .setOriginVisible: "setOriginVisible"
+        case .setUnits: "setUnits"
         }
     }
 }

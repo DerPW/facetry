@@ -91,7 +91,12 @@ export type ElementKind = (typeof ElementKind)[keyof typeof ElementKind];
 export type FeatureStatus = "ok" | "warning" | "error" | "suppressed" | "rolledBack" | "notRun";
 
 /** Summary of a session (the JSON is described in core/include/facetry/core/session_json.hpp). */
+/** The unit of a document's lengths. Values are in it; the core builds geometry in millimeters. */
+export type LengthUnit = "mm" | "cm" | "m" | "in";
+export const LENGTH_UNITS: readonly LengthUnit[] = ["mm", "cm", "m", "in"];
+
 export interface SessionState {
+  units: LengthUnit;
   parameters: { name: string; value: number }[];
   rollback: number | null;
   canUndo: boolean;
@@ -168,7 +173,9 @@ export type Edit =
   | { op: "setRollback"; index: number | null }
   | { op: "renameBody"; id: string; name: string }
   | { op: "setBodyVisible"; id: string; visible: boolean }
-  | { op: "setOriginVisible"; id: string; visible: boolean };
+  | { op: "setOriginVisible"; id: string; visible: boolean }
+  /** Converts every length, so the geometry stays the same. */
+  | { op: "setUnits"; units: LengthUnit };
 
 /** The model after a regeneration: the session summary and a display mesh per body. */
 export interface ModelSnapshot {
