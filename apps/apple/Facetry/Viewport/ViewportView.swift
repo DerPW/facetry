@@ -35,6 +35,13 @@ final class ViewportModel {
     /// While set, the left button, the Pencil and one finger draw with a sketch tool instead of
     /// selecting or orbiting (docs/INPUT.md).
     @ObservationIgnored var drawing: DrawingInput?
+    /// What the pointer snapped to while drawing, shown next to it.
+    var pointerLabel = ""
+    fileprivate(set) var pointerLabelAt: CGPoint?
+    /// Labels on the sketch (constraint glyphs) at points in space, and where they show on
+    /// screen, kept current by the viewport.
+    var glyphs: [GlyphLabel] = []
+    fileprivate(set) var placedGlyphs: [PlacedGlyph] = []
     /// The selection box being dragged, in view points; drawn by ``SelectionBoxOverlay``.
     fileprivate(set) var selectionBox: (start: CGPoint, end: CGPoint)?
     /// Where the precision selector's crosshair points (#38), above the finger.
@@ -95,10 +102,23 @@ final class ViewportModel {
 }
 
 /// Pointer input for a sketch drawing tool: events on the sketch plane, in millimeters along its
-/// axes, with the snap radius for the pointer.
+/// axes, with the snap radius for the pointer and the grid's spacing there.
 struct DrawingInput {
     let plane: SketchPlane
-    let onPointer: (ToolEvent, Double, Double, Double) -> Void
+    let onPointer:
+        (_ event: ToolEvent, _ u: Double, _ v: Double, _ snapRadius: Double, _ grid: Double) -> Void
+}
+
+/// A label on the sketch at a point in space (millimeters).
+struct GlyphLabel: Equatable {
+    let text: String
+    let at: SIMD3<Float>
+}
+
+/// A label where it shows on screen.
+struct PlacedGlyph: Equatable {
+    let text: String
+    let point: CGPoint
 }
 
 /// A sketch for display: its mesh and the edge IDs of its construction curves (dashed).
@@ -280,9 +300,13 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         } catch {
             model.error = "\(error)"
         }
-        // The ViewCube follows the camera, including its animations.
+        // The ViewCube and the glyphs follow the camera, including its animations.
         let cells = renderer.viewCubeCells(size: ViewCubeView.size)
         if cells != model.viewCube { model.viewCube = cells }
+        let placed = model.glyphs.compactMap { glyph in
+            renderer.project(glyph.at).map { PlacedGlyph(text: glyph.text, point: $0) }
+        }
+        if placed != model.placedGlyphs { model.placedGlyphs = placed }
         recordFrame(renderer)
     }
 
@@ -307,8 +331,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     @discardableResult
     func toolEvent(_ event: ToolEvent, at point: CGPoint, radius: Double) -> Bool {
         guard let drawing = model.drawing else { return false }
+        model.pointerLabelAt = point
         if let renderer, let spot = renderer.sketchPoint(at: point, on: drawing.plane) {
-            drawing.onPointer(event, spot.u, spot.v, radius * spot.perPoint)
+            drawing.onPointer(
+                event, spot.u, spot.v, radius * spot.perPoint, renderer.gridSpacing)
         }
         return true
     }

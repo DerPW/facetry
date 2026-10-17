@@ -213,6 +213,95 @@ Mesh curvesMesh(const SketchFrame& frame, std::span<const ProfileSegment> curves
     return mesh;
 }
 
+std::vector<ConstraintGlyph> constraintGlyphs(const Sketch& sketch,
+                                              const SketchGeometry& geometry) {
+    // Where each point and curve shows a glyph, in sketch coordinates: points where they are,
+    // curves halfway along (a circle at its top).
+    std::map<std::string, std::pair<double, double>> places;
+    const Vec3 origin = geometry.frame.origin;
+    const auto inPlane = [&](const Vec3& p) {
+        const Vec3 d{p.x - origin.x, p.y - origin.y, p.z - origin.z};
+        const Vec3& x = geometry.frame.xAxis;
+        const Vec3& y = geometry.frame.yAxis;
+        return std::pair{d.x * x.x + d.y * x.y + d.z * x.z, d.x * y.x + d.y * y.y + d.z * y.z};
+    };
+    for (std::size_t i = 0; i < sketch.points.size() && i < geometry.points.size(); ++i) {
+        places[sketch.points[i].id] = inPlane(geometry.points[i]);
+    }
+    std::map<std::string, const SketchCurve*> curves;
+    for (const SketchCurve& curve : geometry.curves) {
+        const std::string& name = curve.segment.name;
+        const std::string id = name.substr(name.find('/') + 1);
+        curves[id] = &curve;
+        const ProfileSegment& s = curve.segment;
+        switch (s.kind) {
+            case ProfileSegment::Kind::Line:
+                places[id] = {(s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2};
+                break;
+            case ProfileSegment::Kind::Arc: {
+                const double radius = std::hypot(s.x0 - s.cx, s.y0 - s.cy);
+                const double start = std::atan2(s.y0 - s.cy, s.x0 - s.cx);
+                double sweep = std::atan2(s.y1 - s.cy, s.x1 - s.cx) - start;
+                while (sweep <= 0.0) {
+                    sweep += 2.0 * std::numbers::pi;
+                }
+                places[id] = {s.cx + radius * std::cos(start + sweep / 2),
+                              s.cy + radius * std::sin(start + sweep / 2)};
+                break;
+            }
+            case ProfileSegment::Kind::Circle:
+                places[id] = {s.cx, s.cy + s.radius};
+                break;
+        }
+    }
+    std::vector<ConstraintGlyph> glyphs;
+    const auto add = [&](const SketchConstraint& constraint, const std::pair<double, double>& at) {
+        glyphs.push_back({constraint.type, constraint.id, geometry.frame.at(at.first, at.second)});
+    };
+    for (const SketchConstraint& constraint : sketch.constraints) {
+        std::vector<std::pair<double, double>> at;
+        for (const std::string& entity : constraint.entities) {
+            const auto place = places.find(entity);
+            if (place == places.end()) {
+                break;
+            }
+            at.push_back(place->second);
+        }
+        if (at.size() != constraint.entities.size() || at.empty()) {
+            continue;
+        }
+        const std::string& type = constraint.type;
+        if (type == "parallel" || type == "perpendicular" || type == "equal") {
+            for (const auto& place : at) {
+                add(constraint, place);
+            }
+        } else if (type == "horizontal" || type == "vertical") {
+            // A line, or halfway between two points.
+            add(constraint, at.size() == 2 ? std::pair{(at[0].first + at[1].first) / 2,
+                                                       (at[0].second + at[1].second) / 2}
+                                           : at[0]);
+        } else if (type == "tangent" && at.size() == 2) {
+            // Where the curves meet, if they share an end; else on the second.
+            const SketchCurve* a =
+                curves.contains(constraint.entities[0]) ? curves[constraint.entities[0]] : nullptr;
+            const SketchCurve* b =
+                curves.contains(constraint.entities[1]) ? curves[constraint.entities[1]] : nullptr;
+            std::string shared;
+            if (a != nullptr && b != nullptr) {
+                for (const std::string& end : {a->start, a->end}) {
+                    if (!end.empty() && (end == b->start || end == b->end)) {
+                        shared = end;
+                    }
+                }
+            }
+            add(constraint, places.contains(shared) ? places[shared] : at[1]);
+        } else {
+            add(constraint, at[0]);  // the point of coincident, midpoint and fix; a center
+        }
+    }
+    return glyphs;
+}
+
 double lengthInMillimeters(const Value& value, const Document& document) {
     return length(value, document);
 }

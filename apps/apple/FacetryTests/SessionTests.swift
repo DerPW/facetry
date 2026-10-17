@@ -159,10 +159,16 @@ struct SessionTests {
         #expect(try core.sketchToolPreview(session, tool: tool).edgeIDs == [1])
         #expect(try click(6, 3))
         #expect(try core.cancelSketchTool(tool) == false)
+        _ = try core.sketchToolPointer(
+            session, tool: tool, event: .move, u: 5.02, v: 3, snapRadius: 0.1)
+        #expect(try core.sketchToolFeedback(tool).snap == "center")
+        try core.setSketchToolGrid(tool, spacing: 1)
         try core.releaseSketchTool(tool)
         try core.endTransaction(session, commit: true)
+        try core.regenerate(session)
         let sketch = try core.state(of: session).features[0]
         #expect(sketch.sketchCurves.last?.construction == true)
+        #expect(sketch.glyphs?.isEmpty == true)  // the example's sketch has no constraints
         #expect(sketch.sketchCurves.count == 5)
 
         // The construction flag goes back off with an edit.

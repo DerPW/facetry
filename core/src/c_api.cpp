@@ -14,6 +14,8 @@
 
 #include "facetry_core.h"
 
+#include <nlohmann/json.hpp>
+
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -605,6 +607,24 @@ facetry_status facetry_sketch_tool_preview(facetry_context* context, facetry_han
         out = ctx.add(std::make_unique<Mesh>(
             ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")
                 ->preview(source, linear_deflection > 0.0 ? linear_deflection : 0.01)));
+    });
+}
+
+facetry_status facetry_sketch_tool_feedback(facetry_context* context, facetry_handle tool,
+                                            const char** out_json) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_json, "out_json");
+        const facetry::core::SnapFeedback feedback =
+            ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")->feedback();
+        out = ctx.setOutput(
+            nlohmann::json{{"snap", feedback.snap}, {"inferences", feedback.inferences}}.dump());
+    });
+}
+
+facetry_status facetry_sketch_tool_set_grid(facetry_context* context, facetry_handle tool,
+                                            double spacing) {
+    return run(context, [&](facetry_context& ctx) {
+        ctx.get<std::unique_ptr<SketchTool>>(tool, "sketch tool")->setGrid(spacing);
     });
 }
 

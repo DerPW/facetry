@@ -137,9 +137,10 @@ and with a mouse on the first or second attempt.
   - [x] point
   - [x] construction toggle for any entity
 - [ ] Editing tools: trim, extend, sketch fillet, delete, move/copy entities
-- [ ] Snapping: endpoints, midpoints, centers, quadrants, intersections, on-curve, origin,
-      optional grid snap
-- [ ] Inference while drawing: horizontal/vertical, parallel/perpendicular to nearby lines,
+- [x] Snapping: endpoints, midpoints, centers, quadrants, intersections, on-curve, origin,
+      optional grid snap ([#50](https://github.com/DerPW/facetry/issues/50),
+      [ADR-0016](../adr/0016-sketch-snapping.md))
+- [x] Inference while drawing: horizontal/vertical, parallel/perpendicular to nearby lines,
       tangent, alignment guides. Inferred constraints are created automatically and shown.
 - [x] Profile detection: closed regions, including nested islands, are highlighted and
       selectable; an extrusion takes the ones chosen

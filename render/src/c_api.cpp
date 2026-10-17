@@ -186,6 +186,28 @@ facetry_render_status facetry_renderer_sketch_point(facetry_renderer* renderer, 
     });
 }
 
+facetry_render_status facetry_renderer_project(facetry_renderer* renderer, float x, float y,
+                                               float z, float* out) {
+    return run(renderer, [&](Renderer& r) {
+        if (out == nullptr) {
+            throw std::invalid_argument("out must not be null");
+        }
+        const auto projected = r.camera().project({x, y, z});
+        if (projected.w <= 0.0F) {
+            throw std::invalid_argument("The point lies behind the camera");
+        }
+        out[0] = projected.x;
+        out[1] = projected.y;
+    });
+}
+
+float facetry_renderer_grid_spacing(const facetry_renderer* renderer) {
+    if (renderer == nullptr) {
+        return 0.0F;
+    }
+    return renderer->renderer->gridSpacing();
+}
+
 void facetry_renderer_set_viewport(facetry_renderer* renderer, float width, float height,
                                    float pixel_ratio) {
     run(renderer, [&](Renderer& r) { r.setViewport(width, height, pixel_ratio); });

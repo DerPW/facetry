@@ -20,6 +20,8 @@ struct ContentView: View {
         ViewportView(model: viewport)
             .ignoresSafeArea()
             .overlay { SelectionBoxOverlay(model: viewport).ignoresSafeArea() }
+            // Same frame as the viewport, so the labels sit on what they label.
+            .overlay { sketchLabels.ignoresSafeArea() }
             .overlay(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 0) {
                     header
@@ -155,6 +157,12 @@ struct ContentView: View {
                 )
                 .toggleStyle(.button)
                 .help("Construction curves (X): new ones, or the selected ones")
+                Toggle(
+                    "Grid snap",
+                    isOn: Binding(get: { model.gridSnap }, set: { model.gridSnap = $0 })
+                )
+                .toggleStyle(.button)
+                .help("Snap free points to the grid")
                 Button("Finish sketch") { Task { await model.finishSketch(keep: true) } }
                 Button("Cancel") { Task { await model.finishSketch(keep: false) } }
                 // Keys choose tools while sketching (docs/INPUT.md).
@@ -240,6 +248,24 @@ struct ContentView: View {
             }
         }
         .panel()
+    }
+
+    /// Constraint glyphs on the sketch, and what the pointer snapped to while drawing.
+    private var sketchLabels: some View {
+        Canvas { context, _ in
+            for glyph in viewport.placedGlyphs {
+                context.draw(
+                    Text(glyph.text).font(.caption2.bold()).foregroundStyle(Color.blue),
+                    at: CGPoint(x: glyph.point.x + 8, y: glyph.point.y - 10))
+            }
+            if model?.tool != nil, let at = viewport.pointerLabelAt, !viewport.pointerLabel.isEmpty
+            {
+                context.draw(
+                    Text(viewport.pointerLabel).font(.caption.bold()).foregroundStyle(Color.blue),
+                    at: CGPoint(x: at.x + 16, y: at.y + 22), anchor: .topLeading)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var stats: some View {

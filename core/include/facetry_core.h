@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 11
+#define FACETRY_API_VERSION_MINOR 12
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -330,13 +330,22 @@ FACETRY_API facetry_status facetry_sketch_tool_pointer(facetry_context* context,
 FACETRY_API facetry_status facetry_sketch_tool_cancel(facetry_context* context, facetry_handle tool,
                                                       int* out_was_busy);
 /* What the tool would draw next, as a mesh like facetry_session_sketch_mesh (the curves as edges,
- * the points placed so far and the pointer as vertices). Release it with facetry_mesh_release(). */
+ * the points placed so far and the pointer as vertices). Edges from ID 1001 on are guides
+ * (alignment and inference lines): draw them dashed. Release it with facetry_mesh_release(). */
 FACETRY_API facetry_status facetry_sketch_tool_preview(facetry_context* context,
                                                        facetry_handle session, facetry_handle tool,
                                                        double linear_deflection,
                                                        facetry_handle* out_mesh);
 FACETRY_API facetry_status facetry_sketch_tool_release(facetry_context* context,
                                                        facetry_handle tool);
+/* What the pointer snapped to and what the next click infers, as JSON:
+ * {"snap": "midpoint", "inferences": ["horizontal"]}. "snap" is "point", "center", "midpoint",
+ * "quadrant", "intersection", "origin", "onCurve", "grid" or "" (free). */
+FACETRY_API facetry_status facetry_sketch_tool_feedback(facetry_context* context,
+                                                        facetry_handle tool, const char** out_json);
+/* Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off. */
+FACETRY_API facetry_status facetry_sketch_tool_set_grid(facetry_context* context,
+                                                        facetry_handle tool, double spacing);
 
 #ifdef __cplusplus
 }

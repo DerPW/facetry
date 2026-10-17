@@ -64,6 +64,37 @@ const kindNames: [PickKind, string, string][] = [
 
 const NO_REGIONS: string[] = [];
 
+// Names for what the pointer snapped to and what the tool infers, shown next to the pointer.
+const SNAP_NAMES: Record<string, string> = {
+  point: "Point",
+  center: "Center",
+  midpoint: "Midpoint",
+  quadrant: "Quadrant",
+  intersection: "Intersection",
+  origin: "Origin",
+  onCurve: "On curve",
+  grid: "Grid",
+  horizontal: "Horizontal",
+  vertical: "Vertical",
+  parallel: "Parallel",
+  perpendicular: "Perpendicular",
+  tangent: "Tangent",
+};
+
+/** Constraint glyphs on the sketch (docs/adr/0015-sketch-tools.md). */
+const GLYPHS: Record<string, string> = {
+  horizontal: "H",
+  vertical: "V",
+  parallel: "∥",
+  perpendicular: "⊥",
+  tangent: "T",
+  equal: "=",
+  coincident: "⊙",
+  midpoint: "△",
+  concentric: "◎",
+  fix: "F",
+};
+
 /** The drawing tools in the sketch palette, and their keys (docs/INPUT.md). */
 const SKETCH_TOOLS: { tool: SketchTool; label: string; key?: string }[] = [
   { tool: SketchTool.Line, label: "Line", key: "l" },
@@ -218,6 +249,7 @@ export function App() {
   // The drawing tool in sketch mode (null: selecting), and whether it draws construction curves.
   const [tool, setTool] = useState<SketchTool | null>(null);
   const [construction, setConstruction] = useState(false);
+  const [gridSnap, setGridSnap] = useState(false);
   const toolQueue = useRef<{ handle: Promise<number>; queue: ToolQueue } | null>(null);
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   // Shown while a regeneration takes longer than a step; the last model stays on screen.
@@ -583,9 +615,14 @@ export function App() {
           p.u,
           p.v,
           p.snapRadius,
+          p.grid,
         ),
       (result) => {
         viewport.setSketchPreview(result.preview);
+        const { snap, inferences } = result.feedback;
+        viewport.setPointerLabel(
+          [snap, ...inferences].flatMap((name) => SNAP_NAMES[name] ?? []).join(" · "),
+        );
         if (result.changed) void change(async () => undefined);
       },
       (error) => setEditError(error instanceof Error ? error.message : String(error)),
@@ -607,11 +644,25 @@ export function App() {
         ? {
             plane: sketchFrame,
             onPointer: (event, u, v, snapRadius) =>
-              toolQueue.current?.queue.push({ event, u, v, snapRadius }),
+              toolQueue.current?.queue.push({
+                event,
+                u,
+                v,
+                snapRadius,
+                grid: gridSnap ? viewport.gridSpacing() : 0,
+              }),
           }
         : null,
     );
-  }, [viewport, sketchFrame, tool]);
+  }, [viewport, sketchFrame, tool, gridSnap]);
+
+  // The sketch's constraints show as glyphs while it is edited.
+  const sketchGlyphs = sketchFeature?.glyphs;
+  useEffect(() => {
+    viewport?.setGlyphs(
+      (sketchGlyphs ?? []).map((glyph) => ({ text: GLYPHS[glyph.type] ?? "?", at: glyph.at })),
+    );
+  }, [viewport, sketchGlyphs]);
 
   // Esc drops the shape in progress, or leaves the tool when nothing is in progress.
   const cancelTool = useCallback(async () => {
@@ -837,6 +888,14 @@ export function App() {
                   onClick={toggleConstruction}
                 >
                   Construction
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={gridSnap}
+                  title="Snap free points to the grid"
+                  onClick={() => setGridSnap((on) => !on)}
+                >
+                  Grid snap
                 </button>
                 <button type="button" onClick={() => finishSketch(true)}>
                   Finish sketch

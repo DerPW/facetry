@@ -4,6 +4,7 @@ import { ToolEvent, type MeshData } from "./api";
 import { ToolQueue, type ToolPointer } from "./toolQueue";
 
 const preview = {} as MeshData;
+const feedback = { snap: "", inferences: [] };
 
 describe("ToolQueue", () => {
   it("sends events in order and collapses moves that pile up", async () => {
@@ -14,13 +15,13 @@ describe("ToolQueue", () => {
       (pointer) => {
         sent.push(pointer);
         return new Promise((resolve) => {
-          release = () => resolve({ changed: pointer.event === ToolEvent.Up, preview });
+          release = () => resolve({ changed: pointer.event === ToolEvent.Up, preview, feedback });
         });
       },
       (result) => results.push(result.changed),
       () => undefined,
     );
-    const at = (event: ToolEvent, u: number) => ({ event, u, v: 0, snapRadius: 1 });
+    const at = (event: ToolEvent, u: number) => ({ event, u, v: 0, snapRadius: 1, grid: 0 });
     queue.push(at(ToolEvent.Move, 1)); // sent at once
     queue.push(at(ToolEvent.Move, 2)); // replaced by the next move
     queue.push(at(ToolEvent.Move, 3));

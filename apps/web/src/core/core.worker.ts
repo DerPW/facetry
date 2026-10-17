@@ -57,9 +57,15 @@ const local = {
     u: number,
     v: number,
     snapRadius: number,
+    grid: number,
   ) {
+    core.setSketchToolGrid(tool, grid);
     const changed = core.sketchToolPointer(session, tool, event, u, v, snapRadius);
-    return { changed, preview: core.sketchToolPreview(session, tool) };
+    return {
+      changed,
+      preview: core.sketchToolPreview(session, tool),
+      feedback: core.sketchToolFeedback(tool),
+    };
   },
   releaseSession(core: FacetryCore, session: number) {
     latest.delete(session);

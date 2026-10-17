@@ -35,3 +35,4 @@ a new ADR that supersedes the old one and set the old one's status to
 | [0013](0013-sketch-model.md) | Sketch model: entities on shared points, a plane by name or face reference | Accepted |
 | [0014](0014-sketch-profiles.md) | Sketch profiles: regions from splitting the sketch plane, named by the curves around them | Accepted |
 | [0015](0015-sketch-tools.md) | Sketch tools: state machines in the core, driven by pointer events on the sketch plane | Accepted |
+| [0016](0016-sketch-snapping.md) | Sketch snapping and inference: ranked snaps that leave constraints behind | Accepted |

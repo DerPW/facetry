@@ -64,7 +64,8 @@ void applyEdits(Document& document, std::string_view json);
 // list their "regions" (profiles) by name, as of the last regeneration; an extrusion names the ones
 // it takes in its definition's "regions". A sketch's "frame" is where it lies in space, in
 // millimeters: {"origin": [x, y, z], "xAxis": […], "yAxis": […], "normal": […]}, or null if it has
-// not regenerated.
+// not regenerated. Its "glyphs" say where its constraints show, in millimeters:
+// [{"type": "horizontal", "constraint": "k12", "at": [x, y, z]}, …].
 [[nodiscard]] std::string sessionStateJson(const Session& session);
 
 // Persistent names of a body's elements: {"faces": [...], "edges": [...], "vertices": [...]}.

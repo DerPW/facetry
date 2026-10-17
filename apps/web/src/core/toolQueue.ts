@@ -1,18 +1,21 @@
 // Sends a sketch tool's pointer events to the core worker one at a time, in order. Moves that
 // pile up while a call runs collapse into the latest, so the preview keeps up with the pointer.
 
-import { ToolEvent, type MeshData } from "./api";
+import { ToolEvent, type MeshData, type SnapFeedback } from "./api";
 
 export interface ToolPointer {
   event: ToolEvent;
   u: number;
   v: number;
   snapRadius: number;
+  /** Grid spacing to snap to, in millimeters; 0: no grid snap. */
+  grid: number;
 }
 
 export interface ToolResult {
   changed: boolean;
   preview: MeshData;
+  feedback: SnapFeedback;
 }
 
 export class ToolQueue {

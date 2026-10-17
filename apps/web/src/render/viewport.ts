@@ -142,6 +142,11 @@ export class Viewport {
     "none";
   #drawing: DrawingInput | null = null;
   #crosshair: HTMLDivElement | null = null;
+  // Snap feedback next to the pointer while drawing, and the sketch's constraint glyphs.
+  #pointerLabel: HTMLDivElement | null = null;
+  #lastToolPoint = { x: 0, y: 0 };
+  #glyphLayer: HTMLDivElement | null = null;
+  #glyphs: { element: HTMLSpanElement; at: [number, number, number] }[] = [];
   // Drags draw selection boxes (the Box toggle, for the Pencil and fingers).
   #boxMode = false;
   #box: { x0: number; y0: number; x1: number; y1: number } | null = null;
@@ -250,9 +255,63 @@ export class Viewport {
     }
   }
 
+  /** The distance between the grid's minor lines in millimeters, for grid snapping. */
+  gridSpacing(): number {
+    return this.#m._facetry_renderer_grid_spacing(this.#renderer);
+  }
+
+  /** Text next to the pointer while drawing (what it snapped to), or none (""). */
+  setPointerLabel(text: string): void {
+    const label = this.#pointerLabel;
+    if (!label) return;
+    label.textContent = text;
+    label.hidden = text === "" || !this.#drawing;
+    const rect = this.#canvas.getBoundingClientRect();
+    label.style.left = `${rect.left + this.#lastToolPoint.x + 14}px`;
+    label.style.top = `${rect.top + this.#lastToolPoint.y + 14}px`;
+  }
+
+  /** Labels on the sketch, such as constraint glyphs, at points in space (millimeters). */
+  setGlyphs(glyphs: { text: string; at: [number, number, number] }[]): void {
+    const layer = this.#glyphLayer;
+    if (!layer) return;
+    layer.replaceChildren();
+    this.#glyphs = glyphs.map(({ text, at }) => {
+      const element = document.createElement("span");
+      element.className = "glyph";
+      element.textContent = text;
+      layer.append(element);
+      return { element, at };
+    });
+    this.#placeGlyphs();
+  }
+
+  // Glyphs follow the camera.
+  #placeGlyphs(): void {
+    if (this.#glyphs.length === 0) return;
+    const m = this.#m;
+    const rect = this.#canvas.getBoundingClientRect();
+    for (const { element, at } of this.#glyphs) {
+      const status = m._facetry_renderer_project(
+        this.#renderer,
+        at[0],
+        at[1],
+        at[2],
+        this.#scratch,
+      );
+      element.hidden = status !== 0;
+      if (status !== 0) continue;
+      const x = m.HEAPF32[this.#scratch >> 2] ?? 0;
+      const y = m.HEAPF32[(this.#scratch >> 2) + 1] ?? 0;
+      element.style.left = `${rect.left + x + 6}px`;
+      element.style.top = `${rect.top + y - 18}px`;
+    }
+  }
+
   /** While set, the left button, the pen and one finger draw instead of selecting or orbiting. */
   setDrawing(input: DrawingInput | null): void {
     this.#drawing = input;
+    if (!input && this.#pointerLabel) this.#pointerLabel.hidden = true;
     if (!input && (this.#gesture === "draw" || this.#gesture === "drawPending")) {
       this.#gesture = "none";
     }
@@ -279,6 +338,7 @@ export class Viewport {
   }
 
   #toolEvent(event: ToolEvent, x: number, y: number, pointerType: string): void {
+    this.#lastToolPoint = { x, y };
     const drawing = this.#drawing;
     const point = drawing ? this.sketchPoint(x, y, drawing.plane) : null;
     if (!drawing || !point) return;
@@ -499,6 +559,8 @@ export class Viewport {
     this.#disposed = true;
     this.#boxElement?.remove();
     this.#crosshair?.remove();
+    this.#pointerLabel?.remove();
+    this.#glyphLayer?.remove();
     this.#m._facetry_renderer_destroy(this.#renderer);
     this.#m._free(this.#scratch);
     this.#m._free(this.#cells);
@@ -538,11 +600,17 @@ export class Viewport {
     this.#crosshair = document.createElement("div");
     this.#crosshair.className = "precision-crosshair";
     this.#crosshair.hidden = true;
-    document.body.append(this.#crosshair);
+    this.#pointerLabel = document.createElement("div");
+    this.#pointerLabel.className = "pointer-label";
+    this.#pointerLabel.hidden = true;
+    this.#glyphLayer = document.createElement("div");
+    this.#glyphLayer.className = "glyph-layer";
+    document.body.append(this.#crosshair, this.#pointerLabel, this.#glyphLayer);
 
     const frame = (time: number) => {
       if (this.#disposed) return;
       this.#recordFrame(time);
+      this.#placeGlyphs();
       this.#check(this.#m._facetry_renderer_draw(this.#renderer, 0));
       requestAnimationFrame(frame);
     };

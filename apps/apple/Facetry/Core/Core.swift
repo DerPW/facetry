@@ -68,6 +68,17 @@ enum SketchToolKind: UInt32, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What a sketch tool's pointer snapped to and what the next click infers.
+struct SnapFeedback: Decodable, Sendable, Equatable {
+    /// "point", "center", "midpoint", "quadrant", "intersection", "origin", "onCurve", "grid" or
+    /// "" (free).
+    let snap: String
+    /// "horizontal", "vertical", "parallel", "perpendicular", "tangent".
+    let inferences: [String]
+
+    static let none = SnapFeedback(snap: "", inferences: [])
+}
+
 /// A pointer event for a sketch tool (facetry_pointer_event).
 enum ToolEvent: UInt32, Sendable {
     case down = 0
@@ -181,6 +192,8 @@ struct SessionState: Decodable, Sendable, Equatable {
         let regions: [String]?
         /// Sketches: where they lie in space, or nil before they regenerated.
         let frame: SketchFrame?
+        /// Sketches: where their constraints show, in millimeters.
+        let glyphs: [Glyph]?
         /// The feature in the document's JSON form, to change and send back with
         /// ``DocumentEdit/replaceFeature(_:)``.
         let definition: JSONValue
@@ -196,6 +209,13 @@ struct SessionState: Decodable, Sendable, Equatable {
                 }
             }
         }
+    }
+
+    /// A constraint shown on a sketch: its type and where, in millimeters.
+    struct Glyph: Decodable, Sendable, Equatable {
+        let type: String
+        let constraint: String
+        let at: [Double]
     }
 
     /// Where a sketch lies: its origin and unit axes in millimeters; `normal` is x × y.
@@ -580,6 +600,16 @@ final class Core {
         try check(
             facetry_sketch_tool_preview(context, session.rawValue, tool.rawValue, 0.01, &mesh))
         return try takeMesh(mesh)
+    }
+
+    func sketchToolFeedback(_ tool: ToolHandle) throws -> SnapFeedback {
+        let json = try string { facetry_sketch_tool_feedback(context, tool.rawValue, $0) }
+        return try JSONDecoder().decode(SnapFeedback.self, from: Data(json.utf8))
+    }
+
+    /// Grid snap: free positions round to multiples of `spacing` millimeters; 0 turns it off.
+    func setSketchToolGrid(_ tool: ToolHandle, spacing: Double) throws {
+        try check(facetry_sketch_tool_set_grid(context, tool.rawValue, spacing))
     }
 
     func releaseSketchTool(_ tool: ToolHandle) throws {

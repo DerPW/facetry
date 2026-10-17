@@ -80,7 +80,7 @@ facetry_renderer_set_sketch(facetry_renderer* renderer, const facetry_render_mes
                             const uint32_t* construction_edge_ids, uint32_t construction_count);
 
 /* What a sketch tool would draw next (facetry_sketch_tool_preview), drawn like the sketch in a
- * lighter color. NULL hides it. */
+ * lighter color; edges from ID 1001 on are guides, drawn dashed. NULL hides it. */
 FACETRY_RENDER_API facetry_render_status
 facetry_renderer_set_sketch_preview(facetry_renderer* renderer, const facetry_render_mesh* mesh);
 
@@ -93,6 +93,15 @@ FACETRY_RENDER_API facetry_render_status facetry_renderer_sketch_point(facetry_r
                                                                        float x, float y,
                                                                        const float* plane,
                                                                        float* out);
+
+/* Where the point (x, y, z) shows on screen, in points: for labels such as constraint glyphs.
+ * Fails with FACETRY_RENDER_ERROR_INVALID_ARGUMENT for a point behind the camera. */
+FACETRY_RENDER_API facetry_render_status facetry_renderer_project(facetry_renderer* renderer,
+                                                                  float x, float y, float z,
+                                                                  float* out);
+/* The distance between the grid's minor lines in millimeters at the current zoom, for grid
+ * snapping in sketches. */
+FACETRY_RENDER_API float facetry_renderer_grid_spacing(const facetry_renderer* renderer);
 
 FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer, float width,
                                                       float height, float pixel_ratio);

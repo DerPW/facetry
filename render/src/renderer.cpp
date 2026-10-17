@@ -33,6 +33,8 @@ constexpr std::array<float, 4> kSelectColor = {0.00F, 0.40F, 0.95F, 1.0F};
 constexpr std::array<float, 4> kFaceHoverTint = {0.30F, 0.60F, 1.00F, 0.30F};
 constexpr std::array<float, 4> kFaceSelectTint = {0.05F, 0.42F, 0.98F, 0.50F};
 constexpr std::array<float, 4> kHiddenEdgeColor = {0.13F, 0.15F, 0.18F, 0.45F};
+// The first edge ID of guides in a sketch tool's preview (kPreviewGuideId in the core).
+constexpr std::uint32_t kPreviewGuideId = 1001;
 // Dashes of hidden edges, in points.
 constexpr float kDashPeriod = 7.0F;
 // Below this the faces count as transparent.
@@ -620,7 +622,18 @@ void Renderer::setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> 
 }
 
 void Renderer::setSketchPreview(const RenderMesh& mesh) {
-    gpu_->preview.upload(mesh, {});
+    // Guides (alignment and inference lines) come from edge ID 1001 on and are dashed.
+    std::vector<std::uint32_t> guides;
+    for (const std::uint32_t id : mesh.edgeIds) {
+        if (id >= kPreviewGuideId) {
+            guides.push_back(id);
+        }
+    }
+    gpu_->preview.upload(mesh, guides);
+}
+
+float Renderer::gridSpacing() const {
+    return gridLayout(camera_, gridUnit_).minor;
 }
 
 void Renderer::setViewport(float width, float height, float pixelRatio) {
