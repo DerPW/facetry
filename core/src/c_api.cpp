@@ -141,6 +141,17 @@ const facetry::core::NamedShape& requireBody(const Session& session, const char*
     return *it->second;
 }
 
+const facetry::core::SketchGeometry& requireSketch(const Session& session, const char* sketch) {
+    const auto& sketches = session.regeneration().model.sketches;
+    const auto it = sketches.find(requireString(sketch, "sketch_id"));
+    if (it == sketches.end()) {
+        throw Error(ErrorCode::InvalidArgument,
+                    "The sketch " + std::string(sketch) +
+                        " does not exist; regenerate the session after changes");
+    }
+    return *it->second;
+}
+
 template <typename T>
 T& requireOut(T* pointer, const char* name) {
     if (pointer == nullptr) {
@@ -492,14 +503,21 @@ facetry_status facetry_session_sketch_regions(facetry_context* context, facetry_
     return run(context, [&](facetry_context& ctx) {
         auto& out = requireOut(out_shape, "out_shape");
         const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
-        const auto& sketches = source.regeneration().model.sketches;
-        const auto sketch = sketches.find(requireString(sketch_id, "sketch_id"));
-        if (sketch == sketches.end()) {
-            throw Error(ErrorCode::InvalidArgument,
-                        "The sketch " + std::string(sketch_id) +
-                            " does not exist; regenerate the session after changes");
+        out = ctx.add(facetry::core::regionsShape(requireSketch(source, sketch_id).regions));
+    });
+}
+
+facetry_status facetry_session_sketch_mesh(facetry_context* context, facetry_handle session,
+                                           const char* sketch_id, double linear_deflection,
+                                           facetry_handle* out_mesh) {
+    return run(context, [&](facetry_context& ctx) {
+        auto& out = requireOut(out_mesh, "out_mesh");
+        const Session& source = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        if (!(linear_deflection > 0.0)) {
+            throw Error(ErrorCode::InvalidArgument, "The deflection must be positive");
         }
-        out = ctx.add(facetry::core::regionsShape(sketch->second->regions));
+        out = ctx.add(std::make_unique<Mesh>(
+            facetry::core::sketchMesh(requireSketch(source, sketch_id), linear_deflection)));
     });
 }
 

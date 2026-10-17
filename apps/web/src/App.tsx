@@ -12,6 +12,7 @@ import {
   BooleanOp,
   ElementKind,
   MILLIMETERS_PER,
+  sketchCurves,
   type Edit,
   type FeatureJson,
   type MeshData,
@@ -191,6 +192,10 @@ export function App() {
   // The extrusion whose profiles are being chosen in the viewport.
   const [profiles, setProfiles] = useState<string | null>(null);
   const regionMeshes = useRef<Record<string, MeshData>>({});
+  // Sketch mode: the sketch being edited. Everything done meanwhile is one undo step (a
+  // transaction), so Cancel restores the document from before.
+  const [sketching, setSketching] = useState<string | null>(null);
+  const sketchMeshes = useRef<Record<string, MeshData>>({});
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
   // Shown while a regeneration takes longer than a step; the last model stays on screen.
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -213,6 +218,7 @@ export function App() {
       const body = snapshot.state.bodies.find((b) => b.visible);
       const mesh = body ? snapshot.meshes[body.id] : undefined;
       regionMeshes.current = snapshot.regions;
+      sketchMeshes.current = snapshot.sketches;
       if (viewport) {
         // Element IDs change with the geometry, so an old selection would point elsewhere.
         viewport.clearSelection();
@@ -477,6 +483,72 @@ export function App() {
     return () => viewport.setRegions(null);
   }, [viewport, choosing, profileSketch, sketchRegions]);
 
+  // The sketch being edited shows over everything; when sketch mode starts, the view turns to
+  // face it and stays until the user orbits.
+  const sketchFeature = model?.features.find((f) => f.id === sketching && f.type === "sketch");
+  const faced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!viewport) return;
+    if (!sketchFeature) {
+      viewport.setSketch(null);
+      faced.current = null;
+      return;
+    }
+    const construction = sketchCurves(sketchFeature.definition).flatMap((curve, i) =>
+      curve.construction ? [i + 1] : [],
+    );
+    viewport.setSketch(sketchMeshes.current[sketchFeature.id] ?? null, construction);
+    if (faced.current !== sketchFeature.id && sketchFeature.frame) {
+      viewport.viewFrom(sketchFeature.frame.normal);
+      faced.current = sketchFeature.id;
+    }
+  }, [viewport, sketchFeature]);
+
+  // A new sketch on an origin plane ("xy", "xz", "yz") or on the selected face ("face"), at the
+  // rollback marker.
+  const newSketch = (plane: string) => {
+    const current = model;
+    const face = selection.find((pick) => pick.kind === PickKind.Face);
+    const body = current?.bodies.find((b) => b.visible)?.id;
+    if (!current || sketching || (plane === "face" && (!face || !body))) return;
+    const before = new Set(current.features.map((f) => f.id));
+    void change(async ({ core, handle }) => {
+      const feature: FeatureJson = { type: "sketch", plane, points: [], lines: [] };
+      if (plane === "face" && face && body) {
+        feature.face = await core.call("makeReference", handle, body, ElementKind.Face, face.id);
+      }
+      await core.call("beginTransaction", handle, "Sketch");
+      try {
+        await core.call(
+          "applyEdits",
+          handle,
+          current.rollback === null
+            ? { op: "addFeature", feature }
+            : { op: "addFeature", feature, index: current.rollback },
+        );
+      } catch (error) {
+        await core.call("endTransaction", handle, false);
+        throw error;
+      }
+      const state = await core.call("sessionState", handle);
+      setSketching(state.features.find((f) => !before.has(f.id))?.id ?? null);
+    });
+  };
+
+  const editSketch = (id: string) => {
+    if (sketching) return;
+    void change(async ({ core, handle }) => {
+      await core.call("beginTransaction", handle, "Edit sketch");
+      setSketching(id);
+    });
+  };
+
+  // Finish keeps what was done as one undo step; Cancel restores the document from before.
+  const finishSketch = (keep: boolean) => {
+    setSketching(null);
+    void change(({ core, handle }) => core.call("endTransaction", handle, keep));
+  };
+
   const finishProfiles = () => {
     if (choosing) {
       const regions = selection
@@ -609,10 +681,44 @@ export function App() {
               onEdit={edit}
               onSelectFeature={setSelectedFeature}
               onSelectBody={() => viewport?.selectBody()}
+              onEditSketch={editSketch}
             />
           )}
         </div>
         <div className="top-right">
+          <div className="panel controls sketch">
+            {sketchFeature ? (
+              <>
+                <span>Sketching {sketchFeature.name}</span>
+                <button type="button" onClick={() => finishSketch(true)}>
+                  Finish sketch
+                </button>
+                <button type="button" onClick={() => finishSketch(false)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <select
+                aria-label="New sketch"
+                value=""
+                disabled={!model || sketching !== null}
+                onChange={(event) => newSketch(event.currentTarget.value)}
+              >
+                <option value="" disabled>
+                  New sketch…
+                </option>
+                <option value="xy">On the XY plane</option>
+                <option value="xz">On the XZ plane</option>
+                <option value="yz">On the YZ plane</option>
+                <option
+                  value="face"
+                  disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
+                >
+                  On the selected face
+                </option>
+              </select>
+            )}
+          </div>
           <div className="panel controls">
             <input
               ref={fileInput}
@@ -747,6 +853,7 @@ export function App() {
             onRepair={setRepair}
             profiles={profiles}
             onChooseProfiles={setProfiles}
+            onEditSketch={editSketch}
             onFinishProfiles={finishProfiles}
           />
         )}

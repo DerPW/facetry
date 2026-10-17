@@ -126,6 +126,8 @@ export interface SessionState {
     /** Sketches: the names of their closed regions (profiles), as of the last regeneration. An
      * extrusion names the ones it takes in its definition's `regions`. */
     regions?: string[];
+    /** Sketches: where they lie in space (millimeters), or null before they regenerated. */
+    frame?: SketchFrame | null;
     /** The feature in the document's JSON form, to change and send back with `replaceFeature`. */
     definition: FeatureJson & { id: string };
   }[];
@@ -135,6 +137,23 @@ export interface SessionState {
   /** The fixed origin: base planes, axes and the origin point. */
   origin: { id: string; name: string; kind: "plane" | "axis" | "point"; visible: boolean }[];
   regeneration: { cancelled: boolean; executed: number };
+}
+
+/** Where a sketch lies: its origin and unit axes in millimeters; `normal` is x × y. */
+export interface SketchFrame {
+  origin: [number, number, number];
+  xAxis: [number, number, number];
+  yAxis: [number, number, number];
+  normal: [number, number, number];
+}
+
+/** A sketch's curves in the order of its display mesh (edge ID i + 1 is curve i): its lines, then
+ * arcs, then circles, as in its definition. */
+export function sketchCurves(definition: FeatureJson): { id: string; construction: boolean }[] {
+  const curves = ["lines", "arcs", "circles"].flatMap(
+    (key) => (definition[key] as { id: string; construction?: boolean }[] | undefined) ?? [],
+  );
+  return curves.map(({ id, construction }) => ({ id, construction: construction === true }));
 }
 
 /** Persistent names of a body's elements; index i belongs to element ID i + 1. */
@@ -190,6 +209,8 @@ export interface ModelSnapshot {
   meshes: Record<string, MeshData>;
   /** A display mesh of each sketch's regions: face ID i + 1 is the sketch's region i. */
   regions: Record<string, MeshData>;
+  /** A display mesh of each sketch's curves and points (see sketchMesh()). */
+  sketches: Record<string, MeshData>;
 }
 
 export interface LoadOptions {
@@ -305,7 +326,29 @@ export class FacetryCore {
         this.#scratch,
       ),
     );
-    const mesh = this.#u32(this.#scratch);
+    return this.#takeMesh(this.#u32(this.#scratch));
+  }
+
+  /** A sketch for display: edge ID i + 1 is its curve i (see sketchCurves()), sampled within
+   * `deflection` millimeters; vertex ID i + 1 is its point i. */
+  sketchMesh(session: number, sketch: string, deflection = 0.01): MeshData {
+    return this.#withString(sketch, (text) => {
+      this.#check(
+        this.#m._facetry_session_sketch_mesh(
+          this.#context,
+          session,
+          text,
+          deflection,
+          this.#scratch,
+        ),
+      );
+      return this.#takeMesh(this.#u32(this.#scratch));
+    });
+  }
+
+  // Copies a mesh out of the core and releases it.
+  #takeMesh(mesh: number): MeshData {
+    const m = this.#m;
     try {
       return {
         positions: this.#floats(mesh, MeshBuffer.Positions),
@@ -508,12 +551,14 @@ export class FacetryCore {
     const meshes: Record<string, MeshData> = {};
     for (const { id } of state.bodies) meshes[id] = mesh(this.bodyShape(session, id));
     const regions: Record<string, MeshData> = {};
+    const sketches: Record<string, MeshData> = {};
     for (const feature of state.features) {
       if (feature.regions?.length) {
         regions[feature.id] = mesh(this.sketchRegionsShape(session, feature.id));
       }
+      if (feature.frame) sketches[feature.id] = this.sketchMesh(session, feature.id);
     }
-    return { state, meshes, regions };
+    return { state, meshes, regions, sketches };
   }
 
   /** Releases the context and every shape it owns. The instance must not be used afterwards. */

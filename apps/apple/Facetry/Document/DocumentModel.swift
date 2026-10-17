@@ -13,6 +13,8 @@ struct ModelSnapshot: Sendable {
     let mesh: MeshData
     /// A display mesh of each sketch's regions, by sketch ID: face ID i + 1 is region i.
     let regions: [String: MeshData]
+    /// A display mesh of each sketch's curves and points, by sketch ID.
+    let sketches: [String: MeshData]
 }
 
 /// Progress of a regeneration: `done` of `total` features are finished.
@@ -60,10 +62,20 @@ actor DocumentEngine {
         try core.redo(session)
     }
 
-    /// A reference to an edge of a body, as JSON for a feature definition.
-    func reference(body: String, edge: UInt32) throws -> JSONValue {
-        let json = try core.reference(in: session, body: body, kind: .edge, id: edge)
+    /// A reference to an edge or face of a body, as JSON for a feature definition.
+    func reference(body: String, kind: ElementKind = .edge, id: UInt32) throws -> JSONValue {
+        let json = try core.reference(in: session, body: body, kind: kind, id: id)
         return try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+    }
+
+    /// Groups the following edits into one undo step (a tool session, such as a sketch).
+    func beginTransaction(_ name: String) throws {
+        try core.beginTransaction(session, name: name)
+    }
+
+    /// Keeps the transaction's edits as one undo step, or restores the document from before.
+    func endTransaction(commit: Bool) throws {
+        try core.endTransaction(session, commit: commit)
     }
 
     /// The document as a .facetry file.
@@ -100,14 +112,20 @@ actor DocumentEngine {
             return try self.core.tessellate(shape, linearDeflection: 0.01, angularDeflection: 0.2)
         }
         var regions: [String: MeshData] = [:]
-        for feature in state.features where !(feature.regions ?? []).isEmpty {
-            regions[feature.id] = try mesh(core.sketchRegionsShape(session, sketch: feature.id))
+        var sketches: [String: MeshData] = [:]
+        for feature in state.features {
+            if !(feature.regions ?? []).isEmpty {
+                regions[feature.id] = try mesh(core.sketchRegionsShape(session, sketch: feature.id))
+            }
+            if feature.frame != nil {
+                sketches[feature.id] = try core.sketchMesh(session, sketch: feature.id)
+            }
         }
-        guard let body = state.bodies.first(where: \.visible) else {
-            return ModelSnapshot(state: state, mesh: .empty, regions: regions)
+        let body = try state.bodies.first(where: \.visible).map {
+            try mesh(core.bodyShape(session, body: $0.id))
         }
         return ModelSnapshot(
-            state: state, mesh: try mesh(core.bodyShape(session, body: body.id)), regions: regions)
+            state: state, mesh: body ?? .empty, regions: regions, sketches: sketches)
     }
 
     /// The M0.4 demo part (a plate with rounded edges, a boss and a hole), tessellated finely to
@@ -221,6 +239,80 @@ final class DocumentModel {
 
     var repair: Repair?
 
+    // MARK: - Sketch mode
+
+    /// The sketch being edited. Everything done meanwhile is one undo step (a transaction), so
+    /// cancelling restores the document from before.
+    private(set) var sketching: String?
+    /// Display meshes of the sketches from the last regeneration.
+    private var sketchMeshes: [String: MeshData] = [:]
+    /// The undo steps before sketch mode started, to register the sketch's step afterwards.
+    private var stepsBeforeSketch = 0
+
+    /// Starts a new sketch on an origin plane ("xy", "xz", "yz") or on the selected face
+    /// ("face"), at the rollback marker.
+    func newSketch(on plane: String) async {
+        guard sketching == nil, let state else { return }
+        let face = viewport.selected.first { $0.kind == .face }
+        let body = state.bodies.first(where: \.visible)?.id
+        if plane == "face", face == nil || body == nil { return }
+        let before = Set(state.features.map(\.id))
+        stepsBeforeSketch = state.undoCount
+        await run { engine in
+            var feature: [String: JSONValue] = [
+                "type": .string("sketch"), "plane": .string(plane), "points": .array([]),
+                "lines": .array([]),
+            ]
+            if plane == "face", let face, let body {
+                feature["face"] = try await engine.reference(body: body, kind: .face, id: face.id)
+            }
+            try await engine.beginTransaction("Sketch")
+            do {
+                try await engine.apply([.addFeature(.object(feature), index: state.rollback)])
+            } catch {
+                try? await engine.endTransaction(commit: false)
+                throw error
+            }
+        }
+        sketching = self.state?.features.first { !before.contains($0.id) }?.id
+        showSketch(turning: true)
+    }
+
+    /// Opens a sketch for editing.
+    func editSketch(_ id: String) async {
+        guard sketching == nil, let state else { return }
+        stepsBeforeSketch = state.undoCount
+        await run { try await $0.beginTransaction("Edit sketch") }
+        sketching = id
+        showSketch(turning: true)
+    }
+
+    /// Ends sketch mode, keeping what was done as one undo step or restoring the document.
+    func finishSketch(keep: Bool) async {
+        guard sketching != nil else { return }
+        sketching = nil
+        viewport.sketch = nil
+        await run { try await $0.endTransaction(commit: keep) }
+        if keep { registerUndo(after: stepsBeforeSketch) }
+    }
+
+    /// Draws the sketch being edited; `turning` turns the view to face it.
+    private func showSketch(turning: Bool) {
+        guard let sketching, let feature = state?.features.first(where: { $0.id == sketching }),
+            let mesh = sketchMeshes[sketching]
+        else {
+            viewport.sketch = nil
+            return
+        }
+        let construction = feature.sketchCurves.enumerated().compactMap { index, curve in
+            curve.construction ? UInt32(index + 1) : nil
+        }
+        viewport.sketch = SketchDisplay(mesh: mesh, construction: construction)
+        if turning, let normal = feature.frame?.normal, normal.count == 3 {
+            viewport.view(from: SIMD3(Float(normal[0]), Float(normal[1]), Float(normal[2])))
+        }
+    }
+
     // MARK: - Profiles
 
     /// The extrusion whose profiles are being chosen: the sketch's regions show over the model,
@@ -289,7 +381,7 @@ final class DocumentModel {
         let steps = state.undoCount
         await run { engine in
             var replaced = edges
-            replaced[repair.index] = try await engine.reference(body: body, edge: pick.id)
+            replaced[repair.index] = try await engine.reference(body: body, id: pick.id)
             var definition = feature.definition
             definition["edges"] = .array(replaced)
             try await engine.apply([.replaceFeature(definition)])
@@ -356,6 +448,8 @@ final class DocumentModel {
             viewport.mesh = snapshot.mesh
             regionMeshes = snapshot.regions
             if profiles != nil { showProfiles() }
+            sketchMeshes = snapshot.sketches
+            if sketching != nil { showSketch(turning: false) }
         } catch {
             shown = generation
             progress = nil

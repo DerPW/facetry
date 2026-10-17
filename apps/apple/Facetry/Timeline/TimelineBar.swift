@@ -168,6 +168,17 @@ private struct FeatureDetails: View {
                 }
                 .help("A number, or the name of a parameter")
             }
+            if feature.type == "sketch" {
+                HStack {
+                    Text(sketchSummary).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Edit sketch") {
+                        close()
+                        Task { await model.editSketch(feature.id) }
+                    }
+                    .disabled(model.sketching != nil)
+                }
+            }
             if feature.type == "extrude" {
                 HStack {
                     Text(profileSummary).font(.caption).foregroundStyle(.secondary)
@@ -213,6 +224,12 @@ private struct FeatureDetails: View {
                 Text("These features use it and will fail: \(dependentNames).")
             }
         }
+    }
+
+    /// The profiles a sketch has.
+    private var sketchSummary: String {
+        let count = feature.regions?.count ?? 0
+        return count == 0 ? "No closed profile" : count == 1 ? "1 profile" : "\(count) profiles"
     }
 
     /// The profiles the extrusion takes.

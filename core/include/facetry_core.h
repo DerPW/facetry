@@ -34,7 +34,7 @@ extern "C" {
 
 /* Shells must refuse to run against a core with a different major version. */
 #define FACETRY_API_VERSION_MAJOR 0
-#define FACETRY_API_VERSION_MINOR 9
+#define FACETRY_API_VERSION_MINOR 10
 
 FACETRY_API void facetry_api_version(uint32_t* major, uint32_t* minor);
 
@@ -253,6 +253,16 @@ FACETRY_API facetry_status facetry_session_sketch_regions(facetry_context* conte
                                                           facetry_handle session,
                                                           const char* sketch_id,
                                                           facetry_handle* out_shape);
+
+/* A display mesh of a sketch of the last regeneration (facetry_mesh_buffer): edge ID i + 1 is its
+ * curve i (its lines, then arcs, then circles, in the order of its definition), sampled within
+ * `linear_deflection` millimeters; vertex ID i + 1 is its point i. It has no triangles. Release it
+ * with facetry_mesh_release(). */
+FACETRY_API facetry_status facetry_session_sketch_mesh(facetry_context* context,
+                                                       facetry_handle session,
+                                                       const char* sketch_id,
+                                                       double linear_deflection,
+                                                       facetry_handle* out_mesh);
 
 /* Persistent names of the body's faces, edges and vertices as JSON:
  * {"faces": [...], "edges": [...], "vertices": [...]}; entry i belongs to element ID i + 1. */

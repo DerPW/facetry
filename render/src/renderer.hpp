@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,9 @@ class Renderer {
     // Sketch regions (profiles) to choose from: drawn over the model and picked before it, with
     // the triangles' face IDs as region IDs. An empty mesh hides them.
     void setRegions(const RenderMesh& mesh);
+    // The sketch being edited, drawn over everything: its curves (edge polylines), the ones in
+    // `construction` dashed, and its points (vertices) as dots. An empty mesh hides it.
+    void setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction);
     void setViewport(float width, float height, float pixelRatio);
 
     Camera& camera() {

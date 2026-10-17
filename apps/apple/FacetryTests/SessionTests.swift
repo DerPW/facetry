@@ -109,6 +109,38 @@ struct SessionTests {
         #expect(json?[1]["suppressed"] as? Bool == true)
     }
 
+    @Test func sketchesShowTheirCurvesAndOpenInTransactions() throws {
+        let core = try Core()
+        let session = try openExample(core)
+        try core.regenerate(session)
+        let sketch = try core.state(of: session).features[0]
+        #expect(sketch.frame?.normal == [0, 0, 1])
+        #expect(sketch.sketchCurves.map(\.id) == ["l1", "l2", "l3", "l4"])
+        let mesh = try core.sketchMesh(session, sketch: "f1")
+        #expect(mesh.edgeIDs == [1, 2, 3, 4])
+        #expect(mesh.vertexIDs.count == 4)
+        #expect(mesh.triangles.isEmpty)
+
+        // A new sketch on XZ in a transaction: one undo step, or nothing when cancelled.
+        let steps = try core.state(of: session).undoCount
+        let feature: JSONValue = .object([
+            "type": .string("sketch"), "plane": .string("xz"), "points": .array([]),
+            "lines": .array([]),
+        ])
+        try core.beginTransaction(session, name: "Sketch")
+        try core.apply(session, [.addFeature(feature, index: nil)])
+        try core.endTransaction(session, commit: false)
+        #expect(try core.state(of: session).features.count == 3)
+        try core.beginTransaction(session, name: "Sketch")
+        try core.apply(session, [.addFeature(feature, index: nil)])
+        try core.endTransaction(session, commit: true)
+        try core.regenerate(session)
+        let state = try core.state(of: session)
+        #expect(state.features.count == 4)
+        #expect(state.undoCount == steps + 1)
+        #expect(state.features[3].frame?.normal == [0, -1, 0])
+    }
+
     @Test func unitsChangeAndConvertEveryLength() throws {
         let core = try Core()
         let session = try openExample(core)

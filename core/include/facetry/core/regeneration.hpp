@@ -9,6 +9,7 @@
 
 #include "facetry/core/cancellation.hpp"
 #include "facetry/core/document.hpp"
+#include "facetry/core/mesh.hpp"
 #include "facetry/core/naming.hpp"
 
 #include <atomic>
@@ -31,12 +32,18 @@ struct SketchCurve {
     bool construction = false;
 };
 
-// What a sketch adds to the model: its plane, its curves and the regions they enclose.
+// What a sketch adds to the model: its plane, its curves and points and the regions they enclose.
 struct SketchGeometry {
     SketchFrame frame;
-    std::vector<SketchCurve> curves;
+    std::vector<SketchCurve> curves;    // its lines, then arcs, then circles, in document order
     std::vector<SketchRegion> regions;  // sorted by name
+    std::vector<Vec3> points;           // in space, in document order
 };
+
+// A sketch for display: curve i is edge ID i + 1 (as in SketchGeometry::curves), sampled so that
+// arcs and circles stay within `deflection` of the true curve; point i is vertex ID i + 1. There
+// are no triangles.
+[[nodiscard]] Mesh sketchMesh(const SketchGeometry& sketch, double deflection);
 
 // The model at one point of the timeline. Results are shared between cache entries, not copied.
 struct ModelState {

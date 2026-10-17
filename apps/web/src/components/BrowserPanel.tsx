@@ -9,13 +9,21 @@ interface Props {
   onSelectFeature: (feature: string) => void;
   /** Selects the shown body in the viewport. */
   onSelectBody?: () => void;
+  /** Opens a sketch for editing (sketch mode). */
+  onEditSketch?: (sketch: string) => void;
 }
 
 /** The browser: the document as a tree of origin, bodies and sketches (Fusion's browser). */
 
 /** Opacities offered for a body; other values from a file show as they are. */
 const OPACITIES = [1, 0.75, 0.5, 0.25];
-export function BrowserPanel({ state, onEdit, onSelectFeature, onSelectBody }: Props) {
+export function BrowserPanel({
+  state,
+  onEdit,
+  onSelectFeature,
+  onSelectBody,
+  onEditSketch,
+}: Props) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const sketches = state.features.filter((f) => f.type === "sketch");
 
@@ -135,6 +143,11 @@ export function BrowserPanel({ state, onEdit, onSelectFeature, onSelectBody }: P
               <button type="button" className="item" onClick={() => onSelectFeature(sketch.id)}>
                 {sketch.name}
               </button>
+              {onEditSketch && (
+                <button type="button" className="small" onClick={() => onEditSketch(sketch.id)}>
+                  Edit
+                </button>
+              )}
             </li>
           ))}
           {sketches.length === 0 && <li className="muted">No sketches</li>}

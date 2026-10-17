@@ -28,6 +28,8 @@ final class ViewportModel {
     /// A sketch's regions to choose profiles from, shown over the model. While they are shown,
     /// clicks and taps pick only regions and add or remove them.
     var regions: RegionChoice?
+    /// The sketch being edited, drawn over everything.
+    var sketch: SketchDisplay?
     /// The selection box being dragged, in view points; drawn by ``SelectionBoxOverlay``.
     fileprivate(set) var selectionBox: (start: CGPoint, end: CGPoint)?
     /// Where the precision selector's crosshair points (#38), above the finger.
@@ -87,6 +89,12 @@ final class ViewportModel {
     }
 }
 
+/// A sketch for display: its mesh and the edge IDs of its construction curves (dashed).
+struct SketchDisplay: Equatable {
+    let mesh: MeshData
+    let construction: [UInt32]
+}
+
 /// Regions to choose from: a mesh of a sketch's region shape and the region IDs selected first.
 struct RegionChoice: Equatable {
     let mesh: MeshData
@@ -110,6 +118,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownSelection = Pick.none
     private var shownPickFilter: (filter: PickFilter, regionsOnly: Bool)?
     private var shownRegions: RegionChoice?
+    private var shownSketch: SketchDisplay?
     private var shownGrid: (visible: Bool, unit: Double)?
     private var shownStyle: (style: VisualStyle, opacity: Double)?
     private var lastFrameTime: CFTimeInterval = 0
@@ -173,6 +182,15 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         }
         if model.regions != shownRegions {
             showRegions(model.regions, on: renderer)
+        }
+        if model.sketch != shownSketch {
+            do {
+                try renderer.setSketch(
+                    model.sketch?.mesh, construction: model.sketch?.construction ?? [])
+            } catch {
+                model.error = "\(error)"
+            }
+            shownSketch = model.sketch
         }
         let regionsOnly = model.regions != nil
         if shownPickFilter?.filter != model.pickFilter

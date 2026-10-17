@@ -72,6 +72,13 @@ FACETRY_RENDER_API facetry_render_status facetry_renderer_set_mesh(facetry_rende
 FACETRY_RENDER_API facetry_render_status
 facetry_renderer_set_regions(facetry_renderer* renderer, const facetry_render_mesh* mesh);
 
+/* The sketch being edited, drawn over everything: the mesh of facetry_session_sketch_mesh (curves
+ * as edges, points as vertices); the curves whose edge IDs are in `construction_edge_ids` are
+ * dashed. NULL hides the sketch. */
+FACETRY_RENDER_API facetry_render_status
+facetry_renderer_set_sketch(facetry_renderer* renderer, const facetry_render_mesh* mesh,
+                            const uint32_t* construction_edge_ids, uint32_t construction_count);
+
 FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer, float width,
                                                       float height, float pixel_ratio);
 

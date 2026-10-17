@@ -43,6 +43,12 @@ constexpr std::array<float, 4> kRegionHover = {0.22F, 0.52F, 0.95F, 0.0F};
 constexpr std::array<float, 4> kRegionSelect = {0.02F, 0.36F, 0.92F, 0.35F};
 constexpr float kRegionHighlightAlpha = 0.5F;
 constexpr std::array<float, 4> kRegionOutline = {0.08F, 0.32F, 0.80F, 0.9F};
+// The sketch being edited: curves, construction curves (dashed) and points.
+constexpr std::array<float, 4> kSketchCurve = {0.05F, 0.22F, 0.70F, 1.0F};
+constexpr std::array<float, 4> kSketchConstruction = {0.90F, 0.45F, 0.10F, 1.0F};
+constexpr std::array<float, 4> kSketchPoint = {0.05F, 0.10F, 0.30F, 1.0F};
+constexpr float kSketchCurveHalfWidth = 0.9F;
+constexpr float kSketchPointRadius = 2.5F;
 constexpr std::array<float, 4> kGridMinor = {0.0F, 0.0F, 0.0F, 0.07F};
 constexpr std::array<float, 4> kGridMajor = {0.0F, 0.0F, 0.0F, 0.16F};
 constexpr std::array<float, 4> kGridXAxis = {0.85F, 0.20F, 0.20F, 0.55F};
@@ -152,9 +158,11 @@ struct Renderer::Gpu {
     sg_pipeline gridPipeline{};
     sg_pipeline edgePipeline{};
     sg_pipeline pointPipeline{};
-    // Sketch regions over everything: fills, then outlines.
+    // Sketch regions over everything: fills, then outlines; the sketch's curves use the outline
+    // pipeline too, its points their own.
     sg_pipeline regionPipeline{};
     sg_pipeline regionOutlinePipeline{};
+    sg_pipeline sketchPointPipeline{};
 
     // Shared unit quads for instanced edges and vertex dots.
     sg_buffer edgeQuad{};
@@ -188,6 +196,24 @@ struct Renderer::Gpu {
         segmentEdgeIds.clear();
         dotVertexIds.clear();
         segmentCount = vertexCount = 0;
+    }
+
+    // The sketch being edited: segments of its curves and of its construction curves, its points,
+    // and all-zero flags for the shaders' selection inputs.
+    sg_buffer sketchCurves{};
+    sg_buffer sketchConstruction{};
+    sg_buffer sketchPoints{};
+    sg_buffer sketchFlags{};
+    std::uint32_t sketchCurveCount = 0;
+    std::uint32_t sketchConstructionCount = 0;
+    std::uint32_t sketchPointCount = 0;
+
+    void releaseSketch() {
+        destroy(sketchCurves);
+        destroy(sketchConstruction);
+        destroy(sketchPoints);
+        destroy(sketchFlags);
+        sketchCurveCount = sketchConstructionCount = sketchPointCount = 0;
     }
 
     void releaseRegions() {
@@ -326,6 +352,11 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.cull_mode = SG_CULLMODE_NONE;
         desc.label = "vertices";
         g.pointPipeline = sg_make_pipeline(&desc);
+
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+        desc.label = "sketch points";
+        g.sketchPointPipeline = sg_make_pipeline(&desc);
     }
 
     {
@@ -363,7 +394,8 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         sg_query_pipeline_state(g.meshFrontPipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.hiddenEdgePipeline) != SG_RESOURCESTATE_VALID ||
         sg_query_pipeline_state(g.regionPipeline) != SG_RESOURCESTATE_VALID ||
-        sg_query_pipeline_state(g.regionOutlinePipeline) != SG_RESOURCESTATE_VALID) {
+        sg_query_pipeline_state(g.regionOutlinePipeline) != SG_RESOURCESTATE_VALID ||
+        sg_query_pipeline_state(g.sketchPointPipeline) != SG_RESOURCESTATE_VALID) {
         throw std::runtime_error("Creating the viewport shaders failed");
     }
 }
@@ -500,6 +532,42 @@ void Renderer::setRegions(const RenderMesh& mesh) {
     if (highlight_.hoverKind == PickKind::Region) {
         highlight_ = {};
     }
+}
+
+void Renderer::setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction) {
+    Gpu& g = *gpu_;
+    g.releaseSketch();
+    std::vector<std::uint32_t> edgeIds;
+    const std::vector<float> segments = edgeSegments(mesh, edgeIds);
+    std::vector<float> curves;
+    std::vector<float> dashed;
+    for (std::size_t i = 0; i < edgeIds.size(); ++i) {
+        const bool isConstruction =
+            std::find(construction.begin(), construction.end(), edgeIds[i]) != construction.end();
+        auto& target = isConstruction ? dashed : curves;
+        target.insert(target.end(), segments.begin() + static_cast<std::ptrdiff_t>(i * 7),
+                      segments.begin() + static_cast<std::ptrdiff_t>(i * 7 + 7));
+    }
+    std::vector<float> points;
+    for (std::size_t v = 0; v < mesh.vertexIds.size(); ++v) {
+        const float* p = &mesh.vertexPositions[v * 3];
+        points.insert(points.end(), {p[0], p[1], p[2], static_cast<float>(mesh.vertexIds[v])});
+    }
+    g.sketchCurveCount = static_cast<std::uint32_t>(curves.size() / 7);
+    g.sketchConstructionCount = static_cast<std::uint32_t>(dashed.size() / 7);
+    g.sketchPointCount = static_cast<std::uint32_t>(points.size() / 4);
+    if (!curves.empty()) {
+        g.sketchCurves = makeBuffer(curves, false, "sketch curves");
+    }
+    if (!dashed.empty()) {
+        g.sketchConstruction = makeBuffer(dashed, false, "sketch construction curves");
+    }
+    if (!points.empty()) {
+        g.sketchPoints = makeBuffer(points, false, "sketch points");
+    }
+    const std::size_t flags = std::max(
+        {g.sketchCurveCount, g.sketchConstructionCount, g.sketchPointCount, std::uint32_t{1}});
+    g.sketchFlags = makeBuffer(std::vector<float>(flags, 0.0F), false, "sketch flags");
 }
 
 void Renderer::setViewport(float width, float height, float pixelRatio) {
@@ -816,6 +884,55 @@ void Renderer::draw(const FrameTarget& target) {
         sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
         sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
         sg_draw(0, 6, static_cast<int>(g.regionSegmentCount));
+    }
+
+    // The sketch being edited, over everything.
+    const auto sketchCurves = [&](sg_buffer segments, std::uint32_t count, bool construction) {
+        edge_vs_params_t vs{};
+        copyMatrix(vs.view_proj, viewProjection);
+        std::memcpy(vs.viewport, viewport, sizeof(viewport));
+        vs.viewport[2] = kSketchCurveHalfWidth * pixelRatio_;
+        vs.viewport[3] = kSketchCurveHalfWidth * pixelRatio_;
+        edge_fs_params_t fs{};
+        copy4(fs.color, construction ? kSketchConstruction : kSketchCurve);
+        fs.ids[2] = construction ? kDashPeriod * pixelRatio_ : 0.0F;
+
+        sg_bindings bindings{};
+        bindings.vertex_buffers[0] = g.edgeQuad;
+        bindings.vertex_buffers[1] = segments;
+        bindings.vertex_buffers[2] = g.sketchFlags;
+        bindings.index_buffer = g.quadIndices;
+        sg_apply_pipeline(g.regionOutlinePipeline);
+        sg_apply_bindings(&bindings);
+        sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
+        sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
+        sg_draw(0, 6, static_cast<int>(count));
+    };
+    if (g.sketchConstructionCount > 0) {
+        sketchCurves(g.sketchConstruction, g.sketchConstructionCount, /*construction=*/true);
+    }
+    if (g.sketchCurveCount > 0) {
+        sketchCurves(g.sketchCurves, g.sketchCurveCount, /*construction=*/false);
+    }
+    if (g.sketchPointCount > 0) {
+        point_vs_params_t vs{};
+        copyMatrix(vs.view_proj, viewProjection);
+        std::memcpy(vs.viewport, viewport, sizeof(viewport));
+        vs.viewport[2] = kSketchPointRadius * pixelRatio_;
+        vs.viewport[3] = kSketchPointRadius * pixelRatio_;
+        point_fs_params_t fs{};
+        copy4(fs.color, kSketchPoint);
+
+        sg_bindings bindings{};
+        bindings.vertex_buffers[0] = g.pointQuad;
+        bindings.vertex_buffers[1] = g.sketchPoints;
+        bindings.vertex_buffers[2] = g.sketchFlags;
+        bindings.index_buffer = g.quadIndices;
+        sg_apply_pipeline(g.sketchPointPipeline);
+        sg_apply_bindings(&bindings);
+        sg_apply_uniforms(UB_point_vs_params, SG_RANGE(vs));
+        sg_apply_uniforms(UB_point_fs_params, SG_RANGE(fs));
+        sg_draw(0, 6, static_cast<int>(g.sketchPointCount));
     }
 
     sg_end_pass();

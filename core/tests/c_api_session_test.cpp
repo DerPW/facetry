@@ -109,6 +109,21 @@ TEST_CASE("a session opens, regenerates and reports the example document") {
     CHECK(facetry_session_sketch_regions(c.ctx, session, "f2", &regions) ==
           FACETRY_ERROR_INVALID_ARGUMENT);
 
+    // The sketch for display: four lines, four points.
+    facetry_handle sketchMesh = 0;
+    REQUIRE(facetry_session_sketch_mesh(c.ctx, session, "f1", 0.01, &sketchMesh) == FACETRY_OK);
+    const void* ids = nullptr;
+    size_t idCount = 0;
+    REQUIRE(facetry_mesh_buffer(c.ctx, sketchMesh, FACETRY_MESH_EDGE_IDS, &ids, &idCount) ==
+            FACETRY_OK);
+    CHECK(idCount == 4);
+    REQUIRE(facetry_mesh_buffer(c.ctx, sketchMesh, FACETRY_MESH_VERTEX_IDS, &ids, &idCount) ==
+            FACETRY_OK);
+    CHECK(idCount == 4);
+    CHECK(facetry_session_sketch_mesh(c.ctx, session, "f1", 0.0, &sketchMesh) ==
+          FACETRY_ERROR_INVALID_ARGUMENT);
+    CHECK(after["features"][0]["frame"]["normal"] == json::array({0.0, 0.0, 1.0}));
+
     // A picked edge becomes a reference with its persistent name.
     const char* referenceText = nullptr;
     REQUIRE(facetry_session_make_reference(c.ctx, session, "f2", FACETRY_ELEMENT_EDGE, 1,
