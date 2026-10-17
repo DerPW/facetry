@@ -11,6 +11,7 @@ import { ViewportCanvas } from "./components/ViewportCanvas";
 import {
   BooleanOp,
   ElementKind,
+  MILLIMETERS_PER,
   type Edit,
   type MeshData,
   type ModelSnapshot,
@@ -100,6 +101,16 @@ function loadNavigation(): NavigationSettings {
 
 const hasTouch = navigator.maxTouchPoints > 0;
 
+const gridKey = "facetry.grid";
+
+function loadGrid(): boolean {
+  try {
+    return localStorage.getItem(gridKey) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+
 // An autosave follows the first unsaved change by at most this long.
 const autosaveDelay = 1000;
 
@@ -143,6 +154,7 @@ export function App() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [recovery, setRecovery] = useState<AutosaveEntry[]>([]);
   const [navigation, setNavigation] = useState(loadNavigation);
+  const [grid, setGrid] = useState(loadGrid);
   const fileInput = useRef<HTMLInputElement>(null);
   const session = useRef<Session | null>(null);
 
@@ -401,6 +413,17 @@ export function App() {
     viewport?.setOrthographic(orthographic);
   }, [viewport, orthographic]);
 
+  // The grid's spacing follows the document's units.
+  const units = model?.units ?? "mm";
+  useEffect(() => {
+    viewport?.setGrid(grid, MILLIMETERS_PER[units]);
+    try {
+      localStorage.setItem(gridKey, grid ? "shown" : "hidden");
+    } catch {
+      // Not stored; the setting lasts until the page is closed.
+    }
+  }, [viewport, grid, units]);
+
   useEffect(() => {
     viewport?.setNavigation(navigation);
     try {
@@ -440,6 +463,7 @@ export function App() {
       else if (event.key === "F") viewport?.fitSelection();
       else if (event.key === "f") viewport?.fit();
       else if (event.key === "o") setOrthographic((value) => !value);
+      else if (event.key === "g") setGrid((shown) => !shown);
       else if (event.key === "Escape") viewport?.clearSelection();
     };
     window.addEventListener("keydown", onKey);
@@ -531,6 +555,14 @@ export function App() {
             onClick={() => setOrthographic((v) => !v)}
           >
             {orthographic ? "Perspective" : "Orthographic"}
+          </button>
+          <button
+            type="button"
+            aria-pressed={grid}
+            title="Show or hide the ground grid (G)"
+            onClick={() => setGrid((shown) => !shown)}
+          >
+            Grid
           </button>
           <select
             aria-label="Mouse and trackpad navigation"

@@ -69,6 +69,11 @@ FACETRY_RENDER_API facetry_render_status facetry_renderer_set_mesh(facetry_rende
 FACETRY_RENDER_API void facetry_renderer_set_viewport(facetry_renderer* renderer, float width,
                                                       float height, float pixel_ratio);
 
+/* The ground grid on the XY plane, shown by default. Its spacing follows the zoom level in
+ * document units; `unit_millimeters` is the size of one (1 for mm, 25.4 for inches). */
+FACETRY_RENDER_API void facetry_renderer_set_grid(facetry_renderer* renderer, int visible,
+                                                  float unit_millimeters);
+
 /* ---- Camera ------------------------------------------------------------------------------- */
 
 /* Frames the whole model from the current view direction (Fusion's Fit). */

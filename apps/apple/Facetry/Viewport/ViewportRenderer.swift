@@ -115,6 +115,11 @@ final class ViewportRenderer {
         facetry_renderer_set_viewport(handle, Float(width), Float(height), Float(pixelRatio))
     }
 
+    /// The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches).
+    func setGrid(visible: Bool, unitMillimeters: Double) {
+        facetry_renderer_set_grid(handle, visible ? 1 : 0, Float(unitMillimeters))
+    }
+
     /// Frames the whole model from the current direction (F).
     func fit() { facetry_camera_fit(handle) }
 

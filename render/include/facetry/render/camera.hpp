@@ -27,6 +27,14 @@ class Camera {
 
     // Scene bounds, used for the near and far planes and by fit().
     void setSceneBounds(const Bounds& bounds);
+    // Keeps everything within `radius` of the target inside the far plane too (the ground grid).
+    void setExtraDepth(float radius) {
+        extraDepth_ = radius;
+    }
+    // Size of one screen point at the target's distance, in world units.
+    [[nodiscard]] float worldPerPointAtTarget() const {
+        return 2.0F * halfHeightAtTarget() / height_;
+    }
 
     // Frames the whole scene, or `bounds`, from the current view direction (Fusion's Fit).
     void fit();
@@ -119,6 +127,7 @@ class Camera {
     Vec3 eye_{10.0F, -10.0F, 10.0F};
     Vec3 target_{0.0F, 0.0F, 0.0F};
     Bounds scene_;
+    float extraDepth_ = 0.0F;
     std::optional<Animation> animation_;
 };
 

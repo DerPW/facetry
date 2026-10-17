@@ -218,6 +218,11 @@ export class Viewport {
     this.#setSelection({ kind: PickKind.None, id: 0 });
   }
 
+  /** The ground grid; `unitMillimeters` is the size of one document unit (25.4 for inches). */
+  setGrid(visible: boolean, unitMillimeters: number): void {
+    this.#m._facetry_renderer_set_grid(this.#renderer, visible ? 1 : 0, unitMillimeters);
+  }
+
   /** Frames the whole model from the current direction (F). */
   fit(): void {
     this.#m._facetry_camera_fit(this.#renderer);

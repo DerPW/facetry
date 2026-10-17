@@ -94,6 +94,8 @@ export type FeatureStatus = "ok" | "warning" | "error" | "suppressed" | "rolledB
 /** The unit of a document's lengths. Values are in it; the core builds geometry in millimeters. */
 export type LengthUnit = "mm" | "cm" | "m" | "in";
 export const LENGTH_UNITS: readonly LengthUnit[] = ["mm", "cm", "m", "in"];
+/** Millimeters per unit. */
+export const MILLIMETERS_PER: Record<LengthUnit, number> = { mm: 1, cm: 10, m: 1000, in: 25.4 };
 
 export interface SessionState {
   units: LengthUnit;
