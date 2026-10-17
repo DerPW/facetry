@@ -250,7 +250,8 @@ function FeatureDetails({
             </button>
           </div>
         ))}
-      {feature.brokenReferences.map((i) => {
+      {/* Fillets repair their edges here; sketches report lost references in their messages. */}
+      {(feature.type === "fillet" ? feature.brokenReferences : []).map((i) => {
         const shadow = edges[i]?.shadow;
         const place = shadow
           ? `a ${shadow.type} at (${shadow.centroid.map((v) => +v.toFixed(2)).join(", ")})`

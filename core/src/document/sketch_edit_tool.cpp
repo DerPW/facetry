@@ -59,17 +59,24 @@ bool SketchTool::trimOrExtend(Session& session, PointerEvent event, double u, do
 }
 
 std::vector<std::string> SketchTool::moving(const Session& session, const Spot& base) const {
-    if (!selection_.empty()) {
-        return selection_;
-    }
-    if (!base.point.empty()) {
-        return {base.point};
-    }
     const Document& document = session.document();
-    const std::string curve = nearestCurve(snapGeometry(document, sketchOf(document, sketch_)),
-                                           base.u, base.v, lastRadius_)
-                                  .id();
-    return curve.empty() ? std::vector<std::string>{} : std::vector{curve};
+    const Sketch& sketch = sketchOf(document, sketch_);
+    std::vector<std::string> entities = selection_;
+    if (entities.empty() && !base.point.empty()) {
+        entities = {base.point};
+    } else if (entities.empty()) {
+        const std::string curve =
+            nearestCurve(snapGeometry(document, sketch), base.u, base.v, lastRadius_).id();
+        if (!curve.empty()) {
+            entities = {curve};
+        }
+    }
+    // Projections place what they drive: it can be copied, but not moved.
+    if (kind_ == SketchToolKind::Move) {
+        std::erase_if(entities,
+                      [&](const std::string& id) { return sketch.projectionOf(id) != nullptr; });
+    }
+    return entities;
 }
 
 bool SketchTool::editClick(Session& session, const Spot& spot, double snapRadius) {

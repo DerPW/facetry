@@ -9,6 +9,7 @@
 #include "facetry/core/session.hpp"
 #include "facetry/core/session_json.hpp"
 #include "facetry/core/shape.hpp"
+#include "facetry/core/sketch_edit.hpp"
 #include "facetry/core/sketch_tool.hpp"
 #include "facetry/core/version.hpp"
 
@@ -549,6 +550,50 @@ facetry_status facetry_session_make_reference(facetry_context* context, facetry_
         out = ctx.setOutput(facetry::core::referenceJson(facetry::core::makeReference(
             source.regeneration().model, requireString(body_id, "body_id"),
             static_cast<facetry::core::ElementKind>(kind), element_id)));
+    });
+}
+
+facetry_status facetry_session_project(facetry_context* context, facetry_handle session,
+                                       const char* sketch_id, const char* sources_json,
+                                       uint32_t* out_added) {
+    return run(context, [&](facetry_context& ctx) {
+        Session& target = *ctx.get<std::unique_ptr<Session>>(session, "session");
+        const std::string sketch(requireString(sketch_id, "sketch_id"));
+        const auto parsed =
+            nlohmann::json::parse(requireString(sources_json, "sources_json"), nullptr, false);
+        if (!parsed.is_array()) {
+            throw Error(ErrorCode::InvalidArgument, "sources_json must be an array");
+        }
+        std::vector<facetry::core::ProjectionSource> sources;
+        for (const nlohmann::json& source : parsed) {
+            if (source.is_object() && source.contains("origin") && source["origin"].is_string()) {
+                sources.push_back({.origin = source["origin"].get<std::string>()});
+                continue;
+            }
+            const bool element = source.is_object() && source.contains("body") &&
+                                 source["body"].is_string() && source.contains("kind") &&
+                                 source["kind"].is_string() && source.contains("id") &&
+                                 source["id"].is_number_unsigned();
+            const std::string kind = element ? source["kind"].get<std::string>() : "";
+            if (kind != "face" && kind != "edge") {
+                throw Error(ErrorCode::InvalidArgument,
+                            "A projection source is an origin item, a face or an edge");
+            }
+            sources.push_back({.body = source["body"].get<std::string>(),
+                               .kind = kind == "face" ? facetry::core::ElementKind::Face
+                                                      : facetry::core::ElementKind::Edge,
+                               .id = source["id"].get<std::uint32_t>()});
+        }
+        std::size_t added = 0;
+        target.edit(
+            [&](facetry::core::Document& document) {
+                added = facetry::core::projectIntoSketch(document, target.regeneration().model,
+                                                         sketch, sources);
+            },
+            "Project");
+        if (out_added != nullptr) {
+            *out_added = static_cast<uint32_t>(added);
+        }
     });
 }
 

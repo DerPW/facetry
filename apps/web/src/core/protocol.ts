@@ -34,6 +34,7 @@ export type CoreMethods = Pick<
   | "sessionState"
   | "elementNames"
   | "makeReference"
+  | "projectIntoSketch"
   | "releaseSession"
   | "createSketchTool"
   | "cancelSketchTool"

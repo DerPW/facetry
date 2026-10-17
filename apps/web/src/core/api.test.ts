@@ -101,11 +101,11 @@ describe("FacetryCore (WebAssembly)", () => {
       const slot = snapshot.state.features[0];
       expect(slot?.frame?.normal).toEqual([0, -1, 0]);
       expect(sketchCurves(slot?.definition ?? { type: "sketch" })).toEqual([
-        { id: "l7", construction: false },
-        { id: "l8", construction: false },
-        { id: "l9", construction: true },
-        { id: "a10", construction: false },
-        { id: "a11", construction: false },
+        { id: "l7", construction: false, projected: false },
+        { id: "l8", construction: false, projected: false },
+        { id: "l9", construction: true, projected: false },
+        { id: "a10", construction: false, projected: false },
+        { id: "a11", construction: false, projected: false },
       ]);
       expect(Array.from(snapshot.sketches.f1?.edgeIds ?? [])).toEqual([1, 2, 3, 4, 5]);
       expect(snapshot.sketches.f1?.vertexIds.length).toBe(6);
@@ -246,6 +246,21 @@ describe("FacetryCore (WebAssembly)", () => {
         { op: "deleteSketchEntities", sketch: "f1", entities: [sketchPoints(sketch())[4] ?? ""] },
       ]);
       expect(sketchCurves(sketch())).toHaveLength(6);
+      core.releaseSession(session);
+    });
+
+    it("projects origin items into a sketch", () => {
+      const session = core.openSession(example);
+      core.applyEdits(session, [
+        { op: "addFeature", feature: { type: "sketch", plane: "xz", points: [], lines: [] } },
+      ]);
+      const sketch = core.regenerateModel(session).state.features.at(-1)?.id ?? "";
+      expect(core.projectIntoSketch(session, sketch, [{ origin: "o" }, { origin: "x" }])).toBe(2);
+      expect(() => core.projectIntoSketch(session, sketch, [{ origin: "y" }])).toThrow(CoreError);
+      const definition = core.regenerateModel(session).state.features.at(-1)?.definition;
+      expect(sketchCurves(definition ?? { type: "sketch" })).toEqual([
+        { id: expect.any(String) as string, construction: true, projected: true },
+      ]);
       core.releaseSession(session);
     });
 

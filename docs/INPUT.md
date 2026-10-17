@@ -75,6 +75,10 @@ The fillet's radius shows next to the pointer. **Delete** (the button, or the `D
 `Backspace` key) removes the selected points and curves, the curves on deleted points, and the
 constraints on them.
 
+**Project** projects the selected faces and edges of the model into the sketch, or with nothing
+selected the origin and the axes in the sketch's plane (docs/adr/0018-sketch-projection.md).
+Projected curves are purple and follow the model; the editing tools leave them alone.
+
 ### Navigation presets
 
 Mouse and trackpad behavior is a preset, chosen in the viewport controls (Navigation) and stored

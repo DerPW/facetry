@@ -54,6 +54,10 @@ actor DocumentEngine {
         try core.apply(session, edits)
     }
 
+    func project(sketch: String, sources: [ProjectionSource]) throws -> Int {
+        try core.projectIntoSketch(session, sketch: sketch, sources: sources)
+    }
+
     func undo() throws -> Bool {
         try core.undo(session)
     }
@@ -378,7 +382,12 @@ final class DocumentModel {
         let construction = feature.sketchCurves.enumerated().compactMap { index, curve in
             curve.construction ? UInt32(index + 1) : nil
         }
-        viewport.sketch = SketchDisplay(mesh: mesh, construction: construction)
+        let projectedCurves = feature.sketchProjectedCurves
+        let projected = feature.sketchCurves.enumerated().compactMap { index, curve in
+            projectedCurves.contains(curve.id) ? UInt32(index + 1) : nil
+        }
+        viewport.sketch = SketchDisplay(
+            mesh: mesh, construction: construction, projected: projected)
         updateDrawing()
         if turning, let normal = feature.frame?.normal, normal.count == 3 {
             viewport.view(from: SIMD3(Float(normal[0]), Float(normal[1]), Float(normal[2])))
@@ -477,6 +486,31 @@ final class DocumentModel {
             default: return nil
             }
         }
+    }
+
+    /// Project: the selected faces and edges of the model into the sketch, or with nothing
+    /// selected the origin and the axes that lie in the sketch's plane
+    /// (docs/adr/0018-sketch-projection.md).
+    func projectSelection() async {
+        guard let sketching, let state,
+            let feature = state.features.first(where: { $0.id == sketching })
+        else { return }
+        let body = state.bodies.first(where: \.visible)?.id
+        let picked: [ProjectionSource] = viewport.selected.compactMap { pick in
+            guard let body else { return nil }
+            switch pick.kind {
+            case .face: return .face(body: body, id: pick.id)
+            case .edge: return .edge(body: body, id: pick.id)
+            default: return nil
+            }
+        }
+        let normal = feature.frame?.normal ?? [0, 0, 1]
+        let axes = ["x", "y", "z"].enumerated().compactMap { index, axis in
+            normal.count == 3 && abs(normal[index]) < 0.999 ? ProjectionSource.origin(axis) : nil
+        }
+        let sources = picked.isEmpty ? [.origin("o")] + axes : picked
+        viewport.selection = .none
+        await run { try await _ = $0.project(sketch: sketching, sources: sources) }
     }
 
     /// Delete: removes the selected points and curves, and what depends on them.

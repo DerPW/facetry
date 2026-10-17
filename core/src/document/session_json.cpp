@@ -284,11 +284,9 @@ std::set<std::string> dependenciesOf(const Feature& feature) {
     if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
         ids.insert(extrude->profile);
     }
-    if (const auto* references = feature.references()) {
-        for (const Reference& reference : *references) {
-            ids.insert(reference.body);
-            collectIds(reference.name, ids);
-        }
+    for (const Reference* reference : feature.references()) {
+        ids.insert(reference->body);
+        collectIds(reference->name, ids);
     }
     ids.erase(feature.id);
     return ids;

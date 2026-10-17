@@ -12,6 +12,7 @@ add_executable(facetry-core-tests
     profile_test.cpp
     session_json_test.cpp
     sketch_test.cpp
+    projection_test.cpp
     sketch_edit_test.cpp
     sketch_tool_test.cpp
     version_test.cpp)

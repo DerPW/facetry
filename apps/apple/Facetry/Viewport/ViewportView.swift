@@ -125,6 +125,7 @@ struct PlacedGlyph: Equatable {
 struct SketchDisplay: Equatable {
     let mesh: MeshData
     let construction: [UInt32]
+    let projected: [UInt32]
 }
 
 /// Regions to choose from: a mesh of a sketch's region shape and the region IDs selected first.
@@ -219,7 +220,8 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         if model.sketch != shownSketch {
             do {
                 try renderer.setSketch(
-                    model.sketch?.mesh, construction: model.sketch?.construction ?? [])
+                    model.sketch?.mesh, construction: model.sketch?.construction ?? [],
+                    projected: model.sketch?.projected ?? [])
             } catch {
                 model.error = "\(error)"
             }

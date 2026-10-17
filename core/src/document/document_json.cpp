@@ -2,14 +2,15 @@
 //
 //   {
 //     "format": "facetry-document",
-//     "formatVersion": 3,
+//     "formatVersion": 4,
 //     "nextId": 12,
 //     "parameters": [{"name": "width", "value": 40}],
 //     "root": {"id": "root", "name": "Root", "timeline": [
 //       {"id": "f1", "type": "sketch", "name": "Sketch 1", "suppressed": false, "namingVersion": 1,
 //        "plane": "xy", "points": [{"id": "p2", "x": "width", "y": 0}, …],
 //        "lines": [{"id": "l6", "start": "p2", "end": "p3"}, …],
-//        "circles": [{"id": "c9", "center": "p8", "radius": 3, "construction": true}]},
+//        "circles": [{"id": "c9", "center": "p8", "radius": 3, "construction": true}],
+//        "projections": [{"id": "j12", "origin": "x", "curve": "l13", "points": ["p14", "p15"]}]},
 //       {"id": "f10", "type": "extrude", …, "profile": "f1", "distance": 10,
 //        "regions": ["region{f1/l6+|f1/l7+|f1/l8+|f1/l9+}"]},
 //       {"id": "f11", "type": "fillet", …, "radius": 2, "edges": [{"body": "f10", "kind": "edge",
@@ -141,6 +142,29 @@ FeatureData readFeatureData(const Reader& reader, const std::string& type) {
                 sketch.constraints.push_back(std::move(entry));
             }
         }
+        // Format version 3 and older: no projections.
+        if (reader.has("projections")) {
+            for (const Reader& projection : reader.at("projections").items()) {
+                SketchProjection entry{.id = projection.at("id").string(),
+                                       .origin = {},
+                                       .edge = {},
+                                       .curve = {},
+                                       .points = {}};
+                if (projection.has("origin")) {
+                    entry.origin = projection.at("origin").string();
+                }
+                if (projection.has("edge")) {
+                    entry.edge.push_back(readReference(projection.at("edge")));
+                }
+                if (projection.has("curve")) {
+                    entry.curve = projection.at("curve").string();
+                }
+                for (const Reader& point : projection.at("points").items()) {
+                    entry.points.push_back(point.string());
+                }
+                sketch.projections.push_back(std::move(entry));
+            }
+        }
         return sketch;
     }
     if (type == "extrude") {
@@ -254,6 +278,22 @@ Json featureToJson(const Feature& feature) {
                                        {"entities", constraint.entities}});
             }
             result["constraints"] = std::move(constraints);
+        }
+        if (!sketch->projections.empty()) {
+            Json projections = Json::array();
+            for (const SketchProjection& projection : sketch->projections) {
+                Json entry = {{"id", projection.id}, {"points", projection.points}};
+                if (!projection.origin.empty()) {
+                    entry["origin"] = projection.origin;
+                } else {
+                    entry["edge"] = referenceToJson(projection.edge.front());
+                }
+                if (!projection.curve.empty()) {
+                    entry["curve"] = projection.curve;
+                }
+                projections.push_back(std::move(entry));
+            }
+            result["projections"] = std::move(projections);
         }
     } else if (const auto* extrude = std::get_if<Extrude>(&feature.data)) {
         result["profile"] = extrude->profile;

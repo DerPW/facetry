@@ -325,3 +325,30 @@ TEST_CASE("sketch editing tools work through the C API") {
     CHECK(facetry_sketch_tool_create(c.ctx, "f1", FACETRY_TOOL_COPY + 1, 0, &tool) ==
           FACETRY_ERROR_INVALID_ARGUMENT);
 }
+
+TEST_CASE("geometry is projected into sketches through the C API") {
+    Context c;
+    facetry_handle session = 0;
+    REQUIRE(facetry_session_create(c.ctx, example().c_str(), &session) == FACETRY_OK);
+    REQUIRE(facetry_session_apply(
+                c.ctx, session,
+                R"({"op": "addFeature", "feature": {"type": "sketch", "plane": "xy", "points": [],
+                    "lines": []}})") == FACETRY_OK);
+    REQUIRE(facetry_session_regenerate(c.ctx, session, nullptr, nullptr) == FACETRY_OK);
+    const std::string sketch = state(c.ctx, session)["features"].back()["id"];
+    uint32_t added = 0;
+    REQUIRE(facetry_session_project(c.ctx, session, sketch.c_str(),
+                                    R"([{"origin": "o"}, {"origin": "x"}])", &added) == FACETRY_OK);
+    CHECK(added == 2);
+    CHECK(state(c.ctx, session)["undoName"] == "Project");
+    const json definition = state(c.ctx, session)["features"].back()["definition"];
+    CHECK(definition["projections"].size() == 2);
+    CHECK(facetry_session_project(c.ctx, session, sketch.c_str(), R"([{"origin": "q"}])",
+                                  nullptr) == FACETRY_ERROR_INVALID_ARGUMENT);
+    CHECK(facetry_session_project(c.ctx, session, sketch.c_str(), R"([{"body": "f2"}])", nullptr) ==
+          FACETRY_ERROR_INVALID_ARGUMENT);
+    CHECK(facetry_session_project(c.ctx, session, sketch.c_str(), "{}", nullptr) ==
+          FACETRY_ERROR_INVALID_ARGUMENT);
+    REQUIRE(facetry_session_regenerate(c.ctx, session, nullptr, nullptr) == FACETRY_OK);
+    CHECK(state(c.ctx, session)["features"].back()["status"] == "ok");
+}

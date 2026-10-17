@@ -107,14 +107,34 @@ const Regeneration& Session::regenerate(const CancelToken& cancel,
     std::vector<Feature>& timeline = document_.root.timeline;
     for (std::size_t i = 0; i < regeneration_.features.size() && i < timeline.size(); ++i) {
         const FeatureResult& result = regeneration_.features[i];
-        std::vector<Reference>* references = timeline[i].references();
-        if (references == nullptr ||
-            (result.status != FeatureStatus::Ok && result.status != FeatureStatus::Warning)) {
+        if (result.status != FeatureStatus::Ok && result.status != FeatureStatus::Warning) {
             continue;
         }
-        for (std::size_t j = 0; j < references->size() && j < result.resolved.size(); ++j) {
+        const std::vector<Reference*> references = timeline[i].references();
+        for (std::size_t j = 0; j < references.size() && j < result.resolved.size(); ++j) {
             if (result.resolved[j]) {
-                (*references)[j].shadow = result.resolved[j];
+                references[j]->shadow = result.resolved[j];
+            }
+        }
+        // Projected entities are stored where their sources put them (#52), so tools and a lost
+        // source see them there.
+        auto* sketch = std::get_if<Sketch>(&timeline[i].data);
+        const auto geometry = regeneration_.model.sketches.find(timeline[i].id);
+        if (sketch == nullptr || geometry == regeneration_.model.sketches.end()) {
+            continue;
+        }
+        const double scale = millimetersPer(document_.units);
+        for (SketchPoint& point : sketch->points) {
+            const auto at = geometry->second->projectedPoints.find(point.id);
+            if (at != geometry->second->projectedPoints.end()) {
+                point.x = Value(at->second.first / scale);
+                point.y = Value(at->second.second / scale);
+            }
+        }
+        for (SketchCircle& circle : sketch->circles) {
+            const auto radius = geometry->second->projectedRadii.find(circle.id);
+            if (radius != geometry->second->projectedRadii.end()) {
+                circle.radius = Value(radius->second / scale);
             }
         }
     }

@@ -124,6 +124,16 @@ struct SketchRegion {
 // sketching on it. Throws Error(InvalidArgument) if the face is not planar.
 [[nodiscard]] SketchFrame planarFaceFrame(const NamedShape& body, std::uint32_t faceId);
 
+// An edge (1-based ID of `body`) as seen on the plane of `frame`, in its coordinates (#52): a
+// line, or an arc (counter-clockwise) or circle when the edge is one in a plane parallel to the
+// sketch's. Throws Error(InvalidArgument) for edges whose projection is a point or another kind of
+// curve (an ellipse, a spline), which projection does not support yet.
+[[nodiscard]] ProfileSegment projectEdge(const NamedShape& body, std::uint32_t edgeId,
+                                         const SketchFrame& frame);
+
+// The edges around a face (1-based IDs of `body`), sorted.
+[[nodiscard]] std::vector<std::uint32_t> faceEdges(const NamedShape& body, std::uint32_t faceId);
+
 // Rounds edges (1-based IDs of `body`) with a constant radius. Faces keep their names, rounds are
 // named "<feature>:fillet[<edge name>]".
 [[nodiscard]] NamedShape filletEdges(const NamedShape& body, std::span<const std::uint32_t> edgeIds,

@@ -19,6 +19,7 @@ import {
   type FeatureJson,
   type LengthUnit,
   type MeshData,
+  type ProjectionSource,
   type ModelSnapshot,
   type Reference,
   type SessionState,
@@ -565,10 +566,12 @@ export function App() {
       faced.current = null;
       return;
     }
-    const construction = sketchCurves(sketchFeature.definition).flatMap((curve, i) =>
-      curve.construction ? [i + 1] : [],
+    const curves = sketchCurves(sketchFeature.definition);
+    viewport.setSketch(
+      sketchMeshes.current[sketchFeature.id] ?? null,
+      curves.flatMap((curve, i) => (curve.construction ? [i + 1] : [])),
+      curves.flatMap((curve, i) => (curve.projected ? [i + 1] : [])),
     );
-    viewport.setSketch(sketchMeshes.current[sketchFeature.id] ?? null, construction);
     if (faced.current !== sketchFeature.id && sketchFeature.frame) {
       viewport.viewFrom(sketchFeature.frame.normal);
       faced.current = sketchFeature.id;
@@ -728,6 +731,30 @@ export function App() {
   }, [viewport]);
 
   // The construction toggle changes the selected curves, or else what the tool draws next.
+  // Project: the selected faces and edges of the model into the sketch, or with nothing selected
+  // the origin and the axes that lie in the sketch's plane (docs/adr/0018-sketch-projection.md).
+  const projectSelection = () => {
+    if (!sketchFeature) return;
+    const body = model?.bodies.find((b) => b.visible)?.id;
+    const picked: ProjectionSource[] = body
+      ? selection.flatMap((pick): ProjectionSource[] =>
+          pick.kind === PickKind.Face
+            ? [{ body, kind: "face", id: pick.id }]
+            : pick.kind === PickKind.Edge
+              ? [{ body, kind: "edge", id: pick.id }]
+              : [],
+        )
+      : [];
+    const normal = sketchFeature.frame?.normal ?? [0, 0, 1];
+    const axes = (["x", "y", "z"] as const).filter((_, i) => Math.abs(normal[i] ?? 0) < 0.999);
+    const sources: ProjectionSource[] =
+      picked.length > 0 ? picked : [{ origin: "o" }, ...axes.map((origin) => ({ origin }))];
+    viewport?.clearSelection();
+    void change(({ core, handle }) =>
+      core.call("projectIntoSketch", handle, sketchFeature.id, sources),
+    );
+  };
+
   // Delete removes the selected points and curves, and what depends on them.
   const deleteSelected = () => {
     if (!sketchFeature || selectedEntities.length === 0) return;
@@ -957,6 +984,13 @@ export function App() {
                   onClick={deleteSelected}
                 >
                   Delete
+                </button>
+                <button
+                  type="button"
+                  title="Project the selected faces and edges into the sketch; without a selection, the origin and axes"
+                  onClick={projectSelection}
+                >
+                  Project
                 </button>
                 <button
                   type="button"

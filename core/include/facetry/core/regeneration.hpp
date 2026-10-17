@@ -39,6 +39,10 @@ struct SketchGeometry {
     std::vector<SketchCurve> curves;    // its lines, then arcs, then circles, in document order
     std::vector<SketchRegion> regions;  // sorted by name
     std::vector<Vec3> points;           // in space, in document order
+    // Where projections (#52) put the points and circle radii they drive, in millimeters on the
+    // plane. Sessions store them in the document; broken projections are missing here.
+    std::map<std::string, std::pair<double, double>> projectedPoints{};
+    std::map<std::string, double> projectedRadii{};
 };
 
 // A sketch for display: curve i is edge ID i + 1 (as in SketchGeometry::curves), sampled so that

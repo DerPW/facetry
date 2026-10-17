@@ -97,6 +97,33 @@ struct SnapFeedback: Decodable, Sendable, Equatable {
     static let none = SnapFeedback(snap: "", inferences: [], radius: 0)
 }
 
+/// What to project into a sketch (docs/adr/0018-sketch-projection.md): an origin item ("o", "x",
+/// "y", "z"), or a face or edge of a body by its element ID in the last regeneration. A face
+/// projects its edges.
+enum ProjectionSource: Encodable, Sendable, Equatable {
+    case origin(String)
+    case face(body: String, id: UInt32)
+    case edge(body: String, id: UInt32)
+
+    private enum Key: String, CodingKey { case origin, body, kind, id }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        switch self {
+        case .origin(let item):
+            try c.encode(item, forKey: .origin)
+        case .face(let body, let id):
+            try c.encode(body, forKey: .body)
+            try c.encode("face", forKey: .kind)
+            try c.encode(id, forKey: .id)
+        case .edge(let body, let id):
+            try c.encode(body, forKey: .body)
+            try c.encode("edge", forKey: .kind)
+            try c.encode(id, forKey: .id)
+        }
+    }
+}
+
 /// A pointer event for a sketch tool (facetry_pointer_event).
 enum ToolEvent: UInt32, Sendable {
     case down = 0
@@ -226,6 +253,12 @@ struct SessionState: Decodable, Sendable, Equatable {
                     return (id, curve["construction"] == .bool(true))
                 }
             }
+        }
+
+        /// The curves of a sketch that projections drive (docs/adr/0018-sketch-projection.md).
+        var sketchProjectedCurves: Set<String> {
+            guard case .array(let projections)? = definition["projections"] else { return [] }
+            return Set(projections.compactMap { $0["curve"]?.string })
         }
 
         /// A sketch's point IDs in the order of its display mesh (vertex ID i + 1 is point i).
@@ -718,6 +751,17 @@ final class Core {
     func apply(_ session: SessionHandle, _ edits: [DocumentEdit]) throws {
         let json = String(decoding: try JSONEncoder().encode(edits), as: UTF8.self)
         try apply(session, json: json)
+    }
+
+    /// Projects origin items, faces and edges into a sketch as one edit; returns how many
+    /// projections were added. Regenerate afterwards.
+    func projectIntoSketch(
+        _ session: SessionHandle, sketch: String, sources: [ProjectionSource]
+    ) throws -> Int {
+        let json = String(decoding: try JSONEncoder().encode(sources), as: UTF8.self)
+        var added: UInt32 = 0
+        try check(facetry_session_project(context, session.rawValue, sketch, json, &added))
+        return Int(added)
     }
 
     /// Applies one edit or a JSON array of edits (see core/include/facetry/core/session_json.hpp).

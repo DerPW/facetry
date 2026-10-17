@@ -56,7 +56,8 @@ class Renderer {
     void setRegions(const RenderMesh& mesh);
     // The sketch being edited, drawn over everything: its curves (edge polylines), the ones in
     // `construction` dashed, and its points (vertices) as dots. An empty mesh hides it.
-    void setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction);
+    void setSketch(const RenderMesh& mesh, std::span<const std::uint32_t> construction,
+                   std::span<const std::uint32_t> projected);
     // What the sketch tool would draw next, drawn like the sketch in a lighter color. An empty
     // mesh hides it.
     void setSketchPreview(const RenderMesh& mesh);

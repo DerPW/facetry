@@ -1,10 +1,14 @@
-// Editing sketches (#51): trim, extend, fillet, delete, move and copy. Each changes a document;
-// sessions apply them as edits, the sketch tools (sketch_tool.hpp) from pointer events. Positions
-// and distances are in millimeters on the sketch plane.
+// Editing sketches (#51): trim, extend, fillet, delete, move and copy, and projecting geometry into
+// them (#52). Each changes a document; sessions apply them as edits, the sketch tools
+// (sketch_tool.hpp) from pointer events. Positions and distances are in millimeters on the sketch
+// plane. Edits leave the curves and points that projections drive alone, except delete.
 #pragma once
 
 #include "facetry/core/document.hpp"
+#include "facetry/core/regeneration.hpp"
 
+#include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -37,5 +41,23 @@ bool filletSketchCorner(Document& document, const std::string& sketch, const std
 // instead. Values that named a parameter become numbers.
 void moveSketchEntities(Document& document, const std::string& sketch,
                         const std::vector<std::string>& entities, double du, double dv, bool copy);
+
+// What to project into a sketch: an origin item ("o", "x", "y" or "z"), or an edge or a face of a
+// body (`kind` and its element ID in the body); a face projects its edges.
+struct ProjectionSource {
+    std::string origin{};
+    std::string body{};
+    ElementKind kind = ElementKind::Edge;
+    std::uint32_t id = 0;
+};
+
+// Projects `sources` into the sketch feature `sketch` (ADR-0018): each origin item and edge gets a
+// projection driving a new curve and its points (the origin a point), where the source lies in
+// `model`, the last regeneration. Axes become construction lines. Sources the sketch projects
+// already are skipped, and so are a face's edges that cannot be projected. Returns how many
+// projections were added. Throws Error(InvalidArgument) if the sketch, a body or an element does
+// not exist, the body comes after the sketch in the timeline, or an edge cannot be projected.
+std::size_t projectIntoSketch(Document& document, const ModelState& model,
+                              const std::string& sketch, std::span<const ProjectionSource> sources);
 
 }  // namespace facetry::core

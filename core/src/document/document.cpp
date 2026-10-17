@@ -7,6 +7,7 @@
 #include <cmath>
 #include <set>
 #include <string>
+#include <utility>
 
 namespace facetry::core {
 namespace {
@@ -54,7 +55,7 @@ void validateSketch(const Feature& feature, const Sketch& sketch) {
         if (id.empty() || !ids.insert(id).second) {
             invalid(context + ": " + what + " IDs must be unique and not empty (\"" + id + "\")");
         }
-        if (std::string_view(what) != "constraint") {
+        if (std::string_view(what) != "constraint" && std::string_view(what) != "projection") {
             geometry.insert(id);
         }
     };
@@ -112,6 +113,55 @@ void validateSketch(const Feature& feature, const Sketch& sketch) {
             }
         }
     }
+    // A projection drives a curve and the points that define it, in a fixed order, and each
+    // entity is driven by one projection at most.
+    std::set<std::string> driven;
+    for (const SketchProjection& projection : sketch.projections) {
+        add(projection.id, "projection");
+        const std::string what = context + ": projection " + projection.id;
+        const bool fromOrigin = !projection.origin.empty();
+        if (fromOrigin && projection.origin != "o" && projection.origin != "x" &&
+            projection.origin != "y" && projection.origin != "z") {
+            invalid(what + " projects \"" + projection.origin + "\", which is not an origin item");
+        }
+        if (projection.edge.size() != (fromOrigin ? 0U : 1U) ||
+            (!fromOrigin && projection.edge[0].kind != ElementKind::Edge)) {
+            invalid(what + " needs an origin item or one edge reference");
+        }
+        std::vector<std::string> expected;
+        if (const auto line =
+                std::find_if(sketch.lines.begin(), sketch.lines.end(),
+                             [&](const SketchLine& l) { return l.id == projection.curve; });
+            line != sketch.lines.end()) {
+            expected = {line->start, line->end};
+        } else if (const auto arc =
+                       std::find_if(sketch.arcs.begin(), sketch.arcs.end(),
+                                    [&](const SketchArc& a) { return a.id == projection.curve; });
+                   arc != sketch.arcs.end()) {
+            expected = {arc->center, arc->start, arc->end};
+        } else if (const auto circle = std::find_if(
+                       sketch.circles.begin(), sketch.circles.end(),
+                       [&](const SketchCircle& c) { return c.id == projection.curve; });
+                   circle != sketch.circles.end()) {
+            expected = {circle->center};
+        } else if (!projection.curve.empty() || projection.origin != "o" ||
+                   projection.points.size() != 1 || !points.contains(projection.points[0])) {
+            invalid(what + " must drive a curve of the sketch, or the origin point");
+        } else {
+            expected = projection.points;
+        }
+        if (projection.points != expected) {
+            invalid(what + " must drive the points of its curve");
+        }
+        for (const std::string& entity : projection.points) {
+            if (!driven.insert(entity).second) {
+                invalid(what + ": " + entity + " is driven by another projection");
+            }
+        }
+        if (!projection.curve.empty() && !driven.insert(projection.curve).second) {
+            invalid(what + ": " + projection.curve + " is driven by another projection");
+        }
+    }
 }
 
 }  // namespace
@@ -125,22 +175,39 @@ std::span<const OriginItem> originItems() noexcept {
     return kItems;
 }
 
-std::vector<Reference>* Feature::references() noexcept {
-    if (auto* fillet = std::get_if<Fillet>(&data)) {
-        return &fillet->edges;
+std::vector<Reference*> Feature::references() {
+    std::vector<Reference*> result;
+    for (const Reference* reference : std::as_const(*this).references()) {
+        result.push_back(const_cast<Reference*>(reference));
     }
-    if (auto* sketch = std::get_if<Sketch>(&data)) {
-        return &sketch->face;
-    }
-    return nullptr;
+    return result;
 }
 
-const std::vector<Reference>* Feature::references() const noexcept {
+std::vector<const Reference*> Feature::references() const {
+    std::vector<const Reference*> result;
+    const auto add = [&](const std::vector<Reference>& references) {
+        for (const Reference& reference : references) {
+            result.push_back(&reference);
+        }
+    };
     if (const auto* fillet = std::get_if<Fillet>(&data)) {
-        return &fillet->edges;
+        add(fillet->edges);
+    } else if (const auto* sketch = std::get_if<Sketch>(&data)) {
+        add(sketch->face);
+        for (const SketchProjection& projection : sketch->projections) {
+            add(projection.edge);
+        }
     }
-    if (const auto* sketch = std::get_if<Sketch>(&data)) {
-        return &sketch->face;
+    return result;
+}
+
+const SketchProjection* Sketch::projectionOf(std::string_view entity) const noexcept {
+    for (const SketchProjection& projection : projections) {
+        if (projection.curve == entity ||
+            std::find(projection.points.begin(), projection.points.end(), entity) !=
+                projection.points.end()) {
+            return &projection;
+        }
     }
     return nullptr;
 }
@@ -181,6 +248,9 @@ std::string Document::newId(std::string_view prefix) {
             }
             for (const SketchConstraint& constraint : sketch->constraints) {
                 used = std::max(used, idNumber(constraint.id));
+            }
+            for (const SketchProjection& projection : sketch->projections) {
+                used = std::max(used, idNumber(projection.id));
             }
         }
     }

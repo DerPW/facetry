@@ -226,21 +226,32 @@ export class Viewport {
   }
 
   /** Shows the sketch being edited over everything (a mesh from the core's sketchMesh()), with
-   * the curves whose edge IDs are in `construction` dashed, or hides it (null). */
-  setSketch(mesh: MeshData | null, construction: number[] = []): void {
+   * the curves whose edge IDs are in `construction` dashed and those in `projected` in the color
+   * of projected geometry, or hides it (null). */
+  setSketch(mesh: MeshData | null, construction: number[] = [], projected: number[] = []): void {
     const m = this.#m;
     const ids = m._malloc(Math.max(4, construction.length * 4));
+    const projectedIds = m._malloc(Math.max(4, projected.length * 4));
     m.HEAPU32.set(construction, ids >> 2);
+    m.HEAPU32.set(projected, projectedIds >> 2);
     try {
       if (mesh) {
         this.#withMesh(mesh, (struct) =>
-          m._facetry_renderer_set_sketch(this.#renderer, struct, ids, construction.length),
+          m._facetry_renderer_set_sketch(
+            this.#renderer,
+            struct,
+            ids,
+            construction.length,
+            projectedIds,
+            projected.length,
+          ),
         );
       } else {
-        this.#check(m._facetry_renderer_set_sketch(this.#renderer, 0, 0, 0));
+        this.#check(m._facetry_renderer_set_sketch(this.#renderer, 0, 0, 0, 0, 0));
       }
     } finally {
       m._free(ids);
+      m._free(projectedIds);
     }
   }
 
