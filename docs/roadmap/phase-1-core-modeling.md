@@ -124,7 +124,9 @@ and with a mouse on the first or second attempt.
       sketch-based features reference (extends the M0.6 sketch, ADR-0006); sketches on origin
       planes and planar faces ([#46](https://github.com/DerPW/facetry/issues/46),
       [ADR-0013](../adr/0013-sketch-model.md))
-- [ ] Create a sketch on an origin plane or a planar face; the view turns to face the sketch
+- [x] Create a sketch on an origin plane or a planar face; the view turns to face the sketch;
+      sketch mode draws its curves and points, and a sketch is one undo step
+      ([#48](https://github.com/DerPW/facetry/issues/48))
 - [ ] Drawing tools:
   - [ ] line / polyline (with tangent arc by dragging back from the last point)
   - [ ] rectangle: 2-point, 3-point, center

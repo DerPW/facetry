@@ -5,9 +5,11 @@
 #include "document_json.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <iomanip>
 #include <map>
+#include <numbers>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -88,11 +90,16 @@ SketchFrame sketchFrame(const Sketch& sketch, const Document& document, const Mo
 SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
                               const Document& document, const ModelState& model,
                               FeatureResult& result) {
-    SketchGeometry geometry{
-        .frame = sketchFrame(sketch, document, model, result), .curves = {}, .regions = {}};
+    SketchGeometry geometry{.frame = sketchFrame(sketch, document, model, result),
+                            .curves = {},
+                            .regions = {},
+                            .points = {}};
     std::map<std::string, std::pair<double, double>> points;
     for (const SketchPoint& point : sketch.points) {
-        points[point.id] = {length(point.x, document), length(point.y, document)};
+        const double x = length(point.x, document);
+        const double y = length(point.y, document);
+        points[point.id] = {x, y};
+        geometry.points.push_back(geometry.frame.at(x, y));
     }
     const auto name = [&](const std::string& curve) { return feature.id + "/" + curve; };
     for (const SketchLine& line : sketch.lines) {
@@ -140,6 +147,64 @@ SketchGeometry sketchGeometry(const Feature& feature, const Sketch& sketch,
     geometry.regions = sketchRegions(bounding, geometry.frame);
     return geometry;
 }
+
+}  // namespace
+
+Mesh sketchMesh(const SketchGeometry& sketch, double deflection) {
+    Mesh mesh;
+    const auto add = [&](double x, double y) {
+        const Vec3 p = sketch.frame.at(x, y);
+        mesh.edgePoints.insert(
+            mesh.edgePoints.end(),
+            {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
+    };
+    for (std::size_t i = 0; i < sketch.curves.size(); ++i) {
+        const ProfileSegment& curve = sketch.curves[i].segment;
+        if (curve.kind == ProfileSegment::Kind::Line) {
+            add(curve.x0, curve.y0);
+            add(curve.x1, curve.y1);
+        } else {
+            const bool circle = curve.kind == ProfileSegment::Kind::Circle;
+            const double radius =
+                circle ? curve.radius : std::hypot(curve.x0 - curve.cx, curve.y0 - curve.cy);
+            const double start =
+                circle ? 0.0 : std::atan2(curve.y0 - curve.cy, curve.x0 - curve.cx);
+            double sweep = 2.0 * std::numbers::pi;
+            if (!circle) {
+                const double end = std::atan2(curve.y1 - curve.cy, curve.x1 - curve.cx);
+                sweep =
+                    std::fmod(curve.clockwise ? start - end : end - start, 2.0 * std::numbers::pi);
+                if (sweep <= 0.0) {
+                    sweep += 2.0 * std::numbers::pi;
+                }
+            }
+            // Steps short enough to stay within the deflection, and at most 0.2 rad.
+            const double ratio =
+                radius > 0.0 ? std::clamp(1.0 - deflection / radius, -1.0, 1.0) : -1.0;
+            const double step = std::clamp(2.0 * std::acos(ratio), 1e-3, 0.2);
+            const auto count =
+                static_cast<std::size_t>(std::clamp(std::ceil(sweep / step), 2.0, 512.0));
+            const double direction = curve.clockwise ? -1.0 : 1.0;
+            for (std::size_t k = 0; k <= count; ++k) {
+                const double angle =
+                    start + direction * sweep * static_cast<double>(k) / static_cast<double>(count);
+                add(curve.cx + radius * std::cos(angle), curve.cy + radius * std::sin(angle));
+            }
+        }
+        mesh.edgeOffsets.push_back(static_cast<std::uint32_t>(mesh.edgePoints.size() / 3));
+        mesh.edgeIds.push_back(static_cast<std::uint32_t>(i + 1));
+    }
+    for (std::size_t i = 0; i < sketch.points.size(); ++i) {
+        const Vec3& p = sketch.points[i];
+        mesh.vertexPositions.insert(
+            mesh.vertexPositions.end(),
+            {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z)});
+        mesh.vertexIds.push_back(static_cast<std::uint32_t>(i + 1));
+    }
+    return mesh;
+}
+
+namespace {
 
 // The regions an extrusion takes: the ones it names, or the sketch's only region.
 std::vector<SketchRegion> chosenRegions(const Extrude& extrude, const SketchGeometry& sketch) {

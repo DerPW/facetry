@@ -61,7 +61,9 @@ void applyEdits(Document& document, std::string_view json);
 // "definition" is the feature in the document's JSON form, ready to be changed and sent back with
 // "replaceFeature". Lengths are in "units", in parameters and definitions alike. Sketches also
 // list their "regions" (profiles) by name, as of the last regeneration; an extrusion names the ones
-// it takes in its definition's "regions".
+// it takes in its definition's "regions". A sketch's "frame" is where it lies in space, in
+// millimeters: {"origin": [x, y, z], "xAxis": […], "yAxis": […], "normal": […]}, or null if it has
+// not regenerated.
 [[nodiscard]] std::string sessionStateJson(const Session& session);
 
 // Persistent names of a body's elements: {"faces": [...], "edges": [...], "vertices": [...]}.

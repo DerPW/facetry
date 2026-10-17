@@ -34,6 +34,8 @@ interface Props {
   onChooseProfiles: (feature: string | null) => void;
   /** Takes the profiles selected in the viewport. */
   onFinishProfiles: () => void;
+  /** Opens a sketch for editing (sketch mode). */
+  onEditSketch: (sketch: string) => void;
 }
 
 /** The timeline bar (Fusion-style): one chip per feature, the rollback marker, feature details. */
@@ -47,6 +49,7 @@ export function Timeline({
   profiles,
   onChooseProfiles,
   onFinishProfiles,
+  onEditSketch,
 }: Props) {
   const setSelected = onSelect;
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -74,6 +77,7 @@ export function Timeline({
           choosingProfiles={profiles === feature.id}
           onChooseProfiles={onChooseProfiles}
           onFinishProfiles={onFinishProfiles}
+          onEditSketch={onEditSketch}
           onClose={() => {
             if (profiles === feature.id) onChooseProfiles(null);
             setSelected(null);
@@ -142,6 +146,7 @@ interface DetailsProps {
   choosingProfiles: boolean;
   onChooseProfiles: (feature: string | null) => void;
   onFinishProfiles: () => void;
+  onEditSketch: (sketch: string) => void;
   onClose: () => void;
 }
 
@@ -158,6 +163,7 @@ function FeatureDetails({
   choosingProfiles,
   onChooseProfiles,
   onFinishProfiles,
+  onEditSketch,
   onClose,
 }: DetailsProps) {
   const definition = feature.definition;
@@ -209,6 +215,18 @@ function FeatureDetails({
           />
         </label>
       ))}
+      {feature.type === "sketch" && (
+        <div className="profiles">
+          <p className="muted">
+            {feature.regions?.length
+              ? `${feature.regions.length} ${feature.regions.length === 1 ? "profile" : "profiles"}`
+              : "No closed profile"}
+          </p>
+          <button type="button" onClick={() => onEditSketch(feature.id)}>
+            Edit sketch
+          </button>
+        </div>
+      )}
       {feature.type === "extrude" &&
         (choosingProfiles ? (
           <div className="profiles">

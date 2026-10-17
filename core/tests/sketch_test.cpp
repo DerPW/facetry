@@ -362,3 +362,50 @@ TEST_CASE("every sketch field round-trips through JSON") {
         CHECK(plain.find(absent) == std::string::npos);
     }
 }
+
+TEST_CASE("sketches are drawn from their curves and points") {
+    Sketch onXz = slot(8, 2);
+    onXz.plane = "xz";
+    onXz.lines.push_back({"l9", "p1", "p3", /*construction=*/true});
+    Session session(extruded(onXz, 3));
+    const Regeneration& regeneration = session.regenerate();
+    const SketchGeometry& sketch = *regeneration.model.sketches.at("f1");
+    REQUIRE(sketch.points.size() == 6);
+    checkNear(sketch.points[1], {8, 0, 0});  // p2 = (8, 0) on XZ
+    checkNear(sketch.points[2], {8, 0, 4});
+
+    // Lines first (l1, l2, l9), then the arcs a1 and a2: edge IDs 1 to 5.
+    const double deflection = 0.01;
+    const Mesh mesh = sketchMesh(sketch, deflection);
+    CHECK(mesh.triangles.empty());
+    CHECK(mesh.edgeIds == std::vector<std::uint32_t>{1, 2, 3, 4, 5});
+    REQUIRE(mesh.edgeOffsets.size() == 6);
+    CHECK(mesh.edgeOffsets[1] - mesh.edgeOffsets[0] == 2);  // a line is one segment
+    // Every point of the arc a1 around (8, 2) lies on its circle, and the chords stay close.
+    const std::uint32_t first = mesh.edgeOffsets[3];
+    const std::uint32_t last = mesh.edgeOffsets[4];
+    CHECK(last - first > 8);
+    for (std::uint32_t k = first; k < last; ++k) {
+        const double x = mesh.edgePoints[k * 3];
+        const double y = mesh.edgePoints[k * 3 + 1];
+        const double z = mesh.edgePoints[k * 3 + 2];
+        CHECK(y == doctest::Approx(0).epsilon(1e-6));
+        CHECK(std::hypot(x - 8, z - 2) == doctest::Approx(2).epsilon(1e-6));
+        if (k + 1 < last) {
+            const double step =
+                std::hypot(mesh.edgePoints[(k + 1) * 3] - x, mesh.edgePoints[(k + 1) * 3 + 2] - z);
+            CHECK(2 - std::sqrt(4 - step * step / 4) <= deflection * 1.0001);
+        }
+    }
+    // The arc a1 bulges outward: from (8, 0) through (10, 2) to (8, 4).
+    const std::uint32_t middle = (first + last) / 2;
+    CHECK(mesh.edgePoints[middle * 3] == doctest::Approx(10).epsilon(1e-3));
+    CHECK(mesh.vertexIds == std::vector<std::uint32_t>{1, 2, 3, 4, 5, 6});
+
+    // The session summary says where the sketch lies.
+    const auto state = nlohmann::json::parse(sessionStateJson(session));
+    const auto& frame = state["features"][0]["frame"];
+    CHECK(frame["normal"][1] == doctest::Approx(-1));
+    CHECK(frame["yAxis"][2] == doctest::Approx(1));
+    CHECK_FALSE(state["features"][1].contains("frame"));  // extrusions have none
+}

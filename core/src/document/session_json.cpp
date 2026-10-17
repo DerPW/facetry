@@ -383,13 +383,21 @@ std::string sessionStateJson(const Session& session) {
         entry["dependents"] = dependentsById.at(feature.id);
         if (std::holds_alternative<Sketch>(feature.data)) {
             Json regions = Json::array();
+            Json frame = nullptr;
             if (const auto sketch = regeneration.model.sketches.find(feature.id);
                 sketch != regeneration.model.sketches.end()) {
                 for (const SketchRegion& region : sketch->second->regions) {
                     regions.push_back(region.name);
                 }
+                const SketchFrame& f = sketch->second->frame;
+                const auto vector = [](const Vec3& v) { return Json::array({v.x, v.y, v.z}); };
+                frame = {{"origin", vector(f.origin)},
+                         {"xAxis", vector(f.xAxis)},
+                         {"yAxis", vector(f.yAxis)},
+                         {"normal", vector(f.normal())}};
             }
             entry["regions"] = std::move(regions);
+            entry["frame"] = std::move(frame);
         }
         entry["definition"] = json::featureToJson(feature);
         features.push_back(std::move(entry));

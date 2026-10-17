@@ -37,7 +37,13 @@ struct BrowserPanel: View {
             }
             Text("Sketches").font(.caption.bold())
             ForEach(state.features.filter { $0.type == "sketch" }) { sketch in
-                Button(sketch.name) { selectFeature(sketch.id) }.buttonStyle(.plain)
+                HStack {
+                    Button(sketch.name) { selectFeature(sketch.id) }.buttonStyle(.plain)
+                    Spacer()
+                    Button("Edit") { Task { await model.editSketch(sketch.id) } }
+                        .foregroundStyle(.secondary)
+                        .disabled(model.sketching != nil)
+                }
             }
         }
         .font(.caption)

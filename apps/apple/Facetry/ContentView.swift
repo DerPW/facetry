@@ -46,6 +46,7 @@ struct ContentView: View {
                         Text("Select the edge that should replace the missing one.")
                             .font(.caption).panel()
                     }
+                    sketchBar
                     if let model, model.profiles != nil {
                         HStack {
                             Text("Tap profiles to add or leave them out.").font(.caption)
@@ -115,8 +116,35 @@ struct ContentView: View {
         return "Core \(versions.core) · OpenCASCADE \(versions.kernel) · \(versions.platform)"
     }
 
+    /// A new sketch on an origin plane or the selected face.
+    private var sketchMenu: some View {
+        Menu("Sketch") {
+            Button("On the XY plane") { Task { await model?.newSketch(on: "xy") } }
+            Button("On the XZ plane") { Task { await model?.newSketch(on: "xz") } }
+            Button("On the YZ plane") { Task { await model?.newSketch(on: "yz") } }
+            Button("On the selected face") { Task { await model?.newSketch(on: "face") } }
+                .disabled(!viewport.selected.contains { $0.kind == .face })
+        }
+        .fixedSize()
+        .disabled(model?.state == nil || model?.sketching != nil)
+    }
+
+    /// While sketching: which sketch, and finishing or cancelling it.
+    @ViewBuilder private var sketchBar: some View {
+        if let model, let sketching = model.sketching {
+            let name = model.state?.features.first { $0.id == sketching }?.name ?? "sketch"
+            HStack {
+                Text("Sketching \(name)").font(.caption)
+                Button("Finish sketch") { Task { await model.finishSketch(keep: true) } }
+                Button("Cancel") { Task { await model.finishSketch(keep: false) } }
+            }
+            .panel()
+        }
+    }
+
     private var controls: some View {
         HStack {
+            sketchMenu
             Button("Undo") { Task { await model?.undo() } }
                 .disabled(model?.state?.canUndo != true)
                 .help(model?.state?.undoName.map { "Undo \($0)" } ?? "Undo")

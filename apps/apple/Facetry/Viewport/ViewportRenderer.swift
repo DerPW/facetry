@@ -143,6 +143,20 @@ final class ViewportRenderer {
         }
     }
 
+    /// Shows the sketch being edited over everything (a mesh from ``Core/sketchMesh(_:sketch:deflection:)``),
+    /// with the curves whose edge IDs are in `construction` dashed, or hides it (nil).
+    func setSketch(_ mesh: MeshData?, construction: [UInt32]) throws {
+        let status = construction.withUnsafeBufferPointer { ids in
+            if let mesh {
+                return withRenderMesh(mesh) {
+                    facetry_renderer_set_sketch(handle, $0, ids.baseAddress, UInt32(ids.count))
+                }
+            }
+            return facetry_renderer_set_sketch(handle, nil, nil, 0)
+        }
+        try check(status)
+    }
+
     /// Clicks and hovering pick only the regions (while choosing profiles).
     func pickRegionsOnly() {
         facetry_renderer_set_pick_filter(handle, FACETRY_PICK_REGIONS.rawValue)

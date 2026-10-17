@@ -122,9 +122,31 @@ struct SessionState: Decodable, Sendable, Equatable {
         /// Sketches: the names of their closed regions (profiles), as of the last regeneration.
         /// An extrusion names the ones it takes in its definition's "regions".
         let regions: [String]?
+        /// Sketches: where they lie in space, or nil before they regenerated.
+        let frame: SketchFrame?
         /// The feature in the document's JSON form, to change and send back with
         /// ``DocumentEdit/replaceFeature(_:)``.
         let definition: JSONValue
+
+        /// A sketch's curves in the order of its display mesh (edge ID i + 1 is curve i): its
+        /// lines, then arcs, then circles, as in its definition.
+        var sketchCurves: [(id: String, construction: Bool)] {
+            ["lines", "arcs", "circles"].flatMap { key -> [(id: String, construction: Bool)] in
+                guard case .array(let curves)? = definition[key] else { return [] }
+                return curves.compactMap { curve in
+                    guard let id = curve["id"]?.string else { return nil }
+                    return (id, curve["construction"] == .bool(true))
+                }
+            }
+        }
+    }
+
+    /// Where a sketch lies: its origin and unit axes in millimeters; `normal` is x × y.
+    struct SketchFrame: Decodable, Sendable, Equatable {
+        let origin: [Double]
+        let xAxis: [Double]
+        let yAxis: [Double]
+        let normal: [Double]
     }
 
     struct Regeneration: Decodable, Sendable, Equatable {
@@ -252,6 +274,8 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
     case setRollback(index: Int?)
     /// Replaces the feature with the same `id` (a changed ``SessionState/Feature/definition``).
     case replaceFeature(JSONValue)
+    /// Adds a feature (a definition without `id`) at `index` in the timeline, or at the end.
+    case addFeature(JSONValue, index: Int?)
     /// An empty name restores the default ("Body 1", …).
     case renameBody(id: String, name: String)
     case setBodyVisible(id: String, visible: Bool)
@@ -296,6 +320,10 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .replaceFeature(let definition):
             try c.encode(op, forKey: .op)
             try c.encode(definition, forKey: .feature)
+        case .addFeature(let definition, let index):
+            try c.encode(op, forKey: .op)
+            try c.encode(definition, forKey: .feature)
+            try c.encodeIfPresent(index, forKey: .index)
         case .renameBody(let id, let name):
             try c.encode(op, forKey: .op)
             try c.encode(id, forKey: .id)
@@ -324,6 +352,7 @@ enum DocumentEdit: Encodable, Sendable, Equatable {
         case .suppressFeature: "suppressFeature"
         case .setRollback: "setRollback"
         case .replaceFeature: "replaceFeature"
+        case .addFeature: "addFeature"
         case .renameBody: "renameBody"
         case .setBodyVisible: "setBodyVisible"
         case .setOriginVisible: "setOriginVisible"
@@ -430,6 +459,23 @@ final class Core {
             facetry_shape_tessellate(
                 context, shape.rawValue, linearDeflection, angularDeflection, relative ? 1 : 0,
                 &mesh))
+        return try takeMesh(mesh)
+    }
+
+    /// A sketch for display: edge ID i + 1 is its curve i (see
+    /// ``SessionState/Feature/sketchCurves``), sampled within `deflection` millimeters; vertex ID
+    /// i + 1 is its point i.
+    func sketchMesh(_ session: SessionHandle, sketch: String, deflection: Double = 0.01) throws
+        -> MeshData
+    {
+        var mesh: facetry_handle = 0
+        try check(
+            facetry_session_sketch_mesh(context, session.rawValue, sketch, deflection, &mesh))
+        return try takeMesh(mesh)
+    }
+
+    /// Copies a mesh out of the core and releases it.
+    private func takeMesh(_ mesh: facetry_handle) throws -> MeshData {
         defer { facetry_mesh_release(context, mesh) }
 
         var data = MeshData()

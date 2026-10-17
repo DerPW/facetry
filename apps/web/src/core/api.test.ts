@@ -3,7 +3,15 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { BooleanOp, CoreError, ElementKind, FacetryCore, LogLevel, Status } from "./api";
+import {
+  BooleanOp,
+  CoreError,
+  ElementKind,
+  FacetryCore,
+  LogLevel,
+  Status,
+  sketchCurves,
+} from "./api";
 
 const example = readFileSync(
   new URL("../../../../tests/documents/corner-fillet.json", import.meta.url),
@@ -86,6 +94,19 @@ describe("FacetryCore (WebAssembly)", () => {
       expect(snapshot.state.features[0]?.regions).toHaveLength(1);
       expect(Object.keys(snapshot.regions).sort()).toEqual(["f1", "f3", "f5"]);
       expect(new Set(snapshot.regions.f1?.triangleFaceIds)).toEqual(new Set([1]));
+      // The slot sketch for display: lines l7, l8, the construction line l9, arcs a10, a11.
+      const slot = snapshot.state.features[0];
+      expect(slot?.frame?.normal).toEqual([0, -1, 0]);
+      expect(sketchCurves(slot?.definition ?? { type: "sketch" })).toEqual([
+        { id: "l7", construction: false },
+        { id: "l8", construction: false },
+        { id: "l9", construction: true },
+        { id: "a10", construction: false },
+        { id: "a11", construction: false },
+      ]);
+      expect(Array.from(snapshot.sketches.f1?.edgeIds ?? [])).toEqual([1, 2, 3, 4, 5]);
+      expect(snapshot.sketches.f1?.vertexIds.length).toBe(6);
+      expect(snapshot.sketches.f1?.triangles.length).toBe(0);
       const volume = (body: string) => {
         const shape = core.bodyShape(session, body);
         const result = core.properties(shape).volume;
