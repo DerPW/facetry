@@ -167,7 +167,7 @@ Feedback from using M1.3 on the iPad, done before M1.4.
       ([#62](https://github.com/DerPW/facetry/issues/62))
 - [x] ViewCube like Fusion's: home button, rotation arrows, hover highlights, compass
       ([#63](https://github.com/DerPW/facetry/issues/63))
-- [ ] Panels that can float, be moved, docked to a side and collapsed; the arrangement is kept
+- [x] Panels that can float, be moved, docked to a side and collapsed; the arrangement is kept
       per device ([#64](https://github.com/DerPW/facetry/issues/64))
 
 **Done when:** the five items work on the web and the iPad.

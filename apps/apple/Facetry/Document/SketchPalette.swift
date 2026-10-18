@@ -1,17 +1,15 @@
 import SwiftUI
 
-/// The sketch tools and actions as a vertical palette of icons (#62), shown under the ViewCube
-/// while a sketch is edited.
+/// The sketch tools and actions as a vertical palette of icons (#62), in the "sketch" panel while
+/// a sketch is edited.
 struct SketchPalette: View {
     let model: DocumentModel
-    let name: String
 
     private let columns = Array(repeating: GridItem(.fixed(40), spacing: 4), count: 3)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(name).font(.caption.bold()).lineLimit(1)
-            group {
+            group(divider: false) {
                 tool(nil)
                 ForEach(SketchToolKind.allCases.filter { !$0.isEditing }) { tool($0) }
             }
@@ -42,14 +40,14 @@ struct SketchPalette: View {
                 }
             }
         }
-        .frame(width: 132)
+        .frame(width: 128)
         .background { shortcuts }
     }
 
     /// A group of icons in three columns, under a divider.
-    private func group(@ViewBuilder _ content: () -> some View) -> some View {
+    private func group(divider: Bool = true, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(spacing: 6) {
-            Divider()
+            if divider { Divider() }
             LazyVGrid(columns: columns, alignment: .leading, spacing: 4, content: content)
         }
     }

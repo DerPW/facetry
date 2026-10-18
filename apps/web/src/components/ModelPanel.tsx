@@ -21,9 +21,8 @@ export function ModelPanel({ state, onSetParameter, onSetUnits }: Props) {
   };
 
   return (
-    <section className="panel model" aria-label="Parameters">
+    <div className="model">
       <div className="model-header">
-        <h2>Parameters</h2>
         <label>
           Units{" "}
           <select
@@ -56,6 +55,6 @@ export function ModelPanel({ state, onSetParameter, onSetUnits }: Props) {
           <span className="muted">{state.units}</span>
         </label>
       ))}
-    </section>
+    </div>
   );
 }
