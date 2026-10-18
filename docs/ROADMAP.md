@@ -16,7 +16,7 @@ Each phase has its own document with the detailed feature list:
 
 Related documents: [Architecture](ARCHITECTURE.md) · [Platforms & distribution](PLATFORMS.md) · [Prior art & lessons](PRIOR-ART.md) · [Building](BUILDING.md)
 
-**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview; the app also runs on a real iPad. In Phase 1, M1.1 (document, timeline & undo) is done: the apps open, edit, save and autosave documents, with a timeline, a browser panel, named undo steps and document units. New geometry cannot be created yet; that comes with sketching and solid features (M1.3–M1.5). M1.2 (viewport, navigation & selection) is done too: navigation presets, the ViewCube and named views, a ground grid, visual styles, and selection of several elements, by box and with a precision selector. M1.3 (sketching) is done: sketches on planes and faces with lines, rectangles, circles, arcs and points, snapping and inference that leave constraints behind, profiles with islands, trim, extend, fillet, delete, move and copy, and projection of origin geometry and model edges. Extrusions take the profiles chosen. Next is M1.4 (sketch constraints and dimensions).
+**Current status:** Phase 0 is done and tagged as the **v0.0.1** tech preview; the app also runs on a real iPad. In Phase 1, M1.1 (document, timeline & undo) is done: the apps open, edit, save and autosave documents, with a timeline, a browser panel, named undo steps and document units. New geometry cannot be created yet; that comes with sketching and solid features (M1.3–M1.5). M1.2 (viewport, navigation & selection) is done too: navigation presets, the ViewCube and named views, a ground grid, visual styles, and selection of several elements, by box and with a precision selector. M1.3 (sketching) is done: sketches on planes and faces with lines, rectangles, circles, arcs and points, snapping and inference that leave constraints behind, profiles with islands, trim, extend, fillet, delete, move and copy, and projection of origin geometry and model edges. Extrusions take the profiles chosen. Before M1.4 (sketch constraints and dimensions) comes M1.3b, a round of UI polish from using M1.3 on the iPad.
 
 ---
 
@@ -85,6 +85,7 @@ relative sizes stay as they were.
 | M1.1 | Document, timeline & undo | L | ✅ |
 | M1.2 | Viewport, navigation & selection | M | ✅ |
 | M1.3 | Sketching: geometry, snapping & inference | L | ✅ |
+| M1.3b | UI polish: plane picking, ViewCube, toolbars & panels | M | 🟡 |
 | M1.4 | Sketch constraints & dimensions | L | ⬜ |
 | M1.5 | Solid features: primitives, extrude, revolve, fillet, chamfer, combine | L | ⬜ |
 | M1.6 | Direct manipulation: press/pull, move, context toolbar | M | ⬜ |
