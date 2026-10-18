@@ -31,6 +31,12 @@ struct ViewCubeView: View {
     ]
 
     private static let compassLabels = ["N", "E", "S", "W"]
+    /// Face names are laid out in units of 1/40 of the face's center cell, which comes out near a
+    /// point when the face is seen straight on: the font size, and the widest a name gets (the
+    /// face is 67 units wide).
+    private static let labelCell = 40.0
+    private static let labelFont = 12.0
+    private static let labelWidth = 58.0
 
     var body: some View {
         Canvas { context, _ in draw(in: &context) }
@@ -171,22 +177,33 @@ struct ViewCubeView: View {
             context.fill(path, with: .color(fill))
             context.stroke(path, with: .color(line), lineWidth: 0.5)
         }
-        // Face names on the center cells, sized to the cell; faces seen edge-on stay unlabeled.
+        // Face names lie on the faces and turn with the cube. The cube is drawn without
+        // perspective, so the center cell's corners give the face's axes on the screen: from the
+        // first corner, the second lies along the face's horizontal and the fourth along its up.
         for cell in model.viewCube where cell.region == 0 && cell.points.count == 4 {
             let p = cell.points
-            let area =
-                abs((p[2].x - p[0].x) * (p[3].y - p[1].y) - (p[3].x - p[1].x) * (p[2].y - p[0].y))
-                / 2
-            let fontSize = min(12, area.squareRoot() * 0.3)
-            guard fontSize >= 6 else { continue }
+            let u = CGVector(
+                dx: (p[1].x - p[0].x) / Self.labelCell, dy: (p[1].y - p[0].y) / Self.labelCell)
+            let v = CGVector(
+                dx: (p[3].x - p[0].x) / Self.labelCell, dy: (p[3].y - p[0].y) / Self.labelCell)
+            // Faces seen nearly edge-on stay unlabeled.
+            guard abs(u.dx * v.dy - u.dy * v.dx) >= 0.12 else { continue }
             let center = CGPoint(
                 x: (p[0].x + p[1].x + p[2].x + p[3].x) / 4,
                 y: (p[0].y + p[1].y + p[2].y + p[3].y) / 4)
-            let name = ViewCubeCell.faceNames[cell.face].uppercased()
-            context.draw(
-                Text(name).font(.system(size: fontSize, weight: .semibold))
-                    .foregroundStyle(.secondary),
-                at: center)
+            var label = context
+            // Text runs along the face's horizontal; its downward is the face's down.
+            label.concatenate(
+                CGAffineTransform(
+                    a: u.dx, b: u.dy, c: -v.dx, d: -v.dy, tx: center.x, ty: center.y))
+            let name = label.resolve(
+                Text(ViewCubeCell.faceNames[cell.face].uppercased())
+                    .font(.system(size: Self.labelFont, weight: .semibold))
+                    .foregroundStyle(.secondary))
+            let width = name.measure(in: CGSize(width: 1000, height: 100)).width
+            let scale = min(1, Self.labelWidth / max(width, 1))
+            label.scaleBy(x: scale, y: scale)
+            label.draw(name, at: .zero)
         }
 
         // Arrows around the cube: triangles that turn, curved arrows that roll.
