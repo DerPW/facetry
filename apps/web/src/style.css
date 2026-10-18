@@ -435,11 +435,9 @@ body {
 }
 
 .viewcube {
+  position: relative;
   display: flex;
   pointer-events: auto;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
 }
 
 .viewcube canvas {
@@ -447,21 +445,81 @@ body {
   cursor: pointer;
 }
 
-.viewcube-actions {
-  display: flex;
-  gap: 4px;
-  font-size: 0.75rem;
+/* Home at the top left and the view menu at the bottom right, as on Fusion's ViewCube. */
+.viewcube-home,
+.viewcube-menu > button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-.viewcube-actions button,
-.viewcube-actions select {
+.viewcube-home:hover,
+.viewcube-menu > button:hover,
+.viewcube-menu > button[aria-expanded="true"] {
+  color: var(--accent);
+  background: var(--cube-face);
+}
+
+.viewcube-home svg,
+.viewcube-menu > button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.viewcube-home {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+}
+
+.viewcube-menu {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+}
+
+.viewcube-menu-list {
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 4px;
+  font-size: 0.8125rem;
+}
+
+.viewcube-menu-list button {
+  padding: 4px 8px;
   font: inherit;
   color: var(--fg);
-  background: var(--panel);
-  border: 1px solid var(--border);
+  text-align: left;
+  background: none;
+  border: none;
   border-radius: 6px;
-  padding: 2px 6px;
   cursor: pointer;
+}
+
+.viewcube-menu-list button:hover {
+  color: #fff;
+  background: var(--accent);
+}
+
+.viewcube-menu-list hr {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--border);
 }
 
 .controls button[aria-pressed="true"] {

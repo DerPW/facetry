@@ -114,6 +114,40 @@ struct ViewCubeCell: Equatable, Sendable {
     }
 }
 
+/// An arrow around the ViewCube (facetry_viewcube_arrow), shown while the view looks straight at
+/// a face: turn arrows turn the view to the next face, roll arrows roll a view from the top or
+/// the bottom.
+struct ViewCubeArrow: Equatable, Sendable {
+    enum Kind: UInt32 { case turn = 0, rollClockwise, rollCounterClockwise }
+
+    let kind: Kind
+    /// Turn arrows: the triangle's corners in the cube's square, in points.
+    let points: [CGPoint]
+    let center: CGPoint
+    /// Where a click looks from, and the side a view straight down or up leans toward.
+    let direction: SIMD3<Float>
+    let lean: SIMD3<Float>
+
+    init(_ arrow: facetry_viewcube_arrow) {
+        let p = arrow.points
+        kind = Kind(rawValue: arrow.kind) ?? .turn
+        points = [
+            CGPoint(x: Double(p.0), y: Double(p.1)), CGPoint(x: Double(p.2), y: Double(p.3)),
+            CGPoint(x: Double(p.4), y: Double(p.5)),
+        ]
+        center = CGPoint(x: Double(arrow.center.0), y: Double(arrow.center.1))
+        direction = SIMD3(arrow.direction.0, arrow.direction.1, arrow.direction.2)
+        lean = SIMD3(arrow.lean.0, arrow.lean.1, arrow.lean.2)
+    }
+}
+
+/// The compass ring around the ViewCube's base; empty when the view looks from the side.
+struct ViewCubeCompass: Equatable, Sendable {
+    var ring: [CGPoint] = []
+    /// Where N (+Y), E (+X), S (-Y) and W (-X) go.
+    var labels: [CGPoint] = []
+}
+
 /// A sketch plane in space: origin and unit axes, in millimeters.
 struct SketchPlane: Equatable, Sendable {
     let origin: SIMD3<Float>
@@ -303,6 +337,47 @@ final class ViewportRenderer {
     func viewCubeHit(size: Double, at point: CGPoint) -> Int? {
         let index = facetry_viewcube_hit(handle, Float(size), Float(point.x), Float(point.y))
         return index < 0 ? nil : Int(index)
+    }
+
+    /// Like ``view(from:animated:)``; a view straight down or up leans toward `lean`.
+    func view(from direction: SIMD3<Float>, lean: SIMD3<Float>, animated: Bool) {
+        facetry_camera_view_from_leaning(
+            handle, direction.x, direction.y, direction.z, lean.x, lean.y, animated ? 1 : 0)
+    }
+
+    /// The arrows around the ViewCube; none unless the view looks straight at a face.
+    func viewCubeArrows(size: Double) -> [ViewCubeArrow] {
+        var arrows = [facetry_viewcube_arrow](repeating: facetry_viewcube_arrow(), count: 6)
+        let count = Int(
+            facetry_viewcube_arrows(handle, Float(size), &arrows, UInt32(arrows.count)))
+        return arrows.prefix(min(count, arrows.count)).map(ViewCubeArrow.init)
+    }
+
+    /// Index in ``viewCubeArrows(size:)`` of the arrow under `point`, or nil.
+    func viewCubeArrowHit(size: Double, at point: CGPoint) -> Int? {
+        let index = facetry_viewcube_arrow_hit(
+            handle, Float(size), Float(point.x), Float(point.y))
+        return index < 0 ? nil : Int(index)
+    }
+
+    func viewCubeCompass(size: Double) -> ViewCubeCompass {
+        let capacity = 49
+        var ring = [Float](repeating: 0, count: capacity * 2)
+        var labels = [Float](repeating: 0, count: 8)
+        let count = min(
+            Int(facetry_viewcube_compass(handle, Float(size), &ring, UInt32(capacity), &labels)),
+            capacity)
+        guard count > 0 else { return ViewCubeCompass() }
+        func point(_ values: [Float], _ i: Int) -> CGPoint {
+            CGPoint(x: Double(values[i * 2]), y: Double(values[i * 2 + 1]))
+        }
+        return ViewCubeCompass(
+            ring: (0..<count).map { point(ring, $0) }, labels: (0..<4).map { point(labels, $0) })
+    }
+
+    /// Whether `point` is on the ViewCube's compass ring or one of its labels.
+    func viewCubeCompassHit(size: Double, at point: CGPoint) -> Bool {
+        facetry_viewcube_compass_hit(handle, Float(size), Float(point.x), Float(point.y)) != 0
     }
 
     func setOrthographic(_ orthographic: Bool) {

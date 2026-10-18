@@ -165,7 +165,7 @@ Feedback from using M1.3 on the iPad, done before M1.4.
       ([#61](https://github.com/DerPW/facetry/issues/61))
 - [x] Vertical sketch toolbar with tool icons instead of the row of buttons
       ([#62](https://github.com/DerPW/facetry/issues/62))
-- [ ] ViewCube like Fusion's: home button, rotation arrows, hover highlights, compass
+- [x] ViewCube like Fusion's: home button, rotation arrows, hover highlights, compass
       ([#63](https://github.com/DerPW/facetry/issues/63))
 - [ ] Panels that can float, be moved, docked to a side and collapsed; the arrangement is kept
       per device ([#64](https://github.com/DerPW/facetry/issues/64))

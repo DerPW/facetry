@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace facetry::render {
 namespace {
@@ -16,23 +17,20 @@ constexpr float kPoleTilt = 1e-3F;
 // The home view: from the front right, above.
 constexpr Vec3 kHomeDirection{1.0F, -1.0F, 0.8F};
 
-// Interpolates between unit vectors along the sphere. Opposite vectors turn around the world Z
-// axis (or X), so that front to back turns sideways instead of passing through the target.
-Vec3 slerp(Vec3 a, Vec3 b, float t) {
-    const float cosine = std::clamp(dot(a, b), -1.0F, 1.0F);
-    if (cosine > 0.9995F) {
-        return normalize(lerp(a, b, t));
-    }
-    if (cosine < -0.9995F) {
-        Vec3 axis = cross(a, kWorldUp);
-        if (length(axis) < 1e-6F) {
-            axis = {1.0F, 0.0F, 0.0F};
-        }
-        return rotate(a, normalize(axis), 3.14159265F * t);
-    }
-    const float angle = std::acos(cosine);
-    const float sine = std::sin(angle);
-    return normalize(a * (std::sin((1.0F - t) * angle) / sine) + b * (std::sin(t * angle) / sine));
+// Interpolates between view directions like a turntable: the angle around the world Z axis the
+// short way round, and the height. Front to back turns sideways instead of passing through the
+// target, and a turn from a view straight down to a side spins on the way instead of flipping
+// the picture where a sphere's shortest path would cross the pole.
+Vec3 turn(Vec3 a, Vec3 b, float t) {
+    constexpr float kFullTurn = 2.0F * std::numbers::pi_v<float>;
+    const float fromAzimuth = std::atan2(a.y, a.x);
+    const float azimuth =
+        fromAzimuth + std::remainder(std::atan2(b.y, b.x) - fromAzimuth, kFullTurn) * t;
+    const float fromElevation = std::asin(std::clamp(a.z, -1.0F, 1.0F));
+    const float toElevation = std::asin(std::clamp(b.z, -1.0F, 1.0F));
+    const float elevation = fromElevation + (toElevation - fromElevation) * t;
+    return {std::cos(elevation) * std::cos(azimuth), std::cos(elevation) * std::sin(azimuth),
+            std::sin(elevation)};
 }
 
 }  // namespace
@@ -96,14 +94,18 @@ void Camera::home(float seconds) {
            seconds);
 }
 
-void Camera::viewFrom(Vec3 direction, float seconds) {
+void Camera::viewFrom(Vec3 direction, float seconds, Vec3 lean) {
     if (length(direction) < 1e-9F) {
         return;
     }
     direction = normalize(direction);
     if (std::abs(direction.z) > 0.9999F) {
-        // Straight down or up: tilt toward the front, so that +X points right on the screen.
-        direction = normalize(Vec3{0.0F, -kPoleTilt, direction.z > 0.0F ? 1.0F : -1.0F});
+        // Straight down or up: tilt toward `lean` (the front by default, so that +X points right
+        // on the screen from above), which keeps the turntable's up direction defined.
+        Vec3 side{lean.x, lean.y, 0.0F};
+        side = length(side) < 1e-6F ? Vec3{0.0F, -1.0F, 0.0F} : normalize(side);
+        direction =
+            normalize(side * kPoleTilt + Vec3{0.0F, 0.0F, direction.z > 0.0F ? 1.0F : -1.0F});
     }
     Pose target = animation_ ? animation_->to : pose();
     target.direction = direction;
@@ -147,7 +149,7 @@ bool Camera::advance(float seconds) {
         return false;
     }
     setPose({.target = lerp(a.from.target, to.target, s),
-             .direction = slerp(a.from.direction, to.direction, s),
+             .direction = turn(a.from.direction, to.direction, s),
              .distance = a.from.distance + (to.distance - a.from.distance) * s,
              .orthoHalfHeight =
                  a.from.orthoHalfHeight + (to.orthoHalfHeight - a.from.orthoHalfHeight) * s});

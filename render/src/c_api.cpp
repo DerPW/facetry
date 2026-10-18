@@ -6,6 +6,7 @@
 #include "renderer.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <exception>
 #include <memory>
 #include <stdexcept>
@@ -250,6 +251,13 @@ void facetry_camera_view_from(facetry_renderer* renderer, float x, float y, floa
         [&](Renderer& r) { r.camera().viewFrom({x, y, z}, animate != 0 ? kViewSeconds : 0.0F); });
 }
 
+void facetry_camera_view_from_leaning(facetry_renderer* renderer, float x, float y, float z,
+                                      float lean_x, float lean_y, int animate) {
+    run(renderer, [&](Renderer& r) {
+        r.camera().viewFrom({x, y, z}, animate != 0 ? kViewSeconds : 0.0F, {lean_x, lean_y, 0.0F});
+    });
+}
+
 uint32_t facetry_viewcube_cells(const facetry_renderer* renderer, float size,
                                 facetry_viewcube_cell* out, uint32_t capacity) {
     if (renderer == nullptr || !renderer->renderer) {
@@ -283,6 +291,77 @@ int32_t facetry_viewcube_hit(const facetry_renderer* renderer, float size, float
         return facetry::render::viewCubeHit(renderer->renderer->camera(), size, x, y);
     } catch (...) {
         return -1;
+    }
+}
+
+uint32_t facetry_viewcube_arrows(const facetry_renderer* renderer, float size,
+                                 facetry_viewcube_arrow* out, uint32_t capacity) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return 0;
+    }
+    try {
+        const auto arrows = facetry::render::viewCubeArrows(renderer->renderer->camera(), size);
+        const auto count = static_cast<uint32_t>(arrows.size());
+        for (uint32_t i = 0; out != nullptr && i < count && i < capacity; ++i) {
+            const auto& arrow = arrows[i];
+            facetry_viewcube_arrow& result = out[i];
+            std::copy(arrow.points.begin(), arrow.points.end(), result.points);
+            std::copy(arrow.center.begin(), arrow.center.end(), result.center);
+            result.direction[0] = arrow.direction.x;
+            result.direction[1] = arrow.direction.y;
+            result.direction[2] = arrow.direction.z;
+            result.lean[0] = arrow.lean.x;
+            result.lean[1] = arrow.lean.y;
+            result.lean[2] = arrow.lean.z;
+            result.kind = static_cast<uint32_t>(arrow.kind);
+        }
+        return count;
+    } catch (...) {
+        return 0;
+    }
+}
+
+int32_t facetry_viewcube_arrow_hit(const facetry_renderer* renderer, float size, float x, float y) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return -1;
+    }
+    try {
+        return facetry::render::viewCubeArrowHit(renderer->renderer->camera(), size, x, y);
+    } catch (...) {
+        return -1;
+    }
+}
+
+uint32_t facetry_viewcube_compass(const facetry_renderer* renderer, float size, float* ring,
+                                  uint32_t capacity, float* labels) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return 0;
+    }
+    try {
+        const auto compass = facetry::render::viewCubeCompass(renderer->renderer->camera(), size);
+        const auto count = static_cast<uint32_t>(compass.ring.size() / 2);
+        if (ring != nullptr) {
+            std::copy_n(compass.ring.begin(), std::min(count, capacity) * 2, ring);
+        }
+        for (std::size_t i = 0; labels != nullptr && i < compass.labels.size(); ++i) {
+            labels[i * 2] = compass.labels[i][0];
+            labels[i * 2 + 1] = compass.labels[i][1];
+        }
+        return count;
+    } catch (...) {
+        return 0;
+    }
+}
+
+int facetry_viewcube_compass_hit(const facetry_renderer* renderer, float size, float x, float y) {
+    if (renderer == nullptr || !renderer->renderer) {
+        return 0;
+    }
+    try {
+        return facetry::render::viewCubeCompassHit(renderer->renderer->camera(), size, x, y) ? 1
+                                                                                             : 0;
+    } catch (...) {
+        return 0;
     }
 }
 

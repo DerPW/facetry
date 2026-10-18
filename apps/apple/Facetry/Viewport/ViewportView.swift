@@ -66,6 +66,8 @@ final class ViewportModel {
 
     /// The ViewCube's visible cells, kept current by the viewport (see ViewCubeView).
     fileprivate(set) var viewCube: [ViewCubeCell] = []
+    fileprivate(set) var viewCubeArrows: [ViewCubeArrow] = []
+    fileprivate(set) var viewCubeCompass = ViewCubeCompass()
 
     fileprivate var fitRequests = 0
     @ObservationIgnored fileprivate weak var coordinator: ViewportCoordinator?
@@ -86,13 +88,26 @@ final class ViewportModel {
         coordinator?.renderer?.view(from: direction, animated: true)
     }
 
-    /// The ViewCube cell under `point` in its square, if any.
-    func viewCubeCell(at point: CGPoint) -> ViewCubeCell? {
-        guard let renderer = coordinator?.renderer,
-            let index = renderer.viewCubeHit(size: ViewCubeView.size, at: point)
-        else { return nil }
-        let cells = renderer.viewCubeCells(size: ViewCubeView.size)
-        return cells.indices.contains(index) ? cells[index] : nil
+    /// Like ``view(from:)``; a view straight down or up leans toward `lean` (the ViewCube's
+    /// arrows).
+    func view(from direction: SIMD3<Float>, lean: SIMD3<Float>) {
+        coordinator?.renderer?.view(from: direction, lean: lean, animated: true)
+    }
+
+    /// What is under `point` in the ViewCube's square: the arrows lie outside the cube, the
+    /// compass ring under it.
+    func viewCubeTarget(at point: CGPoint) -> ViewCubeTarget? {
+        guard let renderer = coordinator?.renderer else { return nil }
+        let size = ViewCubeView.size
+        if let index = renderer.viewCubeArrowHit(size: size, at: point) {
+            let arrows = renderer.viewCubeArrows(size: size)
+            return arrows.indices.contains(index) ? .arrow(arrows[index]) : nil
+        }
+        if let index = renderer.viewCubeHit(size: size, at: point) {
+            let cells = renderer.viewCubeCells(size: size)
+            return cells.indices.contains(index) ? .cell(cells[index].direction) : nil
+        }
+        return renderer.viewCubeCompassHit(size: size, at: point) ? .compass : nil
     }
 
     /// Orbits around the point in the middle of the view (dragging the ViewCube).
@@ -316,6 +331,10 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         // The ViewCube and the glyphs follow the camera, including its animations.
         let cells = renderer.viewCubeCells(size: ViewCubeView.size)
         if cells != model.viewCube { model.viewCube = cells }
+        let arrows = renderer.viewCubeArrows(size: ViewCubeView.size)
+        if arrows != model.viewCubeArrows { model.viewCubeArrows = arrows }
+        let compass = renderer.viewCubeCompass(size: ViewCubeView.size)
+        if compass != model.viewCubeCompass { model.viewCubeCompass = compass }
         let placed = model.glyphs.compactMap { glyph in
             renderer.project(glyph.at).map { PlacedGlyph(text: glyph.text, point: $0) }
         }

@@ -55,6 +55,25 @@ export interface FacetryRenderModule {
   ): void;
   _facetry_viewcube_cells(renderer: number, size: number, out: number, capacity: number): number;
   _facetry_viewcube_hit(renderer: number, size: number, x: number, y: number): number;
+  _facetry_camera_view_from_leaning(
+    renderer: number,
+    x: number,
+    y: number,
+    z: number,
+    leanX: number,
+    leanY: number,
+    animate: number,
+  ): void;
+  _facetry_viewcube_arrows(renderer: number, size: number, out: number, capacity: number): number;
+  _facetry_viewcube_arrow_hit(renderer: number, size: number, x: number, y: number): number;
+  _facetry_viewcube_compass(
+    renderer: number,
+    size: number,
+    ring: number,
+    capacity: number,
+    labels: number,
+  ): number;
+  _facetry_viewcube_compass_hit(renderer: number, size: number, x: number, y: number): number;
   _facetry_camera_set_orthographic(renderer: number, orthographic: number): void;
   _facetry_camera_orbit_begin(renderer: number, x: number, y: number): void;
   _facetry_camera_orbit(renderer: number, dx: number, dy: number): void;

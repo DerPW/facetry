@@ -81,6 +81,32 @@ export type NamedView = keyof typeof NAMED_VIEWS;
 const CELL_BYTES = 56; // facetry_viewcube_cell: 12 floats and 2 uint32s
 const MAX_CELLS = 27;
 
+/** facetry_viewcube_arrow_kind */
+export const ViewCubeArrowKind = { Turn: 0, RollClockwise: 1, RollCounterClockwise: 2 } as const;
+export type ViewCubeArrowKind = (typeof ViewCubeArrowKind)[keyof typeof ViewCubeArrowKind];
+
+/** An arrow around the ViewCube (facetry_viewcube_arrow); see ViewCube.tsx. */
+export interface ViewCubeArrow {
+  kind: ViewCubeArrowKind;
+  /** Turn arrows: the triangle's corners [x, y] in the cube's square, in CSS pixels. */
+  points: [number, number][];
+  center: [number, number];
+  /** Where a click looks from, and the side a view straight down or up leans toward. */
+  direction: [number, number, number];
+  lean: [number, number, number];
+}
+
+/** The compass ring around the cube's base; empty when the view looks from the side. */
+export interface ViewCubeCompass {
+  ring: [number, number][];
+  /** Where N (+Y), E (+X), S (-Y) and W (-X) go. */
+  labels: [number, number][];
+}
+
+const ARROW_BYTES = 60; // facetry_viewcube_arrow: 14 floats and a uint32
+const MAX_ARROWS = 6;
+const COMPASS_POINTS = 49;
+
 export interface FrameStats {
   /** Average time between frames over the last second, in milliseconds. */
   frameMilliseconds: number;
@@ -136,6 +162,8 @@ export class Viewport {
   readonly #canvas: HTMLCanvasElement;
   readonly #scratch: number;
   readonly #cells: number;
+  // The ViewCube's arrows, or its compass ring followed by the labels.
+  readonly #cubeExtras: number;
   readonly #pointers = new Map<number, { x: number; y: number; startX: number; startY: number }>();
   // "drawPending": a finger is down while drawing, but has neither moved nor lifted yet, so a
   // second finger can still make it a navigation gesture.
@@ -179,6 +207,7 @@ export class Viewport {
     this.#canvas = canvas;
     this.#scratch = m._malloc(64);
     this.#cells = m._malloc(CELL_BYTES * MAX_CELLS);
+    this.#cubeExtras = m._malloc(Math.max(ARROW_BYTES * MAX_ARROWS, (COMPASS_POINTS * 2 + 8) * 4));
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<Viewport> {
@@ -537,6 +566,77 @@ export class Viewport {
     return this.#m._facetry_viewcube_hit(this.#renderer, size, x, y);
   }
 
+  /** Like viewFrom; a view straight down or up leans toward `lean` (the ViewCube's arrows). */
+  viewFromLeaning(
+    direction: readonly [number, number, number],
+    lean: readonly [number, number, number],
+    animate = true,
+  ): void {
+    const [x, y, z] = direction;
+    this.#m._facetry_camera_view_from_leaning(
+      this.#renderer,
+      x,
+      y,
+      z,
+      lean[0],
+      lean[1],
+      animate ? 1 : 0,
+    );
+  }
+
+  /** The arrows around the ViewCube; none unless the view looks straight at a face. */
+  viewCubeArrows(size: number): ViewCubeArrow[] {
+    const m = this.#m;
+    const count = Math.min(
+      m._facetry_viewcube_arrows(this.#renderer, size, this.#cubeExtras, MAX_ARROWS),
+      MAX_ARROWS,
+    );
+    const floats = m.HEAPF32;
+    const words = m.HEAPU32;
+    const arrows: ViewCubeArrow[] = [];
+    for (let i = 0; i < count; i++) {
+      const base = (this.#cubeExtras + i * ARROW_BYTES) >> 2;
+      const f = (offset: number) => floats[base + offset] ?? 0;
+      arrows.push({
+        kind: (words[base + 14] ?? 0) as ViewCubeArrowKind,
+        points: [0, 1, 2].map((k) => [f(k * 2), f(k * 2 + 1)] as [number, number]),
+        center: [f(6), f(7)],
+        direction: [f(8), f(9), f(10)],
+        lean: [f(11), f(12), f(13)],
+      });
+    }
+    return arrows;
+  }
+
+  /** Index in viewCubeArrows(size) of the arrow under (x, y), or -1. */
+  viewCubeArrowHit(size: number, x: number, y: number): number {
+    return this.#m._facetry_viewcube_arrow_hit(this.#renderer, size, x, y);
+  }
+
+  viewCubeCompass(size: number): ViewCubeCompass {
+    const m = this.#m;
+    const ring = this.#cubeExtras;
+    const labels = ring + COMPASS_POINTS * 2 * 4;
+    const count = Math.min(
+      m._facetry_viewcube_compass(this.#renderer, size, ring, COMPASS_POINTS, labels),
+      COMPASS_POINTS,
+    );
+    const floats = m.HEAPF32;
+    const point = (address: number, i: number): [number, number] => [
+      floats[(address >> 2) + i * 2] ?? 0,
+      floats[(address >> 2) + i * 2 + 1] ?? 0,
+    ];
+    return {
+      ring: Array.from({ length: count }, (_, i) => point(ring, i)),
+      labels: count === 0 ? [] : [0, 1, 2, 3].map((i) => point(labels, i)),
+    };
+  }
+
+  /** Whether (x, y) is on the ViewCube's compass ring or one of its labels. */
+  viewCubeCompassHit(size: number, x: number, y: number): boolean {
+    return this.#m._facetry_viewcube_compass_hit(this.#renderer, size, x, y) !== 0;
+  }
+
   /** Orbits around the point in the middle of the view (dragging the ViewCube). */
   orbitFromCenter(dx: number, dy: number, begin: boolean): void {
     if (begin) {
@@ -584,6 +684,7 @@ export class Viewport {
     this.#m._facetry_renderer_destroy(this.#renderer);
     this.#m._free(this.#scratch);
     this.#m._free(this.#cells);
+    this.#m._free(this.#cubeExtras);
   }
 
   #attach(): void {

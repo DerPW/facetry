@@ -143,6 +143,12 @@ FACETRY_RENDER_API void facetry_camera_home(facetry_renderer* renderer, int anim
  * toward the eye: (0, 0, 1) is the top view, (0, -1, 0) the front view, (1, -1, 1) a corner. */
 FACETRY_RENDER_API void facetry_camera_view_from(facetry_renderer* renderer, float x, float y,
                                                  float z, int animate);
+/* Like facetry_camera_view_from; a view straight down or up leans a tilt too small to see toward
+ * the horizontal (lean_x, lean_y) instead of the front: that side shows at the bottom of the
+ * screen from above and at the top from below. The ViewCube's arrows roll the view with it. */
+FACETRY_RENDER_API void facetry_camera_view_from_leaning(facetry_renderer* renderer, float x,
+                                                         float y, float z, float lean_x,
+                                                         float lean_y, int animate);
 FACETRY_RENDER_API void facetry_camera_set_orthographic(facetry_renderer* renderer,
                                                         int orthographic);
 /* Starts an orbit around the model point under (x, y), or the view center if there is none. */
@@ -214,6 +220,42 @@ FACETRY_RENDER_API uint32_t facetry_viewcube_cells(const facetry_renderer* rende
 /* Index of the cell under (x, y) in the square, in the order of facetry_viewcube_cells, or -1. */
 FACETRY_RENDER_API int32_t facetry_viewcube_hit(const facetry_renderer* renderer, float size,
                                                 float x, float y);
+
+typedef enum facetry_viewcube_arrow_kind {
+    FACETRY_VIEWCUBE_ARROW_TURN = 0,           /* a triangle pointing at the cube */
+    FACETRY_VIEWCUBE_ARROW_ROLL_CLOCKWISE = 1, /* a curved arrow around `center` */
+    FACETRY_VIEWCUBE_ARROW_ROLL_COUNTERCLOCKWISE = 2
+} facetry_viewcube_arrow_kind;
+
+/* An arrow around the ViewCube, shown while the view looks straight at a face, as in Fusion:
+ * turn arrows turn the view a quarter turn to the next face on their side; seen from the top or
+ * the bottom, roll arrows roll it a quarter turn. A click calls
+ * facetry_camera_view_from_leaning(direction, lean). */
+typedef struct facetry_viewcube_arrow {
+    float points[6];    /* turn arrows: x0 y0 … x2 y2 of the triangle, in the cube's square */
+    float center[2];    /* where the arrow is */
+    float direction[3]; /* where a click looks from */
+    float lean[3];      /* the side a view straight down or up leans toward */
+    uint32_t kind;      /* facetry_viewcube_arrow_kind */
+} facetry_viewcube_arrow;
+
+/* The arrows for a cube in a square of `size` points. Writes at most `capacity` arrows (6 are
+ * enough) and returns how many there are: none unless the view looks straight at a face. */
+FACETRY_RENDER_API uint32_t facetry_viewcube_arrows(const facetry_renderer* renderer, float size,
+                                                    facetry_viewcube_arrow* out, uint32_t capacity);
+/* Index of the arrow under (x, y), in the order of facetry_viewcube_arrows, or -1. */
+FACETRY_RENDER_API int32_t facetry_viewcube_arrow_hit(const facetry_renderer* renderer, float size,
+                                                      float x, float y);
+/* The compass ring around the cube's base: writes at most `capacity` points x y into `ring` (49
+ * are enough; the last repeats the first) and the places of the labels N (+Y), E (+X), S (-Y)
+ * and W (-X) into `labels` (8 floats), and returns the number of ring points. 0 when the view
+ * looks from the side, where the ring would be a line. Dragging the ring turns the view around
+ * the Z axis only. */
+FACETRY_RENDER_API uint32_t facetry_viewcube_compass(const facetry_renderer* renderer, float size,
+                                                     float* ring, uint32_t capacity, float* labels);
+/* 1 if (x, y) is on the compass ring or one of its labels. */
+FACETRY_RENDER_API int facetry_viewcube_compass_hit(const facetry_renderer* renderer, float size,
+                                                    float x, float y);
 
 /* ---- Picking and highlights --------------------------------------------------------------- */
 
