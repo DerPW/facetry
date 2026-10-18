@@ -40,6 +40,14 @@ struct ContentView: View {
                 VStack(alignment: .trailing, spacing: 0) {
                     controls
                     ViewCubeView(model: viewport)
+                    if let model, let sketching = model.sketching {
+                        SketchPalette(
+                            model: model,
+                            name: model.state?.features.first { $0.id == sketching }?.name
+                                ?? "Sketch"
+                        )
+                        .panel()
+                    }
                 }
             }
             .overlay(alignment: .bottom) {
@@ -56,7 +64,6 @@ struct ContentView: View {
                         }
                         .panel()
                     }
-                    sketchBar
                     if let model, model.profiles != nil {
                         HStack {
                             Text("Tap profiles to add or leave them out.").font(.caption)
@@ -145,75 +152,6 @@ struct ContentView: View {
         }
         .fixedSize()
         .disabled(model?.state == nil || model?.sketching != nil)
-    }
-
-    /// A tool's name with its key, e.g. "Line (L)".
-    private static func toolTitle(_ kind: SketchToolKind) -> String {
-        kind.key.map { "\(kind.title) (\(String($0).uppercased()))" } ?? kind.title
-    }
-
-    /// While sketching: which sketch, and finishing or cancelling it.
-    @ViewBuilder private var sketchBar: some View {
-        if let model, let sketching = model.sketching {
-            let name = model.state?.features.first { $0.id == sketching }?.name ?? "sketch"
-            HStack {
-                Text("Sketching \(name)").font(.caption)
-                // Drawing and editing tools in two short menus, so neither needs scrolling.
-                Menu {
-                    Button("Select") { model.tool = nil }
-                    ForEach(SketchToolKind.allCases.filter { !$0.isEditing }) { kind in
-                        Button(Self.toolTitle(kind)) { model.tool = kind }
-                    }
-                } label: {
-                    Text(model.tool.map { $0.isEditing ? "Draw" : Self.toolTitle($0) } ?? "Select")
-                }
-                .fixedSize()
-                Menu {
-                    ForEach(SketchToolKind.allCases.filter(\.isEditing)) { kind in
-                        Button(Self.toolTitle(kind)) { model.tool = kind }
-                    }
-                } label: {
-                    Text(model.tool.flatMap { $0.isEditing ? Self.toolTitle($0) : nil } ?? "Edit")
-                }
-                .fixedSize()
-                Button("Delete") { Task { await model.deleteSelected() } }
-                    .keyboardShortcut(.delete, modifiers: [])
-                    .disabled(model.tool != nil || model.selectedSketchEntities.isEmpty)
-                    .help("Delete the selected points and curves (Delete)")
-                Button("Project") { Task { await model.projectSelection() } }
-                    .help(
-                        "Project the selected faces and edges into the sketch; without a selection, the origin and axes"
-                    )
-                Toggle(
-                    "Construction",
-                    isOn: Binding(
-                        get: { model.construction },
-                        set: { _ in Task { await model.toggleConstruction() } })
-                )
-                .toggleStyle(.button)
-                .help("Construction curves (X): new ones, or the selected ones")
-                Toggle(
-                    "Grid snap",
-                    isOn: Binding(get: { model.gridSnap }, set: { model.gridSnap = $0 })
-                )
-                .toggleStyle(.button)
-                .help("Snap free points to the grid")
-                Button("Finish sketch") { Task { await model.finishSketch(keep: true) } }
-                Button("Cancel") { Task { await model.finishSketch(keep: false) } }
-                // Keys choose tools while sketching (docs/INPUT.md).
-                ForEach(SketchToolKind.allCases.filter { $0.key != nil }) { kind in
-                    Button(kind.title) { model.tool = kind }
-                        .keyboardShortcut(KeyEquivalent(kind.key ?? " "), modifiers: [])
-                        .hidden()
-                        .frame(width: 0, height: 0)
-                }
-                Button("Construction") { Task { await model.toggleConstruction() } }
-                    .keyboardShortcut("x", modifiers: [])
-                    .hidden()
-                    .frame(width: 0, height: 0)
-            }
-            .panel()
-        }
     }
 
     private var controls: some View {

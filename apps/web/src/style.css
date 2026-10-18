@@ -543,3 +543,58 @@ body {
   right: -8px;
   height: 1px;
 }
+
+/* The sketch palette (#62): the tools and actions as icons in a column under the ViewCube. */
+.sketch-palette {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  width: 124px;
+  pointer-events: auto;
+}
+
+.sketch-palette-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sketch-palette-group {
+  display: grid;
+  grid-template-columns: repeat(3, 36px);
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.sketch-palette button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--fg);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.sketch-palette button:hover:not(:disabled) {
+  border-color: var(--border);
+}
+
+.sketch-palette button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sketch-palette button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

@@ -5,6 +5,7 @@ import exampleDocument from "../../../tests/documents/corner-fillet.json?raw";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { ModelPanel } from "./components/ModelPanel";
 import { RecoveryPanel } from "./components/RecoveryPanel";
+import { SKETCH_TOOL_KEYS, SketchPalette } from "./components/SketchPalette";
 import { Timeline, type Repair } from "./components/Timeline";
 import { ViewCube } from "./components/ViewCube";
 import { ViewportCanvas } from "./components/ViewportCanvas";
@@ -97,30 +98,6 @@ const GLYPHS: Record<string, string> = {
   concentric: "◎",
   fix: "F",
 };
-
-/** The drawing tools in the sketch palette, and their keys (docs/INPUT.md). */
-const SKETCH_TOOLS: { tool: SketchTool; label: string; key?: string }[] = [
-  { tool: SketchTool.Line, label: "Line", key: "l" },
-  { tool: SketchTool.RectangleTwoPoint, label: "Rectangle: 2 corners", key: "r" },
-  { tool: SketchTool.RectangleThreePoint, label: "Rectangle: 3 points" },
-  { tool: SketchTool.RectangleCenter, label: "Rectangle: center" },
-  { tool: SketchTool.CircleCenter, label: "Circle: center", key: "c" },
-  { tool: SketchTool.CircleTwoPoint, label: "Circle: 2 points" },
-  { tool: SketchTool.CircleThreePoint, label: "Circle: 3 points" },
-  { tool: SketchTool.ArcThreePoint, label: "Arc: 3 points", key: "a" },
-  { tool: SketchTool.ArcCenter, label: "Arc: center" },
-  { tool: SketchTool.ArcTangent, label: "Arc: tangent" },
-  { tool: SketchTool.Point, label: "Point", key: "p" },
-];
-
-/** The editing tools in the sketch palette, and their keys (docs/INPUT.md). */
-const SKETCH_EDIT_TOOLS: { tool: SketchTool; label: string; key?: string }[] = [
-  { tool: SketchTool.Trim, label: "Trim", key: "t" },
-  { tool: SketchTool.Extend, label: "Extend", key: "e" },
-  { tool: SketchTool.Fillet, label: "Fillet" },
-  { tool: SketchTool.Move, label: "Move", key: "m" },
-  { tool: SketchTool.Copy, label: "Copy" },
-];
 
 /** A length in millimeters, in the document's unit, for labels. */
 function formatLength(millimeters: number, units: LengthUnit): string {
@@ -905,9 +882,7 @@ export function App() {
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (sketching) {
-        const chosen = [...SKETCH_TOOLS, ...SKETCH_EDIT_TOOLS].find(
-          (entry) => entry.key === event.key,
-        );
+        const chosen = SKETCH_TOOL_KEYS.find((entry) => entry.key === event.key);
         if (chosen) {
           setTool(chosen.tool);
           return;
@@ -988,104 +963,39 @@ export function App() {
           )}
         </div>
         <div className="top-right">
-          <div className="panel controls sketch">
-            {sketchFeature ? (
-              <>
-                <span>Sketching {sketchFeature.name}</span>
-                <select
-                  aria-label="Sketch tool"
-                  value={tool ?? ""}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setTool(value === "" ? null : (Number(value) as SketchTool));
-                  }}
+          {!sketchFeature && (
+            <div className="panel controls sketch">
+              {pickingPlane && <span className="muted">Pick a plane or a planar face</span>}
+              <button
+                type="button"
+                aria-pressed={pickingPlane}
+                disabled={!model || sketching !== null}
+                title="Pick the sketch plane in the viewport: an origin plane or a planar face (Esc cancels)"
+                onClick={() => setPickingPlane((on) => !on)}
+              >
+                {pickingPlane ? "Cancel" : "New sketch"}
+              </button>
+              <select
+                aria-label="Sketch on"
+                value=""
+                disabled={!model || sketching !== null}
+                onChange={(event) => newSketch(event.currentTarget.value)}
+              >
+                <option value="" disabled>
+                  On…
+                </option>
+                <option value="xy">On the XY plane</option>
+                <option value="xz">On the XZ plane</option>
+                <option value="yz">On the YZ plane</option>
+                <option
+                  value="face"
+                  disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
                 >
-                  <option value="">Select</option>
-                  {[
-                    ["Draw", SKETCH_TOOLS],
-                    ["Edit", SKETCH_EDIT_TOOLS],
-                  ].map(([group, tools]) => (
-                    <optgroup key={group as string} label={group as string}>
-                      {(tools as typeof SKETCH_TOOLS).map(({ tool: kind, label, key }) => (
-                        <option key={kind} value={kind}>
-                          {key ? `${label} (${key.toUpperCase()})` : label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={tool !== null || selectedEntities.length === 0}
-                  title="Delete the selected points and curves (Delete)"
-                  onClick={deleteSelected}
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  title="Project the selected faces and edges into the sketch; without a selection, the origin and axes"
-                  onClick={projectSelection}
-                >
-                  Project
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={construction}
-                  title="Construction curves (X): new ones, or the selected ones"
-                  onClick={toggleConstruction}
-                >
-                  Construction
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={gridSnap}
-                  title="Snap free points to the grid"
-                  onClick={() => setGridSnap((on) => !on)}
-                >
-                  Grid snap
-                </button>
-                <button type="button" onClick={() => finishSketch(true)}>
-                  Finish sketch
-                </button>
-                <button type="button" onClick={() => finishSketch(false)}>
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                {pickingPlane && <span className="muted">Pick a plane or a planar face</span>}
-                <button
-                  type="button"
-                  aria-pressed={pickingPlane}
-                  disabled={!model || sketching !== null}
-                  title="Pick the sketch plane in the viewport: an origin plane or a planar face (Esc cancels)"
-                  onClick={() => setPickingPlane((on) => !on)}
-                >
-                  {pickingPlane ? "Cancel" : "New sketch"}
-                </button>
-                <select
-                  aria-label="Sketch on"
-                  value=""
-                  disabled={!model || sketching !== null}
-                  onChange={(event) => newSketch(event.currentTarget.value)}
-                >
-                  <option value="" disabled>
-                    On…
-                  </option>
-                  <option value="xy">On the XY plane</option>
-                  <option value="xz">On the XZ plane</option>
-                  <option value="yz">On the YZ plane</option>
-                  <option
-                    value="face"
-                    disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
-                  >
-                    On the selected face
-                  </option>
-                </select>
-              </>
-            )}
-          </div>
+                  On the selected face
+                </option>
+              </select>
+            </div>
+          )}
           <div className="panel controls">
             <input
               ref={fileInput}
@@ -1209,6 +1119,21 @@ export function App() {
             <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
           </div>
           {viewport && <ViewCube viewport={viewport} />}
+          {sketchFeature && (
+            <SketchPalette
+              name={sketchFeature.name}
+              tool={tool}
+              onTool={setTool}
+              construction={construction}
+              onConstruction={toggleConstruction}
+              gridSnap={gridSnap}
+              onGridSnap={() => setGridSnap((on) => !on)}
+              canDelete={tool === null && selectedEntities.length > 0}
+              onDelete={deleteSelected}
+              onProject={projectSelection}
+              onFinish={finishSketch}
+            />
+          )}
         </div>
         {model && (
           <Timeline
