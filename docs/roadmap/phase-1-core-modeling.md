@@ -152,6 +152,26 @@ and with a mouse on the first or second attempt.
 
 **Done when:** all benchmark sketches can be drawn without typing coordinates.
 
+## M1.3b — UI polish: plane picking, ViewCube, toolbars & panels
+
+**Size:** M · **Depends on:** M1.3
+
+Feedback from using M1.3 on the iPad, done before M1.4.
+
+- [x] Smooth circles and arcs in sketches at any zoom
+      ([#60](https://github.com/DerPW/facetry/issues/60))
+- [ ] Pick the sketch plane in the viewport, like Fusion and Shapr3D: the origin planes show at
+      the origin, a tap on one or on a planar face starts the sketch
+      ([#61](https://github.com/DerPW/facetry/issues/61))
+- [ ] Vertical sketch toolbar with tool icons instead of the row of buttons
+      ([#62](https://github.com/DerPW/facetry/issues/62))
+- [ ] ViewCube like Fusion's: home button, rotation arrows, hover highlights, compass
+      ([#63](https://github.com/DerPW/facetry/issues/63))
+- [ ] Panels that can float, be moved, docked to a side and collapsed; the arrangement is kept
+      per device ([#64](https://github.com/DerPW/facetry/issues/64))
+
+**Done when:** the five items work on the web and the iPad.
+
 ## M1.4 — Sketch constraints & dimensions
 
 **Size:** L · **Depends on:** M1.3

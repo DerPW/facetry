@@ -384,7 +384,8 @@ TEST_CASE("sketches are drawn from their curves and points") {
     // Every point of the arc a1 around (8, 2) lies on its circle, and the chords stay close.
     const std::uint32_t first = mesh.edgeOffsets[3];
     const std::uint32_t last = mesh.edgeOffsets[4];
-    CHECK(last - first > 8);
+    // Half a circle in steps of at most 2°, so small arcs look round when zoomed in (#60).
+    CHECK(last - first - 1 >= 90);
     for (std::uint32_t k = first; k < last; ++k) {
         const double x = mesh.edgePoints[k * 3];
         const double y = mesh.edgePoints[k * 3 + 1];

@@ -46,8 +46,8 @@ struct SketchGeometry {
 };
 
 // A sketch for display: curve i is edge ID i + 1 (as in SketchGeometry::curves), sampled so that
-// arcs and circles stay within `deflection` of the true curve; point i is vertex ID i + 1. There
-// are no triangles.
+// arcs and circles stay within `deflection` of the true curve, in steps of at most 2°; point i is
+// vertex ID i + 1. There are no triangles.
 [[nodiscard]] Mesh sketchMesh(const SketchGeometry& sketch, double deflection);
 
 // The same for any curves and points on a sketch plane (sketch coordinates in millimeters).

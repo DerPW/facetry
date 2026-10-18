@@ -292,10 +292,12 @@ Mesh curvesMesh(const SketchFrame& frame, std::span<const ProfileSegment> curves
                     sweep += 2.0 * std::numbers::pi;
                 }
             }
-            // Steps short enough to stay within the deflection, and at most 0.2 rad.
+            // Steps short enough to stay within the deflection, and at most 2°: sketch mode zooms
+            // in close, and a sketch has few curves.
+            constexpr double kMaxStep = 2.0 * std::numbers::pi / 180.0;
             const double ratio =
                 radius > 0.0 ? std::clamp(1.0 - deflection / radius, -1.0, 1.0) : -1.0;
-            const double step = std::clamp(2.0 * std::acos(ratio), 1e-3, 0.2);
+            const double step = std::clamp(2.0 * std::acos(ratio), 1e-3, kMaxStep);
             const auto count =
                 static_cast<std::size_t>(std::clamp(std::ceil(sweep / step), 2.0, 512.0));
             const double direction = curve.clockwise ? -1.0 : 1.0;
