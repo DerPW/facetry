@@ -163,7 +163,7 @@ Feedback from using M1.3 on the iPad, done before M1.4.
 - [x] Pick the sketch plane in the viewport, like Fusion and Shapr3D: the origin planes show at
       the origin, a tap on one or on a planar face starts the sketch
       ([#61](https://github.com/DerPW/facetry/issues/61))
-- [ ] Vertical sketch toolbar with tool icons instead of the row of buttons
+- [x] Vertical sketch toolbar with tool icons instead of the row of buttons
       ([#62](https://github.com/DerPW/facetry/issues/62))
 - [ ] ViewCube like Fusion's: home button, rotation arrows, hover highlights, compass
       ([#63](https://github.com/DerPW/facetry/issues/63))

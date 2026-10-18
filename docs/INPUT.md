@@ -46,6 +46,10 @@ starts the sketch on it; a face under the pointer wins over a plane in front of 
 
 ### Drawing in sketch mode
 
+The sketch palette, a column of icons under the ViewCube, holds the drawing and editing tools,
+Project, Construction, Grid snap and Delete, and Finish and Cancel; hovering an icon (or a long
+press) names it and its key.
+
 With a drawing tool chosen in the sketch palette (docs/adr/0015-sketch-tools.md), the pointer
 draws instead of selecting or orbiting:
 
@@ -57,7 +61,7 @@ draws instead of selecting or orbiting:
 | See what the next point draws | — | hover (supported iPads) | move | move |
 | Orbit | the ViewCube | the ViewCube | `Alt`/`Option` + left drag | two-finger scroll in the presets that orbit |
 | Pan and zoom | two fingers (a second finger before the first moved turns it into navigation) | — | the other buttons and the wheel, as in the preset | as in the preset |
-| End the shape, then leave the tool | choose Select | choose Select | `Esc`, `Esc` | `Esc`, `Esc` |
+| End the shape, then leave the tool | the arrow (Select) in the palette | the same | `Esc`, `Esc` | `Esc`, `Esc` |
 
 Within the pick radius, points snap to existing sketch points, then to midpoints, quadrants,
 intersections and the origin, then onto curves; lines also follow horizontal, vertical,
