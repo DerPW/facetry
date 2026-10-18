@@ -13,6 +13,14 @@ const SIZE = 132;
 /** Pointer movement below which a press on the cube counts as a click. */
 const CLICK_SLOP = 4;
 const COMPASS_LABELS = ["N", "E", "S", "W"];
+/**
+ * Face names are laid out in units of 1/40 of the face's center cell, which comes out near a
+ * CSS pixel when the face is seen straight on: the font size, and the widest a name gets (the
+ * face is 67 units wide).
+ */
+const LABEL_CELL = 40;
+const LABEL_FONT = 12;
+const LABEL_WIDTH = 58;
 
 type Direction = readonly [number, number, number];
 
@@ -118,23 +126,35 @@ export function ViewCube({ viewport }: Props) {
         context.lineWidth = 1;
         context.stroke();
       }
-      // Face names on the center cells, sized to the cell; faces seen edge-on stay unlabeled.
+      // Face names lie on the faces and turn with the cube. The cube is drawn without
+      // perspective, so the center cell's corners give the face's axes on the screen: from the
+      // first corner, the second lies along the face's horizontal and the fourth along its up.
       context.fillStyle = color("--muted");
+      context.font = `600 ${LABEL_FONT}px system-ui, sans-serif`;
       for (const cell of cells) {
         if (cell.region !== 0) continue;
         const [a, b, c, d] = cell.points;
         if (!a || !b || !c || !d) continue;
-        const area = Math.abs((c[0] - a[0]) * (d[1] - b[1]) - (d[0] - b[0]) * (c[1] - a[1])) / 2;
-        const fontSize = Math.min(13, Math.sqrt(area) * 0.3);
-        if (fontSize < 6) continue;
-        context.font = `600 ${fontSize.toFixed(1)}px system-ui, sans-serif`;
-        const name = CUBE_FACES[cell.face] ?? "";
-        context.fillText(
-          name.toUpperCase(),
-          (a[0] + b[0] + c[0] + d[0]) / 4,
-          (a[1] + b[1] + c[1] + d[1]) / 4,
+        const [ux, uy] = [(b[0] - a[0]) / LABEL_CELL, (b[1] - a[1]) / LABEL_CELL];
+        const [vx, vy] = [(d[0] - a[0]) / LABEL_CELL, (d[1] - a[1]) / LABEL_CELL];
+        // Faces seen nearly edge-on stay unlabeled.
+        if (Math.abs(ux * vy - uy * vx) < 0.12) continue;
+        const name = (CUBE_FACES[cell.face] ?? "").toUpperCase();
+        const scale = Math.min(1, LABEL_WIDTH / context.measureText(name).width);
+        const cx = (a[0] + b[0] + c[0] + d[0]) / 4;
+        const cy = (a[1] + b[1] + c[1] + d[1]) / 4;
+        // Text runs along the face's horizontal; its downward is the face's down.
+        context.setTransform(
+          ratio * ux * scale,
+          ratio * uy * scale,
+          -ratio * vx * scale,
+          -ratio * vy * scale,
+          ratio * cx,
+          ratio * cy,
         );
+        context.fillText(name, 0, 0.5);
       }
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
       // Arrows around the cube: triangles that turn, curved arrows that roll.
       arrows.forEach((arrow, index) => {
