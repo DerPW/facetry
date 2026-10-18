@@ -42,9 +42,10 @@ class Camera {
     // The home view: the whole scene from the front right, above.
     void home(float seconds = 0.0F);
     // Turns the camera around its target to look from `direction` (from the target toward the
-    // eye), keeping the distance. Views straight down or up get a tilt too small to see, so the
-    // front stays at the bottom of the screen. With `seconds` > 0 the turn is animated.
-    void viewFrom(Vec3 direction, float seconds = 0.0F);
+    // eye), keeping the distance. Views straight down or up lean a tilt too small to see toward
+    // the horizontal `lean`, the front by default: that side shows at the bottom of the screen
+    // from above and at the top from below. With `seconds` > 0 the turn is animated.
+    void viewFrom(Vec3 direction, float seconds = 0.0F, Vec3 lean = {0.0F, -1.0F, 0.0F});
     // Moves a running animation on. Returns true while one runs. Every other camera move
     // stops it.
     bool advance(float seconds);

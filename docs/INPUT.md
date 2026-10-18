@@ -17,7 +17,10 @@ Until drawing tools exist (M1.3), a Pencil drag orbits like a finger.
 | Zoom toward the pointer | pinch | — | wheel | pinch |
 | Fit the view | two-finger double-tap | — | `F` | two-finger double-tap (smart zoom, Mac) |
 | Turn the view to a face, edge or corner | tap the ViewCube | tap the ViewCube | click the ViewCube | click the ViewCube |
+| Turn a view straight on a face to the next face, or roll a view from the top or the bottom | tap an arrow around the ViewCube | tap an arrow | click an arrow | click an arrow |
 | Orbit with the ViewCube | drag it | drag it | drag it | drag it |
+| Turn around the Z axis only | drag the compass ring under the ViewCube | drag the ring | drag the ring | drag the ring |
+| Home view | the house on the ViewCube | the house | the house, or `Home` | the house, or `Home` |
 | Select | tap | tap | click | click |
 | Add to or remove from the selection | tap with **Multi** on | tap with **Multi** on | Shift/Cmd/Ctrl + click | Shift/Cmd + click |
 | Select the next element under the pointer (overlapping, or a hidden face behind) | tap the same spot again | tap the same spot again | click the same spot again | click the same spot again |
