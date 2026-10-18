@@ -168,3 +168,35 @@ TEST_CASE("sketch points and curves are picked over the model") {
     CHECK(candidates[0].kind == PickKind::SketchCurve);
     CHECK(candidates[1].kind == PickKind::Face);
 }
+
+TEST_CASE("origin planes are sized to the scene and picked where no face is") {
+    // A 4 × 4 × 4 cube at the origin: the planes reach 1.2 × 4 into the positive quadrants.
+    const PickIndex model(test::unitCube(4.0F));
+    const RenderMesh mesh = originPlanesMesh(model.bounds());
+    CHECK(mesh.triangleFaceIds == std::vector<std::uint32_t>{1, 1, 2, 2, 3, 3});
+    CHECK(mesh.edgeIds == std::vector<std::uint32_t>{1, 2, 3});
+    const PickIndex planes(mesh);
+    CHECK(planes.bounds().max.x == doctest::Approx(10.0F));  // at least 10 units
+    CHECK(originPlanesMesh(Bounds{}).positions.size() == 36);
+
+    // Looking down past the cube onto XY: plane 1.
+    const auto xy = pickPlane(planes, model, {{7, 7, 20}, {0, 0, -1}});
+    REQUIRE(xy.has_value());
+    CHECK(xy->kind == PickKind::Plane);
+    CHECK(xy->id == 1);
+    CHECK(xy->point.z == doctest::Approx(0.0F));
+    // Down onto the cube's top face: the face is in front of XY.
+    CHECK_FALSE(pickPlane(planes, model, {{2, 2, 20}, {0, 0, -1}}).has_value());
+    // Onto its -Y face, which lies in XZ: the face wins.
+    CHECK_FALSE(pickPlane(planes, model, {{2, -20, 2}, {0, 1, 0}}).has_value());
+    // From the front, down through XZ (at height 6) onto the top face: a face under the pointer
+    // wins over a plane in front of it.
+    const float diagonal = 0.70710678F;
+    CHECK_FALSE(pickPlane(planes, model, {{2, -20, 26}, {0, diagonal, -diagonal}}).has_value());
+    // Beside the cube onto XZ from the front: plane 2.
+    const auto xz = pickPlane(planes, model, {{7, -20, 7}, {0, 1, 0}});
+    REQUIRE(xz.has_value());
+    CHECK(xz->id == 2);
+    // Past every plane.
+    CHECK_FALSE(pickPlane(planes, model, {{-5, -5, 20}, {0, 0, -1}}).has_value());
+}

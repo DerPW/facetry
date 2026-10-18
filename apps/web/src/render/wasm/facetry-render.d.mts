@@ -16,6 +16,7 @@ export interface FacetryRenderModule {
   _facetry_renderer_last_error(renderer: number): number;
   _facetry_renderer_set_mesh(renderer: number, mesh: number): number;
   _facetry_renderer_set_regions(renderer: number, mesh: number): number;
+  _facetry_renderer_set_origin_planes(renderer: number, shown: number): number;
   _facetry_renderer_set_sketch_preview(renderer: number, mesh: number): number;
   _facetry_renderer_project(renderer: number, x: number, y: number, z: number, out: number): number;
   _facetry_renderer_grid_spacing(renderer: number): number;

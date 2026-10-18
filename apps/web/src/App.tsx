@@ -249,6 +249,11 @@ export function App() {
   const [stats, setStats] = useState<FrameStats | null>(null);
   const [selection, setSelection] = useState<Pick[]>([]);
   const [pickFilter, setPickFilter] = useState<PickFilter>(PickFilter.Everything);
+  // Picking the sketch plane in the viewport (#61): the origin planes show, and the next plane or
+  // planar face picked starts the sketch.
+  const [pickingPlane, setPickingPlane] = useState(false);
+  const pickingPlaneRef = useRef(false);
+  const startSketchRef = useRef<(plane: string, faceId?: number) => void>(() => undefined);
   const [multiSelect, setMultiSelect] = useState(false);
   const [boxMode, setBoxMode] = useState(false);
   const [orthographic, setOrthographic] = useState(false);
@@ -425,6 +430,14 @@ export function App() {
   const onPick = useCallback(
     (list: Pick[], pick: Pick) => {
       setSelection(list);
+      if (pickingPlaneRef.current && pick.kind === PickKind.Plane) {
+        startSketchRef.current(["xy", "xz", "yz"][pick.id - 1] ?? "xy");
+        return;
+      }
+      if (pickingPlaneRef.current && pick.kind === PickKind.Face) {
+        startSketchRef.current("face", pick.id);
+        return;
+      }
       const pending = repairRef.current;
       const body = modelRef.current?.bodies.find((b) => b.visible)?.id;
       const feature = modelRef.current?.features.find((f) => f.id === pending?.feature);
@@ -580,17 +593,29 @@ export function App() {
 
   // A new sketch on an origin plane ("xy", "xz", "yz") or on the selected face ("face"), at the
   // rollback marker.
-  const newSketch = (plane: string) => {
+  // `faceId`: the face picked in the viewport; otherwise the selected one.
+  const newSketch = (plane: string, faceId?: number) => {
     const current = model;
-    const face = selection.find((pick) => pick.kind === PickKind.Face);
+    const face = faceId ?? selection.find((pick) => pick.kind === PickKind.Face)?.id;
     const body = current?.bodies.find((b) => b.visible)?.id;
-    if (!current || sketching || (plane === "face" && (!face || !body))) return;
+    if (!current || sketching || (plane === "face" && (face === undefined || !body))) return;
     const before = new Set(current.features.map((f) => f.id));
     void change(async ({ core, handle }) => {
       const feature: FeatureJson = { type: "sketch", plane, points: [], lines: [] };
-      if (plane === "face" && face && body) {
-        feature.face = await core.call("makeReference", handle, body, ElementKind.Face, face.id);
+      if (plane === "face" && face !== undefined && body) {
+        const reference: Reference = await core.call(
+          "makeReference",
+          handle,
+          body,
+          ElementKind.Face,
+          face,
+        );
+        if (reference.shadow && reference.shadow.type !== "plane") {
+          throw new Error(`Sketches need a planar face; this one is a ${reference.shadow.type}`);
+        }
+        feature.face = reference;
       }
+      setPickingPlane(false);
       await core.call("beginTransaction", handle, "Sketch");
       try {
         await core.call(
@@ -608,6 +633,14 @@ export function App() {
       setSketching(state.features.find((f) => !before.has(f.id))?.id ?? null);
     });
   };
+
+  useEffect(() => {
+    startSketchRef.current = newSketch;
+  });
+  useEffect(() => {
+    pickingPlaneRef.current = pickingPlane;
+    viewport?.setOriginPlanes(pickingPlane);
+  }, [viewport, pickingPlane]);
 
   const editSketch = (id: string) => {
     if (sketching) return;
@@ -806,10 +839,13 @@ export function App() {
   };
 
   useEffect(() => {
-    viewport?.setPickFilter(choosing ? PickFilter.Regions : pickFilter);
-    viewport?.setMultiSelect(choosing ? true : multiSelect);
-    viewport?.setBoxMode(choosing ? false : boxMode);
-  }, [viewport, pickFilter, multiSelect, boxMode, choosing]);
+    // Choosing profiles picks regions; choosing a sketch plane, planes and faces.
+    viewport?.setPickFilter(
+      choosing ? PickFilter.Regions : pickingPlane ? PickFilter.Faces : pickFilter,
+    );
+    viewport?.setMultiSelect(choosing ? true : pickingPlane ? false : multiSelect);
+    viewport?.setBoxMode(choosing || pickingPlane ? false : boxMode);
+  }, [viewport, pickFilter, multiSelect, boxMode, choosing, pickingPlane]);
 
   // The shown body's opacity comes from the document; the style is a device setting.
   const opacity = model?.bodies.find((body) => body.visible)?.opacity ?? 1;
@@ -897,6 +933,7 @@ export function App() {
       else if (event.key === "f") viewport?.fit();
       else if (event.key === "o") setOrthographic((value) => !value);
       else if (event.key === "g") setGrid((shown) => !shown);
+      else if (event.key === "Escape" && pickingPlaneRef.current) setPickingPlane(false);
       else if (event.key === "Escape") viewport?.clearSelection();
     };
     window.addEventListener("keydown", onKey);
@@ -1016,25 +1053,37 @@ export function App() {
                 </button>
               </>
             ) : (
-              <select
-                aria-label="New sketch"
-                value=""
-                disabled={!model || sketching !== null}
-                onChange={(event) => newSketch(event.currentTarget.value)}
-              >
-                <option value="" disabled>
-                  New sketch…
-                </option>
-                <option value="xy">On the XY plane</option>
-                <option value="xz">On the XZ plane</option>
-                <option value="yz">On the YZ plane</option>
-                <option
-                  value="face"
-                  disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
+              <>
+                {pickingPlane && <span className="muted">Pick a plane or a planar face</span>}
+                <button
+                  type="button"
+                  aria-pressed={pickingPlane}
+                  disabled={!model || sketching !== null}
+                  title="Pick the sketch plane in the viewport: an origin plane or a planar face (Esc cancels)"
+                  onClick={() => setPickingPlane((on) => !on)}
                 >
-                  On the selected face
-                </option>
-              </select>
+                  {pickingPlane ? "Cancel" : "New sketch"}
+                </button>
+                <select
+                  aria-label="Sketch on"
+                  value=""
+                  disabled={!model || sketching !== null}
+                  onChange={(event) => newSketch(event.currentTarget.value)}
+                >
+                  <option value="" disabled>
+                    On…
+                  </option>
+                  <option value="xy">On the XY plane</option>
+                  <option value="xz">On the XZ plane</option>
+                  <option value="yz">On the YZ plane</option>
+                  <option
+                    value="face"
+                    disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
+                  >
+                    On the selected face
+                  </option>
+                </select>
+              </>
             )}
           </div>
           <div className="panel controls">

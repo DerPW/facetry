@@ -328,9 +328,10 @@ Bounds PickIndex::elementBounds(PickKind kind, std::uint32_t id) const {
                 bounds = bounds_;
             }
             break;
-        case PickKind::Region:  // regions and sketches have indexes of their own
+        case PickKind::Region:  // regions, sketches and planes have indexes of their own
         case PickKind::SketchCurve:
         case PickKind::SketchPoint:
+        case PickKind::Plane:
         case PickKind::None:
             break;
     }
@@ -632,6 +633,50 @@ std::vector<PickResult> candidatesWithOverlays(const PickIndex& model, Overlays 
         result.insert(result.end(), rest.begin(), rest.end());
     }
     return result;
+}
+
+RenderMesh originPlanesMesh(const Bounds& scene) {
+    float size = 10.0F;
+    if (!scene.isEmpty()) {
+        for (const float v :
+             {scene.min.x, scene.min.y, scene.min.z, scene.max.x, scene.max.y, scene.max.z}) {
+            size = std::max(size, std::abs(v) * 1.2F);
+        }
+    }
+    RenderMesh mesh;
+    const auto square = [&](Vec3 u, Vec3 v, Vec3 normal, std::uint32_t id) {
+        const auto first = static_cast<std::uint32_t>(mesh.positions.size() / 3);
+        const std::array<Vec3, 4> corners = {Vec3{0, 0, 0}, u * size, (u + v) * size, v * size};
+        for (const Vec3& corner : corners) {
+            mesh.positions.insert(mesh.positions.end(), {corner.x, corner.y, corner.z});
+            mesh.normals.insert(mesh.normals.end(), {normal.x, normal.y, normal.z});
+        }
+        mesh.triangles.insert(mesh.triangles.end(),
+                              {first, first + 1, first + 2, first, first + 2, first + 3});
+        mesh.triangleFaceIds.insert(mesh.triangleFaceIds.end(), {id, id});
+        for (std::size_t k = 0; k <= corners.size(); ++k) {
+            const Vec3& corner = corners[k % corners.size()];
+            mesh.edgePoints.insert(mesh.edgePoints.end(), {corner.x, corner.y, corner.z});
+        }
+        mesh.edgeOffsets.push_back(static_cast<std::uint32_t>(mesh.edgePoints.size() / 3));
+        mesh.edgeIds.push_back(id);
+    };
+    square({1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 1);   // XY
+    square({1, 0, 0}, {0, 0, 1}, {0, -1, 0}, 2);  // XZ
+    square({0, 1, 0}, {0, 0, 1}, {1, 0, 0}, 3);   // YZ
+    return mesh;
+}
+
+std::optional<PickResult> pickPlane(const PickIndex& planes, const PickIndex& model,
+                                    const Ray& ray) {
+    const auto plane = planes.raycast(ray);
+    if (!plane || model.raycast(ray)) {
+        return std::nullopt;
+    }
+    return PickResult{.kind = PickKind::Plane,
+                      .id = plane->faceId,
+                      .point = ray.origin + ray.direction * plane->distance,
+                      .screenDistance = 0.0F};
 }
 
 }  // namespace facetry::render

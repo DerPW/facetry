@@ -28,6 +28,8 @@ struct Pick: Equatable, Sendable {
         /// by edge or vertex ID.
         case sketchCurve = 6
         case sketchPoint = 7
+        /// An origin plane shown with ``ViewportRenderer/setOriginPlanes(_:)``: 1 XY, 2 XZ, 3 YZ.
+        case plane = 8
     }
 
     var kind: Kind = .none
@@ -146,6 +148,12 @@ final class ViewportRenderer {
 
     /// Shows a sketch's regions over the model to choose from (a mesh of its region shape), or
     /// hides them (nil). Selected regions are dropped: their IDs change with the regions.
+    /// Shows or hides the origin planes to start a sketch on (#61); while shown they are picked
+    /// as ``Pick/Kind/plane`` where no face is under the pointer.
+    func setOriginPlanes(_ shown: Bool) throws {
+        try check(facetry_renderer_set_origin_planes(handle, shown ? 1 : 0))
+    }
+
     func setRegions(_ mesh: MeshData?) throws {
         if let mesh {
             try check(withRenderMesh(mesh) { facetry_renderer_set_regions(handle, $0) })

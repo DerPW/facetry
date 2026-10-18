@@ -160,7 +160,7 @@ Feedback from using M1.3 on the iPad, done before M1.4.
 
 - [x] Smooth circles and arcs in sketches at any zoom
       ([#60](https://github.com/DerPW/facetry/issues/60))
-- [ ] Pick the sketch plane in the viewport, like Fusion and Shapr3D: the origin planes show at
+- [x] Pick the sketch plane in the viewport, like Fusion and Shapr3D: the origin planes show at
       the origin, a tap on one or on a planar face starts the sketch
       ([#61](https://github.com/DerPW/facetry/issues/61))
 - [ ] Vertical sketch toolbar with tool icons instead of the row of buttons

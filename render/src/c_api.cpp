@@ -164,6 +164,10 @@ facetry_render_status facetry_renderer_set_sketch(facetry_renderer* renderer,
     });
 }
 
+facetry_render_status facetry_renderer_set_origin_planes(facetry_renderer* renderer, int shown) {
+    return run(renderer, [&](Renderer& r) { r.setOriginPlanes(shown != 0); });
+}
+
 facetry_render_status facetry_renderer_set_sketch_preview(facetry_renderer* renderer,
                                                           const facetry_render_mesh* mesh) {
     return run(renderer, [&](Renderer& r) {
