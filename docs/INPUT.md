@@ -49,9 +49,9 @@ starts the sketch on it; a face under the pointer wins over a plane in front of 
 
 ### Drawing in sketch mode
 
-The sketch palette, a column of icons under the ViewCube, holds the drawing and editing tools,
-Project, Construction, Grid snap and Delete, and Finish and Cancel; hovering an icon (or a long
-press) names it and its key.
+The sketch palette, a column of icons under the ViewCube (a panel that can be moved), holds the
+drawing and editing tools, Project, Construction, Grid snap and Delete, and Finish and Cancel;
+hovering an icon (or a long press) names it and its key.
 
 With a drawing tool chosen in the sketch palette (docs/adr/0015-sketch-tools.md), the pointer
 draws instead of selecting or orbiting:
@@ -129,6 +129,18 @@ over faces:
 | Finger | 18 pt |
 | Pencil / pen | 8 pt |
 | Mouse, trackpad | 6 pt |
+
+### Panels
+
+The panels (Facetry, Parameters, Browser, the toolbar, the sketch palette and, on the web,
+Unsaved work) can be arranged; the arrangement belongs to the device and is kept.
+
+| Action | Finger (iPad, web touch) | Apple Pencil / pen | Mouse (Mac, iPad, web) | Trackpad (Mac, iPad) |
+|---|---|---|---|---|
+| Move a panel; dropped away from the sides it floats as a small window | drag its title | drag its title | drag its title | drag its title |
+| Dock a panel to a side, between the panels where it is dropped (on the right above or below the ViewCube) | drop it near the left or right edge | the same | the same | the same |
+| Collapse a panel to its title, or show it again | tap the chevron | tap the chevron | click the chevron | click the chevron |
+| Put every panel back | **Reset panels** (web toolbar; Apple: Display menu) | the same | the same | the same |
 
 ## Keyboard
 

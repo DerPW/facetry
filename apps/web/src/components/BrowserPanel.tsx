@@ -40,7 +40,7 @@ export function BrowserPanel({
   );
 
   return (
-    <section className="panel browser" aria-label="Browser">
+    <div className="browser">
       <details>
         <summary>Origin</summary>
         <ul>
@@ -153,6 +153,6 @@ export function BrowserPanel({
           {sketches.length === 0 && <li className="muted">No sketches</li>}
         </ul>
       </details>
-    </section>
+    </div>
   );
 }

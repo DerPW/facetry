@@ -5,6 +5,8 @@ struct ContentView: View {
     @State private var viewport = ViewportModel()
     @State private var model: DocumentModel?
     @State private var selectedFeature: String?
+    // Where the panels are on this device (#64).
+    @State private var panels = PanelLayout()
     @Environment(\.undoManager) private var undoManager
     // Navigation settings belong to the device, not the document (docs/INPUT.md).
     @AppStorage("navigationPreset") private var navigationPreset = NavigationPreset.facetry
@@ -22,34 +24,6 @@ struct ContentView: View {
             .overlay { SelectionBoxOverlay(model: viewport).ignoresSafeArea() }
             // Same frame as the viewport, so the labels sit on what they label.
             .overlay { sketchLabels.ignoresSafeArea() }
-            .overlay(alignment: .topLeading) {
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                    if let model, let state = model.state {
-                        ModelPanel(state: state, model: model)
-                        BrowserPanel(
-                            state: state, model: model,
-                            selectFeature: { selectedFeature = $0 },
-                            selectBody: { viewport.selectBody() }
-                        )
-                        .panel()
-                    }
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                VStack(alignment: .trailing, spacing: 0) {
-                    controls
-                    ViewCubeView(model: viewport)
-                    if let model, let sketching = model.sketching {
-                        SketchPalette(
-                            model: model,
-                            name: model.state?.features.first { $0.id == sketching }?.name
-                                ?? "Sketch"
-                        )
-                        .panel()
-                    }
-                }
-            }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 8) {
                     if model?.repair != nil {
@@ -102,6 +76,10 @@ struct ContentView: View {
             }
             .overlay(alignment: .bottomLeading) { stats }
             .overlay(alignment: .bottomTrailing) { selection }
+            // Last, so that floating panels lie above the rest.
+            .overlay {
+                PanelArea(layout: panels, panels: panelSpecs) { ViewCubeView(model: viewport) }
+            }
             .task {
                 let model = DocumentModel(viewport: viewport) { data in
                     // Marks the document as edited; SwiftUI saves it.
@@ -113,9 +91,30 @@ struct ContentView: View {
             }
     }
 
+    /// The panels that can be moved, docked and collapsed (#64), in their default order.
+    private var panelSpecs: [PanelSpec] {
+        var specs = [PanelSpec("header", "Facetry") { header }]
+        if let model, let state = model.state {
+            specs.append(
+                PanelSpec("parameters", "Parameters") { ModelPanel(state: state, model: model) })
+            specs.append(
+                PanelSpec("browser", "Browser") {
+                    BrowserPanel(
+                        state: state, model: model,
+                        selectFeature: { selectedFeature = $0 },
+                        selectBody: { viewport.selectBody() })
+                })
+        }
+        specs.append(PanelSpec("toolbar", "Toolbar") { controls })
+        if let model, let sketching = model.sketching {
+            let name = model.state?.features.first { $0.id == sketching }?.name ?? "Sketch"
+            specs.append(PanelSpec("sketch", name) { SketchPalette(model: model) })
+        }
+        return specs
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Facetry").font(.headline)
             Text(
                 "Version \(version) · tech preview\(model?.stress == true ? " · stress test" : "")")
             if let progress = model?.progress {
@@ -127,7 +126,6 @@ struct ContentView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .frame(maxWidth: 320, alignment: .leading)
-        .panel()
     }
 
     private var coreStatus: String {
@@ -178,6 +176,8 @@ struct ContentView: View {
                 #if os(iOS)
                     Toggle("One finger pans", isOn: $oneFingerPans)
                 #endif
+                Divider()
+                Button("Reset Panels") { panels.reset() }
             }
             .fixedSize()
             Picker("Select", selection: $viewport.pickFilter) {
@@ -187,8 +187,10 @@ struct ContentView: View {
             .fixedSize()
             Toggle("Multi", isOn: $viewport.multiSelect)
                 .toggleStyle(.button)
+                .fixedSize()
             Toggle("Box", isOn: $viewport.boxMode)
                 .toggleStyle(.button)
+                .fixedSize()
                 .help(
                     "Drags draw a selection box: to the right a window, to the left a crossing box")
             // Shortcuts of the menu items (docs/INPUT.md): O projection, G grid.
@@ -220,7 +222,6 @@ struct ContentView: View {
                     .frame(width: 0, height: 0)
             }
         }
-        .panel()
     }
 
     /// Constraint glyphs on the sketch, and what the pointer snapped to while drawing.
@@ -294,7 +295,7 @@ private struct ModelPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Parameters").font(.caption.bold())
+                Text("Units").font(.caption)
                 Spacer()
                 Picker("Units", selection: units) {
                     ForEach(LengthUnit.allCases) { Text($0.symbol).tag($0) }
@@ -310,7 +311,6 @@ private struct ModelPanel: View {
             }
         }
         .frame(width: 240, alignment: .leading)
-        .panel()
     }
 }
 

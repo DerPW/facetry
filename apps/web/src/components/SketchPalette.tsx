@@ -154,7 +154,7 @@ export interface SketchPaletteProps {
   onFinish: (keep: boolean) => void;
 }
 
-/** The sketch tools and actions as a vertical palette of icons (#62). */
+/** The sketch tools and actions as a vertical palette of icons (#62), in the "sketch" panel. */
 export function SketchPalette(props: SketchPaletteProps) {
   const toolButton = ({ tool, label, icon, key }: ToolButton) => (
     <button
@@ -186,10 +186,7 @@ export function SketchPalette(props: SketchPaletteProps) {
     </button>
   );
   return (
-    <div className="panel sketch-palette" role="toolbar" aria-label="Sketch tools">
-      <p className="sketch-palette-title" title={`Sketching ${props.name}`}>
-        {props.name}
-      </p>
+    <div className="sketch-palette" role="toolbar" aria-label={`Sketch tools: ${props.name}`}>
       <div className="sketch-palette-group">{DRAW.map(toolButton)}</div>
       <div className="sketch-palette-group">{EDIT.map(toolButton)}</div>
       <div className="sketch-palette-group">

@@ -60,18 +60,129 @@ body {
   pointer-events: auto;
 }
 
-.sidebar {
+/* Panels (#64): docked to the left or the right side, or floating; dragged by their title. */
+.dock {
   position: absolute;
   top: 12px;
-  left: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: calc(100vh - 24px);
+}
+
+.dock-left {
+  left: 12px;
   max-width: 280px;
 }
 
-.sidebar .panel {
+/* The ViewCube sits in the right dock; the toolbar wraps before it reaches the left dock. */
+.dock-right {
+  right: 12px;
+  left: 316px;
+  align-items: flex-end;
+}
+
+.dock .panel,
+.dock-fixed {
   position: static;
+}
+
+.dock-fixed {
+  pointer-events: none;
+}
+
+.panel-frame {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+}
+
+.panel-frame.dragging {
+  z-index: 20;
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.panel-frame.dragging .panel-title {
+  cursor: grabbing;
+}
+
+.panel-grip {
+  flex: none;
+  fill: currentColor;
+  opacity: 0.6;
+}
+
+.panel-title-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-collapse {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.panel-collapse:hover {
+  color: var(--fg);
+  background: var(--border);
+}
+
+.panel-collapse svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.panel-body {
+  padding: 0 12px 8px;
+  overflow: auto;
+}
+
+/* Where a dragged panel docks if it is dropped now. */
+.dock-target {
+  position: fixed;
+  top: 8px;
+  bottom: 8px;
+  width: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.dock-target-left {
+  left: 4px;
+}
+
+.dock-target-right {
+  right: 4px;
 }
 
 .error {
@@ -272,28 +383,10 @@ body {
   gap: 8px;
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
 .muted {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
-}
-
-/* Controls and the ViewCube, top right; the controls wrap before they reach the sidebar. */
-.top-right {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  left: 316px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
 }
 
 .controls {
@@ -394,12 +487,6 @@ body {
 
 .recovery {
   font-size: 0.85rem;
-}
-
-.recovery h2 {
-  margin: 0 0 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
 }
 
 .recovery p {
@@ -604,22 +691,15 @@ body {
 
 /* The sketch palette (#62): the tools and actions as icons in a column under the ViewCube. */
 .sketch-palette {
-  position: static;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px;
-  width: 124px;
-  pointer-events: auto;
+  width: 116px;
 }
 
-.sketch-palette-title {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sketch-palette-group:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
 .sketch-palette-group {

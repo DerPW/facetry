@@ -9,8 +9,7 @@ interface Props {
 /** Autosaves of tabs that closed before their work was saved (#17). */
 export function RecoveryPanel({ entries, onOpen, onDiscard }: Props) {
   return (
-    <section className="panel recovery" aria-label="Unsaved work">
-      <h2>Unsaved work</h2>
+    <div className="recovery">
       <p className="muted">Facetry closed before this was saved.</p>
       <ul>
         {entries.map((entry) => (
@@ -28,6 +27,6 @@ export function RecoveryPanel({ entries, onOpen, onDiscard }: Props) {
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import exampleDocument from "../../../tests/documents/corner-fillet.json?raw";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { ModelPanel } from "./components/ModelPanel";
+import { PanelArea, usePanelLayout } from "./components/Panels";
 import { RecoveryPanel } from "./components/RecoveryPanel";
 import { SKETCH_TOOL_KEYS, SketchPalette } from "./components/SketchPalette";
 import { Timeline, type Repair } from "./components/Timeline";
@@ -221,6 +222,8 @@ interface Session {
 /** Tech preview: the viewport with the example model, its parameters, status and statistics. */
 export function App() {
   const [viewport, setViewport] = useState<Viewport | null>(null);
+  // Where the panels are on this device (#64).
+  const panelLayout = usePanelLayout();
   const [status, setStatus] = useState("Starting the core…");
   const [ready, setReady] = useState<boolean | undefined>(undefined);
   const [stats, setStats] = useState<FrameStats | null>(null);
@@ -923,218 +926,261 @@ export function App() {
         data-core-ready={ready === undefined ? undefined : String(ready)}
         data-fps={stats ? (1000 / stats.frameMilliseconds).toFixed(1) : undefined}
       >
-        <div className="sidebar">
-          <header className="panel header">
-            <h1>Facetry</h1>
-            <p className="muted">
-              Version {__APP_VERSION__} · tech preview{stress ? " · stress test" : ""}
-            </p>
-            {model && <p className="muted">{fileName}</p>}
-            <p className="muted">{status}</p>
-            {progress && (
-              <p className="muted" role="status">
-                Regenerating… {progress.done} of {progress.total} features
-              </p>
-            )}
-            {editError && <p className="error">{editError}</p>}
-          </header>
-          {recovery.length > 0 && (
-            <RecoveryPanel
-              entries={recovery}
-              onOpen={(entry) => void recover(entry)}
-              onDiscard={discard}
-            />
-          )}
-          {model && (
-            <ModelPanel
-              state={model}
-              onSetParameter={(name, value) => edit({ op: "setParameter", name, value })}
-              onSetUnits={(units) => edit({ op: "setUnits", units })}
-            />
-          )}
-          {model && (
-            <BrowserPanel
-              state={model}
-              onEdit={edit}
-              onSelectFeature={setSelectedFeature}
-              onSelectBody={() => viewport?.selectBody()}
-              onEditSketch={editSketch}
-            />
-          )}
-        </div>
-        <div className="top-right">
-          {!sketchFeature && (
-            <div className="panel controls sketch">
-              {pickingPlane && <span className="muted">Pick a plane or a planar face</span>}
-              <button
-                type="button"
-                aria-pressed={pickingPlane}
-                disabled={!model || sketching !== null}
-                title="Pick the sketch plane in the viewport: an origin plane or a planar face (Esc cancels)"
-                onClick={() => setPickingPlane((on) => !on)}
-              >
-                {pickingPlane ? "Cancel" : "New sketch"}
-              </button>
-              <select
-                aria-label="Sketch on"
-                value=""
-                disabled={!model || sketching !== null}
-                onChange={(event) => newSketch(event.currentTarget.value)}
-              >
-                <option value="" disabled>
-                  On…
-                </option>
-                <option value="xy">On the XY plane</option>
-                <option value="xz">On the XZ plane</option>
-                <option value="yz">On the YZ plane</option>
-                <option
-                  value="face"
-                  disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
-                >
-                  On the selected face
-                </option>
-              </select>
-            </div>
-          )}
-          <div className="panel controls">
-            <input
-              ref={fileInput}
-              type="file"
-              accept=".facetry,.json"
-              hidden
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                event.currentTarget.value = "";
-                if (file) void openFile(file);
-              }}
-            />
-            <button type="button" disabled={!model} onClick={() => fileInput.current?.click()}>
-              Open…
-            </button>
-            <button type="button" disabled={!model} onClick={() => void saveFile()}>
-              Save
-            </button>
-            <button
-              type="button"
-              disabled={!model?.canUndo}
-              title={model?.undoName ? `Undo ${model.undoName} (⌘Z / Ctrl+Z)` : "Undo"}
-              onClick={() => void change(({ core, handle }) => core.call("undo", handle))}
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              disabled={!model?.canRedo}
-              title={model?.redoName ? `Redo ${model.redoName} (⇧⌘Z / Ctrl+Y)` : "Redo"}
-              onClick={() => void change(({ core, handle }) => core.call("redo", handle))}
-            >
-              Redo
-            </button>
-            <button type="button" title="Fit (F)" onClick={() => viewport?.fit()}>
-              Fit
-            </button>
-            <button
-              type="button"
-              title="Toggle projection (O)"
-              onClick={() => setOrthographic((v) => !v)}
-            >
-              {orthographic ? "Perspective" : "Orthographic"}
-            </button>
-            <select
-              aria-label="Visual style"
-              value={style}
-              onChange={(event) => setStyle(Number(event.currentTarget.value) as VisualStyle)}
-            >
-              <option value={VisualStyle.Shaded}>Shaded</option>
-              <option value={VisualStyle.ShadedEdges}>Shaded with edges</option>
-              <option value={VisualStyle.ShadedHiddenEdges}>Hidden edges</option>
-              <option value={VisualStyle.Wireframe}>Wireframe</option>
-            </select>
-            <select
-              aria-label="Select"
-              title="What clicks select (keys 1–5)"
-              value={pickFilter}
-              onChange={(event) => setPickFilter(Number(event.currentTarget.value) as PickFilter)}
-            >
-              <option value={PickFilter.Everything}>Select: all</option>
-              <option value={PickFilter.Vertices}>Vertices</option>
-              <option value={PickFilter.Edges}>Edges</option>
-              <option value={PickFilter.Faces}>Faces</option>
-              <option value={PickFilter.Bodies}>Bodies</option>
-            </select>
-            <button
-              type="button"
-              aria-pressed={multiSelect}
-              title="Every click or tap adds to the selection (or Shift/Cmd/Ctrl + click)"
-              onClick={() => setMultiSelect((on) => !on)}
-            >
-              Multi
-            </button>
-            <button
-              type="button"
-              aria-pressed={boxMode}
-              title="Drags draw a selection box: to the right a window, to the left a crossing box"
-              onClick={() => setBoxMode((on) => !on)}
-            >
-              Box
-            </button>
-            <button
-              type="button"
-              aria-pressed={grid}
-              title="Show or hide the ground grid (G)"
-              onClick={() => setGrid((shown) => !shown)}
-            >
-              Grid
-            </button>
-            <select
-              aria-label="Mouse and trackpad navigation"
-              title="Mouse and trackpad navigation (docs/INPUT.md)"
-              value={navigation.preset}
-              onChange={(event) =>
-                setNavigation({
-                  ...navigation,
-                  preset: Number(event.currentTarget.value) as NavigationPreset,
-                })
-              }
-            >
-              <option value={NavigationPreset.Facetry}>Facetry navigation</option>
-              <option value={NavigationPreset.Fusion}>Fusion navigation</option>
-              <option value={NavigationPreset.Trackpad}>Trackpad navigation</option>
-            </select>
-            {hasTouch && (
-              <select
-                aria-label="One-finger drag"
-                value={navigation.oneFinger}
-                onChange={(event) =>
-                  setNavigation({
-                    ...navigation,
-                    oneFinger: event.currentTarget.value === "pan" ? "pan" : "orbit",
-                  })
-                }
-              >
-                <option value="orbit">One finger orbits</option>
-                <option value="pan">One finger pans</option>
-              </select>
-            )}
-            <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
-          </div>
-          {viewport && <ViewCube viewport={viewport} />}
-          {sketchFeature && (
-            <SketchPalette
-              name={sketchFeature.name}
-              tool={tool}
-              onTool={setTool}
-              construction={construction}
-              onConstruction={toggleConstruction}
-              gridSnap={gridSnap}
-              onGridSnap={() => setGridSnap((on) => !on)}
-              canDelete={tool === null && selectedEntities.length > 0}
-              onDelete={deleteSelected}
-              onProject={projectSelection}
-              onFinish={finishSketch}
-            />
-          )}
-        </div>
+        <PanelArea
+          layout={panelLayout.layout}
+          onLayout={panelLayout.setLayout}
+          rightFixed={viewport && <ViewCube viewport={viewport} />}
+          panels={[
+            {
+              id: "header",
+              title: "Facetry",
+              content: (
+                <div className="header">
+                  <p className="muted">
+                    Version {__APP_VERSION__} · tech preview{stress ? " · stress test" : ""}
+                  </p>
+                  {model && <p className="muted">{fileName}</p>}
+                  <p className="muted">{status}</p>
+                  {progress && (
+                    <p className="muted" role="status">
+                      Regenerating… {progress.done} of {progress.total} features
+                    </p>
+                  )}
+                  {editError && <p className="error">{editError}</p>}
+                </div>
+              ),
+            },
+            {
+              id: "recovery",
+              title: "Unsaved work",
+              content: recovery.length > 0 && (
+                <RecoveryPanel
+                  entries={recovery}
+                  onOpen={(entry) => void recover(entry)}
+                  onDiscard={discard}
+                />
+              ),
+            },
+            {
+              id: "parameters",
+              title: "Parameters",
+              content: model && (
+                <ModelPanel
+                  state={model}
+                  onSetParameter={(name, value) => edit({ op: "setParameter", name, value })}
+                  onSetUnits={(units) => edit({ op: "setUnits", units })}
+                />
+              ),
+            },
+            {
+              id: "browser",
+              title: "Browser",
+              content: model && (
+                <BrowserPanel
+                  state={model}
+                  onEdit={edit}
+                  onSelectFeature={setSelectedFeature}
+                  onSelectBody={() => viewport?.selectBody()}
+                  onEditSketch={editSketch}
+                />
+              ),
+            },
+            {
+              id: "toolbar",
+              title: "Toolbar",
+              content: (
+                <div className="controls">
+                  {!sketchFeature && (
+                    <>
+                      {pickingPlane && <span className="muted">Pick a plane or a planar face</span>}
+                      <button
+                        type="button"
+                        aria-pressed={pickingPlane}
+                        disabled={!model || sketching !== null}
+                        title="Pick the sketch plane in the viewport: an origin plane or a planar face (Esc cancels)"
+                        onClick={() => setPickingPlane((on) => !on)}
+                      >
+                        {pickingPlane ? "Cancel" : "New sketch"}
+                      </button>
+                      <select
+                        aria-label="Sketch on"
+                        value=""
+                        disabled={!model || sketching !== null}
+                        onChange={(event) => newSketch(event.currentTarget.value)}
+                      >
+                        <option value="" disabled>
+                          On…
+                        </option>
+                        <option value="xy">On the XY plane</option>
+                        <option value="xz">On the XZ plane</option>
+                        <option value="yz">On the YZ plane</option>
+                        <option
+                          value="face"
+                          disabled={!selection.some((pick) => pick.kind === PickKind.Face)}
+                        >
+                          On the selected face
+                        </option>
+                      </select>
+                    </>
+                  )}
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".facetry,.json"
+                    hidden
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = "";
+                      if (file) void openFile(file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={!model}
+                    onClick={() => fileInput.current?.click()}
+                  >
+                    Open…
+                  </button>
+                  <button type="button" disabled={!model} onClick={() => void saveFile()}>
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!model?.canUndo}
+                    title={model?.undoName ? `Undo ${model.undoName} (⌘Z / Ctrl+Z)` : "Undo"}
+                    onClick={() => void change(({ core, handle }) => core.call("undo", handle))}
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!model?.canRedo}
+                    title={model?.redoName ? `Redo ${model.redoName} (⇧⌘Z / Ctrl+Y)` : "Redo"}
+                    onClick={() => void change(({ core, handle }) => core.call("redo", handle))}
+                  >
+                    Redo
+                  </button>
+                  <button type="button" title="Fit (F)" onClick={() => viewport?.fit()}>
+                    Fit
+                  </button>
+                  <button
+                    type="button"
+                    title="Toggle projection (O)"
+                    onClick={() => setOrthographic((v) => !v)}
+                  >
+                    {orthographic ? "Perspective" : "Orthographic"}
+                  </button>
+                  <select
+                    aria-label="Visual style"
+                    value={style}
+                    onChange={(event) => setStyle(Number(event.currentTarget.value) as VisualStyle)}
+                  >
+                    <option value={VisualStyle.Shaded}>Shaded</option>
+                    <option value={VisualStyle.ShadedEdges}>Shaded with edges</option>
+                    <option value={VisualStyle.ShadedHiddenEdges}>Hidden edges</option>
+                    <option value={VisualStyle.Wireframe}>Wireframe</option>
+                  </select>
+                  <select
+                    aria-label="Select"
+                    title="What clicks select (keys 1–5)"
+                    value={pickFilter}
+                    onChange={(event) =>
+                      setPickFilter(Number(event.currentTarget.value) as PickFilter)
+                    }
+                  >
+                    <option value={PickFilter.Everything}>Select: all</option>
+                    <option value={PickFilter.Vertices}>Vertices</option>
+                    <option value={PickFilter.Edges}>Edges</option>
+                    <option value={PickFilter.Faces}>Faces</option>
+                    <option value={PickFilter.Bodies}>Bodies</option>
+                  </select>
+                  <button
+                    type="button"
+                    aria-pressed={multiSelect}
+                    title="Every click or tap adds to the selection (or Shift/Cmd/Ctrl + click)"
+                    onClick={() => setMultiSelect((on) => !on)}
+                  >
+                    Multi
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={boxMode}
+                    title="Drags draw a selection box: to the right a window, to the left a crossing box"
+                    onClick={() => setBoxMode((on) => !on)}
+                  >
+                    Box
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={grid}
+                    title="Show or hide the ground grid (G)"
+                    onClick={() => setGrid((shown) => !shown)}
+                  >
+                    Grid
+                  </button>
+                  <select
+                    aria-label="Mouse and trackpad navigation"
+                    title="Mouse and trackpad navigation (docs/INPUT.md)"
+                    value={navigation.preset}
+                    onChange={(event) =>
+                      setNavigation({
+                        ...navigation,
+                        preset: Number(event.currentTarget.value) as NavigationPreset,
+                      })
+                    }
+                  >
+                    <option value={NavigationPreset.Facetry}>Facetry navigation</option>
+                    <option value={NavigationPreset.Fusion}>Fusion navigation</option>
+                    <option value={NavigationPreset.Trackpad}>Trackpad navigation</option>
+                  </select>
+                  {hasTouch && (
+                    <select
+                      aria-label="One-finger drag"
+                      value={navigation.oneFinger}
+                      onChange={(event) =>
+                        setNavigation({
+                          ...navigation,
+                          oneFinger: event.currentTarget.value === "pan" ? "pan" : "orbit",
+                        })
+                      }
+                    >
+                      <option value="orbit">One finger orbits</option>
+                      <option value="pan">One finger pans</option>
+                    </select>
+                  )}
+                  <a href={stress ? "?" : "?stress"}>{stress ? "Normal" : "Stress test"}</a>
+
+                  <button
+                    type="button"
+                    title="Put the panels back in their places"
+                    onClick={panelLayout.reset}
+                  >
+                    Reset panels
+                  </button>
+                </div>
+              ),
+            },
+            {
+              id: "sketch",
+              title: sketchFeature?.name ?? "Sketch",
+              content: sketchFeature && (
+                <SketchPalette
+                  name={sketchFeature.name}
+                  tool={tool}
+                  onTool={setTool}
+                  construction={construction}
+                  onConstruction={toggleConstruction}
+                  gridSnap={gridSnap}
+                  onGridSnap={() => setGridSnap((on) => !on)}
+                  canDelete={tool === null && selectedEntities.length > 0}
+                  onDelete={deleteSelected}
+                  onProject={projectSelection}
+                  onFinish={finishSketch}
+                />
+              ),
+            },
+          ].filter((panel) => panel.content)}
+        />
         {model && (
           <Timeline
             state={model}
