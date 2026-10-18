@@ -37,6 +37,13 @@ Cancel keeps the extrusion as it was.
 
 The mouse and trackpad columns show the **Facetry** preset, the default.
 
+### Starting a sketch
+
+**New sketch** (web) or **Sketch** (Apple; a long press lists the planes) shows the origin planes as
+translucent squares at the origin. A tap or click on a plane, or on a planar face of the model,
+starts the sketch on it; a face under the pointer wins over a plane in front of it. `Esc` or
+**Cancel** leaves without a sketch. The plane menu stays available.
+
 ### Drawing in sketch mode
 
 With a drawing tool chosen in the sketch palette (docs/adr/0015-sketch-tools.md), the pointer

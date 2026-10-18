@@ -15,6 +15,8 @@ export const PickKind = {
   Region: 5,
   SketchCurve: 6,
   SketchPoint: 7,
+  /** An origin plane shown by setOriginPlanes(): 1 XY, 2 XZ, 3 YZ. */
+  Plane: 8,
 } as const;
 export type PickKind = (typeof PickKind)[keyof typeof PickKind];
 
@@ -223,6 +225,13 @@ export class Viewport {
     }
     if (this.#hover.kind === PickKind.Region) this.#hover = { kind: PickKind.None, id: 0 };
     this.onSelectionChange(this.#readSelection(), { kind: PickKind.None, id: 0 });
+  }
+
+  /** Shows or hides the origin planes to start a sketch on (#61): translucent squares at the
+   * origin, picked as PickKind.Plane before the faces behind them. */
+  setOriginPlanes(shown: boolean): void {
+    this.#check(this.#m._facetry_renderer_set_origin_planes(this.#renderer, shown ? 1 : 0));
+    if (!shown && this.#hover.kind === PickKind.Plane) this.#hover = { kind: PickKind.None, id: 0 };
   }
 
   /** Shows the sketch being edited over everything (a mesh from the core's sketchMesh()), with

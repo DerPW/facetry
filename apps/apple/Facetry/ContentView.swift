@@ -48,6 +48,14 @@ struct ContentView: View {
                         Text("Select the edge that should replace the missing one.")
                             .font(.caption).panel()
                     }
+                    if let model, model.pickingPlane {
+                        HStack {
+                            Text("Tap a plane or a planar face to sketch on.").font(.caption)
+                            Button("Cancel") { model.pickingPlane = false }
+                                .keyboardShortcut(.cancelAction)
+                        }
+                        .panel()
+                    }
                     sketchBar
                     if let model, model.profiles != nil {
                         HStack {
@@ -80,7 +88,10 @@ struct ContentView: View {
                 viewport.gridUnitMillimeters = (units ?? .millimeter).millimeters
             }
             .onChange(of: viewport.selection) { _, pick in
-                Task { await model?.completeRepair(with: pick) }
+                Task {
+                    await model?.pickedForSketch(pick)
+                    await model?.completeRepair(with: pick)
+                }
             }
             .overlay(alignment: .bottomLeading) { stats }
             .overlay(alignment: .bottomTrailing) { selection }
@@ -119,13 +130,18 @@ struct ContentView: View {
     }
 
     /// A new sketch on an origin plane or the selected face.
+    /// Tapping "Sketch" picks the plane in the viewport (#61); a long press lists the planes.
     private var sketchMenu: some View {
-        Menu("Sketch") {
+        Menu {
             Button("On the XY plane") { Task { await model?.newSketch(on: "xy") } }
             Button("On the XZ plane") { Task { await model?.newSketch(on: "xz") } }
             Button("On the YZ plane") { Task { await model?.newSketch(on: "yz") } }
             Button("On the selected face") { Task { await model?.newSketch(on: "face") } }
                 .disabled(!viewport.selected.contains { $0.kind == .face })
+        } label: {
+            Text("Sketch")
+        } primaryAction: {
+            model?.pickingPlane.toggle()
         }
         .fixedSize()
         .disabled(model?.state == nil || model?.sketching != nil)

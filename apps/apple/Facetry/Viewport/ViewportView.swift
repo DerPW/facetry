@@ -28,6 +28,8 @@ final class ViewportModel {
     /// A sketch's regions to choose profiles from, shown over the model. While they are shown,
     /// clicks and taps pick only regions and add or remove them.
     var regions: RegionChoice?
+    /// The origin planes to start a sketch on (#61), shown while the sketch plane is picked.
+    var originPlanes = false
     /// The sketch being edited, drawn over everything.
     var sketch: SketchDisplay?
     /// What the sketch tool would draw next.
@@ -151,6 +153,7 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
     private var shownSelection = Pick.none
     private var shownPickFilter: (filter: PickFilter, regionsOnly: Bool)?
     private var shownRegions: RegionChoice?
+    private var shownOriginPlanes = false
     private var shownSketch: SketchDisplay?
     private var shownPreview: MeshData?
     private var shownGrid: (visible: Bool, unit: Double)?
@@ -216,6 +219,14 @@ final class ViewportCoordinator: NSObject, MTKViewDelegate {
         }
         if model.regions != shownRegions {
             showRegions(model.regions, on: renderer)
+        }
+        if model.originPlanes != shownOriginPlanes {
+            do {
+                try renderer.setOriginPlanes(model.originPlanes)
+            } catch {
+                model.error = "\(error)"
+            }
+            shownOriginPlanes = model.originPlanes
         }
         if model.sketch != shownSketch {
             do {

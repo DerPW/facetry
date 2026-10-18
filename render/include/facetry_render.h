@@ -72,6 +72,12 @@ FACETRY_RENDER_API facetry_render_status facetry_renderer_set_mesh(facetry_rende
 FACETRY_RENDER_API facetry_render_status
 facetry_renderer_set_regions(facetry_renderer* renderer, const facetry_render_mesh* mesh);
 
+/* Shows (non-zero) or hides the origin planes to start a sketch on (#61): translucent squares from
+ * the origin into the positive quadrant of XY, XZ and YZ, sized to the model. While shown, picking
+ * finds a plane (FACETRY_PICK_PLANE) where no face of the model is under the pointer. */
+FACETRY_RENDER_API facetry_render_status
+facetry_renderer_set_origin_planes(facetry_renderer* renderer, int shown);
+
 /* The sketch being edited, drawn over everything: the mesh of facetry_session_sketch_mesh (curves
  * as edges, points as vertices); the curves whose edge IDs are in `construction_edge_ids` are
  * dashed, and those in `projected_edge_ids` (linked to the model, #52) have a color of their own.
@@ -220,7 +226,9 @@ typedef enum facetry_pick_kind {
     FACETRY_PICK_REGION = 5,       /* a sketch region (facetry_renderer_set_regions) */
     FACETRY_PICK_SKETCH_CURVE = 6, /* a curve of the sketch (facetry_renderer_set_sketch): its
                                       edge ID */
-    FACETRY_PICK_SKETCH_POINT = 7  /* a point of the sketch: its vertex ID */
+    FACETRY_PICK_SKETCH_POINT = 7, /* a point of the sketch: its vertex ID */
+    FACETRY_PICK_PLANE = 8         /* an origin plane (facetry_renderer_set_origin_planes): 1 XY,
+                                      2 XZ, 3 YZ */
 } facetry_pick_kind;
 
 /* What picking and hovering look for (selection modes). */

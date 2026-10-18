@@ -291,9 +291,45 @@ final class DocumentModel {
 
     /// Starts a new sketch on an origin plane ("xy", "xz", "yz") or on the selected face
     /// ("face"), at the rollback marker.
-    func newSketch(on plane: String) async {
+    /// Picking the sketch plane in the viewport (#61): the origin planes show, faces are picked,
+    /// and the next plane or planar face picked starts the sketch.
+    var pickingPlane = false {
+        didSet {
+            guard pickingPlane != oldValue else { return }
+            viewport.originPlanes = pickingPlane
+            if pickingPlane {
+                filterBeforePicking = viewport.pickFilter
+                viewport.pickFilter = .faces
+            } else if let filterBeforePicking {
+                viewport.pickFilter = filterBeforePicking
+            }
+        }
+    }
+    private var filterBeforePicking: PickFilter?
+
+    /// A face that cannot hold a sketch.
+    private struct NotPlanar: Error, CustomStringConvertible {
+        let type: String
+        var description: String { "Sketches need a planar face; this one is a \(type)" }
+    }
+
+    /// Starts the sketch on what was picked while ``pickingPlane``.
+    func pickedForSketch(_ pick: Pick) async {
+        guard pickingPlane else { return }
+        switch pick.kind {
+        case .plane:
+            await newSketch(on: ["xy", "xz", "yz"][max(0, min(2, Int(pick.id) - 1))])
+        case .face:
+            await newSketch(on: "face", faceID: pick.id)
+        default:
+            break
+        }
+    }
+
+    /// `faceID`: the face picked in the viewport; otherwise the selected one.
+    func newSketch(on plane: String, faceID: UInt32? = nil) async {
         guard sketching == nil, let state else { return }
-        let face = viewport.selected.first { $0.kind == .face }
+        let face = faceID ?? viewport.selected.first { $0.kind == .face }?.id
         let body = state.bodies.first(where: \.visible)?.id
         if plane == "face", face == nil || body == nil { return }
         let before = Set(state.features.map(\.id))
@@ -304,8 +340,13 @@ final class DocumentModel {
                 "lines": .array([]),
             ]
             if plane == "face", let face, let body {
-                feature["face"] = try await engine.reference(body: body, kind: .face, id: face.id)
+                let reference = try await engine.reference(body: body, kind: .face, id: face)
+                if let type = reference["shadow"]?["type"]?.string, type != "plane" {
+                    throw NotPlanar(type: type)
+                }
+                feature["face"] = reference
             }
+            await MainActor.run { self.pickingPlane = false }
             try await engine.beginTransaction("Sketch")
             do {
                 try await engine.apply([.addFeature(.object(feature), index: state.rollback)])

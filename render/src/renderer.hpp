@@ -61,6 +61,11 @@ class Renderer {
     // What the sketch tool would draw next, drawn like the sketch in a lighter color. An empty
     // mesh hides it.
     void setSketchPreview(const RenderMesh& mesh);
+    // The origin planes to start a sketch on (#61): translucent squares from the origin into the
+    // positive quadrant of XY (plane 1), XZ (2) and YZ (3), sized to the model, hidden by what lies
+    // in front of them. While shown, picking with "Everything" or "Faces" finds them where no face
+    // is under the pointer.
+    void setOriginPlanes(bool shown);
     void setViewport(float width, float height, float pixelRatio);
 
     Camera& camera() {
@@ -122,6 +127,9 @@ class Renderer {
     Camera camera_;
     PickIndex pick_;
     PickIndex regions_;
+    PickIndex planes_;
+    // The origin plane under (x, y) when it lies in front of the model and planes are picked.
+    [[nodiscard]] std::optional<PickResult> planeAt(float x, float y) const;
     PickIndex sketch_;
     Vec3 orbitPivot_;
     Highlight highlight_;

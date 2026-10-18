@@ -45,6 +45,11 @@ constexpr std::array<float, 4> kRegionHover = {0.22F, 0.52F, 0.95F, 0.0F};
 constexpr std::array<float, 4> kRegionSelect = {0.02F, 0.36F, 0.92F, 0.35F};
 constexpr float kRegionHighlightAlpha = 0.5F;
 constexpr std::array<float, 4> kRegionOutline = {0.08F, 0.32F, 0.80F, 0.9F};
+// Origin planes to start a sketch on: translucent, stronger when hovered, with outlines.
+constexpr std::array<float, 4> kPlaneFill = {0.96F, 0.62F, 0.20F, 0.25F};
+constexpr std::array<float, 4> kPlaneHover = {0.96F, 0.55F, 0.10F, 0.0F};
+constexpr float kPlaneHighlightAlpha = 0.45F;
+constexpr std::array<float, 4> kPlaneOutline = {0.85F, 0.45F, 0.05F, 0.9F};
 // The sketch being edited: curves, construction curves (dashed) and points.
 constexpr std::array<float, 4> kSketchCurve = {0.05F, 0.22F, 0.70F, 1.0F};
 constexpr std::array<float, 4> kSketchConstruction = {0.90F, 0.45F, 0.10F, 1.0F};
@@ -197,6 +202,8 @@ struct Renderer::Gpu {
     // Sketch regions over everything: fills, then outlines; the sketch's curves use the outline
     // pipeline too, its points their own.
     sg_pipeline regionPipeline{};
+    // Origin planes: translucent, two-sided, behind what is in front of them.
+    sg_pipeline planePipeline{};
     sg_pipeline regionOutlinePipeline{};
     sg_pipeline sketchPointPipeline{};
 
@@ -217,6 +224,18 @@ struct Renderer::Gpu {
     std::vector<std::uint32_t> dotVertexIds;
     std::uint32_t segmentCount = 0;
     std::uint32_t vertexCount = 0;
+
+    TriangleBuffers planes;
+    sg_buffer planeSegments{};
+    sg_buffer planeSegmentFlags{};
+    std::uint32_t planeSegmentCount = 0;
+
+    void releasePlanes() {
+        planes.release();
+        destroy(planeSegments);
+        destroy(planeSegmentFlags);
+        planeSegmentCount = 0;
+    }
 
     TriangleBuffers regions;
     sg_buffer regionSegments{};
@@ -313,6 +332,12 @@ Renderer::Renderer(int sampleCount, bool zeroToOneDepth)
         desc.cull_mode = SG_CULLMODE_BACK;
         desc.label = "transparent front faces";
         g.meshFrontPipeline = sg_make_pipeline(&desc);
+        desc.cull_mode = SG_CULLMODE_NONE;
+        // Further back than faces, so a face lying in a plane hides it instead of flickering.
+        desc.depth.bias = 8.0F;
+        desc.depth.bias_slope_scale = 4.0F;
+        desc.label = "origin planes";
+        g.planePipeline = sg_make_pipeline(&desc);
 
         desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
         desc.depth.bias = 0.0F;
@@ -532,6 +557,38 @@ void Renderer::setMesh(const RenderMesh& mesh) {
     stats_.vertices = g.vertexCount;
 }
 
+void Renderer::setOriginPlanes(bool shown) {
+    Gpu& g = *gpu_;
+    g.releasePlanes();
+    planes_ = PickIndex();
+    if (highlight_.hoverKind == PickKind::Plane) {
+        highlight_ = {};
+    }
+    if (!shown) {
+        return;
+    }
+    const RenderMesh mesh = originPlanesMesh(pick_.bounds());
+    planes_ = PickIndex(mesh);
+    g.planes.upload(mesh, "origin planes");
+    // The mesh shader reads selection flags; planes are never shown selected.
+    g.planes.selected =
+        makeBuffer(std::vector<float>(g.planes.vertexFaceIds.size(), 0.0F), false, "plane flags");
+    std::vector<std::uint32_t> edgeIds;
+    const std::vector<float> segments = edgeSegments(mesh, edgeIds);
+    g.planeSegments = makeBuffer(segments, false, "origin plane outlines");
+    g.planeSegmentCount = static_cast<std::uint32_t>(edgeIds.size());
+    g.planeSegmentFlags =
+        makeBuffer(std::vector<float>(edgeIds.size(), 0.0F), false, "origin plane outline flags");
+}
+
+std::optional<PickResult> Renderer::planeAt(float x, float y) const {
+    if (planes_.bounds().isEmpty() ||
+        (filter_ != PickFilter::Everything && filter_ != PickFilter::Faces)) {
+        return std::nullopt;
+    }
+    return pickPlane(planes_, pick_, camera_.rayAt(x, y));
+}
+
 void Renderer::setRegions(const RenderMesh& mesh) {
     Gpu& g = *gpu_;
     g.releaseRegions();
@@ -660,11 +717,19 @@ void Renderer::orbit(float dx, float dy) {
 }
 
 PickResult Renderer::pick(float x, float y, float radius) const {
+    if (const auto plane = planeAt(x, y)) {
+        return *plane;
+    }
     return pickWithOverlays(pick_, {regions_, sketch_}, camera_, x, y, radius, picksThroughFaces(),
                             filter_);
 }
 
 PickResult Renderer::click(float x, float y, float radius, bool toggle) {
+    if (const auto plane = planeAt(x, y)) {
+        clickCycle_.reset();
+        selection_.replace({plane->kind, plane->id});
+        return *plane;
+    }
     const auto candidates = candidatesWithOverlays(pick_, {regions_, sketch_}, camera_, x, y,
                                                    radius, picksThroughFaces(), filter_);
     if (toggle) {
@@ -800,7 +865,8 @@ void Renderer::draw(const FrameTarget& target) {
     const bool drawFaces = style_ != VisualStyle::Wireframe && opacity_ > 0.001F;
     const bool transparent = opacity_ < kOpaque;
 
-    const auto faces = [&](sg_pipeline pipeline, const TriangleBuffers& buffers, bool regions) {
+    enum class Layer : std::uint8_t { Model, Regions, Planes };
+    const auto faces = [&](sg_pipeline pipeline, const TriangleBuffers& buffers, Layer layer) {
         mesh_vs_params_t vs{};
         copyMatrix(vs.view_proj, viewProjection);
         mesh_fs_params_t fs{};
@@ -809,7 +875,14 @@ void Renderer::draw(const FrameTarget& target) {
         fs.key_light[0] = light.x;
         fs.key_light[1] = light.y;
         fs.key_light[2] = light.z;
-        if (regions) {
+        if (layer == Layer::Planes) {
+            copy4(fs.base_color, kPlaneFill);
+            copy4(fs.hover_color, kPlaneHover);
+            copy4(fs.select_color, kPlaneHover);
+            fs.ids[0] = idFor(h.hoverKind, PickKind::Plane, h.hoverId);
+            fs.ids[1] = 1.0F;  // flat
+            fs.ids[3] = kPlaneHighlightAlpha;
+        } else if (layer == Layer::Regions) {
             copy4(fs.base_color, kRegionFill);
             copy4(fs.hover_color, kRegionHover);
             copy4(fs.select_color, kRegionSelect);
@@ -868,7 +941,7 @@ void Renderer::draw(const FrameTarget& target) {
     };
 
     if (g.faces.indexCount > 0 && drawFaces && !transparent) {
-        faces(g.meshPipeline, g.faces, /*regions=*/false);
+        faces(g.meshPipeline, g.faces, Layer::Model);
     }
 
     if (gridVisible_) {
@@ -911,8 +984,8 @@ void Renderer::draw(const FrameTarget& target) {
 
     // Transparent faces after the grid, so the grid shows through them.
     if (g.faces.indexCount > 0 && drawFaces && transparent) {
-        faces(g.meshBackPipeline, g.faces, /*regions=*/false);
-        faces(g.meshFrontPipeline, g.faces, /*regions=*/false);
+        faces(g.meshBackPipeline, g.faces, Layer::Model);
+        faces(g.meshFrontPipeline, g.faces, Layer::Model);
     }
 
     if (g.segmentCount > 0) {
@@ -948,9 +1021,34 @@ void Renderer::draw(const FrameTarget& target) {
         sg_draw(0, 6, static_cast<int>(g.vertexCount));
     }
 
+    // Origin planes after the model, translucent where nothing is in front of them.
+    if (g.planes.indexCount > 0) {
+        faces(g.planePipeline, g.planes, Layer::Planes);
+    }
+    if (g.planeSegmentCount > 0) {
+        edge_vs_params_t vs{};
+        copyMatrix(vs.view_proj, viewProjection);
+        std::memcpy(vs.viewport, viewport, sizeof(viewport));
+        vs.viewport[2] = kEdgeHalfWidth * pixelRatio_;
+        vs.viewport[3] = kEdgeHalfWidth * pixelRatio_;
+        edge_fs_params_t fs{};
+        copy4(fs.color, kPlaneOutline);
+
+        sg_bindings bindings{};
+        bindings.vertex_buffers[0] = g.edgeQuad;
+        bindings.vertex_buffers[1] = g.planeSegments;
+        bindings.vertex_buffers[2] = g.planeSegmentFlags;
+        bindings.index_buffer = g.quadIndices;
+        sg_apply_pipeline(g.edgePipeline);
+        sg_apply_bindings(&bindings);
+        sg_apply_uniforms(UB_edge_vs_params, SG_RANGE(vs));
+        sg_apply_uniforms(UB_edge_fs_params, SG_RANGE(fs));
+        sg_draw(0, 6, static_cast<int>(g.planeSegmentCount));
+    }
+
     // Sketch regions last, over the model, so they can be chosen wherever they lie.
     if (g.regions.indexCount > 0) {
-        faces(g.regionPipeline, g.regions, /*regions=*/true);
+        faces(g.regionPipeline, g.regions, Layer::Regions);
     }
     if (g.regionSegmentCount > 0) {
         edge_vs_params_t vs{};

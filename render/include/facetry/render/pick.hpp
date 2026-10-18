@@ -36,6 +36,7 @@ enum class PickKind : std::uint32_t {
     Region = 5,
     SketchCurve = 6,  // a curve of the sketch being edited (Renderer::setSketch)
     SketchPoint = 7,  // a point of it
+    Plane = 8,        // an origin plane shown to start a sketch on (Renderer::setOriginPlanes)
 };
 
 // A face, edge, vertex, body or sketch region, by ID.
@@ -143,6 +144,16 @@ class PickIndex {
     std::vector<std::uint32_t> vertexIds_;
     Bounds bounds_;
 };
+
+// The origin planes to start a sketch on (#61): squares from the origin into the positive quadrant
+// of XY (face ID 1), XZ (2) and YZ (3), at least 10 units and 1.2 times the scene's largest
+// coordinate, with outlines as edges 1 to 3.
+[[nodiscard]] RenderMesh originPlanesMesh(const Bounds& scene);
+
+// The plane of `planes` the ray meets first, unless it meets a face of `model` too: planes are
+// translucent and stand out from the model, so a face under the pointer is what the user means.
+[[nodiscard]] std::optional<PickResult> pickPlane(const PickIndex& planes, const PickIndex& model,
+                                                  const Ray& ray);
 
 // What is drawn over the model and picked before it: a sketch's regions to choose profiles from
 // (Renderer::setRegions) and the sketch being edited (Renderer::setSketch). Either may be empty.
