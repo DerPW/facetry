@@ -189,7 +189,7 @@ devices require.
 The web app needs the core module first (see [WebAssembly](#webassembly)). Then:
 
 ```bash
-cd apps/web && npm install && npm run dev
+cd apps/web && pnpm install && pnpm run dev
 ```
 
 The core runs in a Web Worker (`src/core/core.worker.ts`). The UI thread talks to it through
@@ -214,11 +214,11 @@ development builds never register it. CI deploys every build of `main` to GitHub
 
 | Script | Purpose |
 |---|---|
-| `npm run dev` | Development server |
-| `npm run build` | Type-check and production build into `dist/` |
-| `npm test` | Vitest: the TypeScript core API against the real WebAssembly module, in Node |
-| `npm run lint` | ESLint |
-| `npm run format` / `format:check` | Prettier |
+| `pnpm run dev` | Development server |
+| `pnpm run build` | Type-check and production build into `dist/` |
+| `pnpm test` | Vitest: the TypeScript core API against the real WebAssembly module, in Node |
+| `pnpm run lint` | ESLint |
+| `pnpm run format` / `format:check` | Prettier |
 
 ## App icon
 
@@ -237,7 +237,7 @@ It writes the web icons (`apps/web/public/icons/`) and the Apple app icon set
 |---|---|---|---|
 | C++ | clang-format 23.1.3 (`.clang-format`) | `git ls-files '*.cpp' '*.hpp' \| xargs clang-format --dry-run --Werror` | same with `-i` |
 | Swift | swift-format, bundled with Xcode (`.swift-format`) | `swift format lint --strict --recursive apps/apple` | `swift format --in-place --recursive apps/apple` |
-| TypeScript, CSS, HTML | Prettier (`apps/web/.prettierrc.json`) | `npm run format:check` | `npm run format` |
+| TypeScript, CSS, HTML | Prettier (`apps/web/.prettierrc.json`) | `pnpm run format:check` | `pnpm run format` |
 
 ## Continuous integration
 
