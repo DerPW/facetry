@@ -257,9 +257,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
+      - run: npm install -g pnpm@12.16.1
+      - run: pnpm install --frozen-lockfile
       - name: Lint
         run: npm run lint
       - name: Check formatting
